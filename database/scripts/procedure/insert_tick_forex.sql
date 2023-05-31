@@ -2,26 +2,21 @@ USE db_forex;
 
 DELIMITER |
 CREATE OR REPLACE PROCEDURE insert_tick_forex(
-    IN timestamp DATETIME, IN p_adresse VARCHAR(200))
+    IN p_datetime DATETIME, IN p_ask double, IN p_bid double,
+    IN p_base_currency CHAR(3), IN p_quoted_currency CHAR(3))
 BEGIN
-    DECLARE i_id INT DEFAULT -1;
+    DECLARE base_id INT DEFAULT -1;
+    DECLARE quoted_id INT DEFAULT -1;
 
     SELECT id
-    INTO i_id
-    FROM coureur WHERE nom = p_nom;
-    START TRANSACTION;
-        IF i_id = -1 THEN
-            INSERT INTO coureur(nom, adresse)
-            VALUES (p_nom, SHA2(CONCAT(SHA2('salt_secret', 224), p_adresse), 256));
+    INTO base_id
+    FROM currency WHERE iso_code = p_base_currency;
 
-            SELECT 'Coureur enregistré' AS Message;
-        ELSE
-            UPDATE coureur
-            SET adresse = SHA2(CONCAT(SHA2('salt_secret', 224), p_adresse), 256)
-            WHERE id = i_id;
+    SELECT id
+    INTO quoted_id
+    FROM currency WHERE iso_code = p_quoted_currency;
 
-            SELECT 'Coureur déjà existant. Changement de adresse' AS Message;
-        END IF;
-    COMMIT;
+    INSERT INTO ticks_forex(datetime, ask, bid, base_currency_id, quote_currency_id)
+    VALUES (p_datetime, p_ask, p_bid, base_id, quoted_id);
 END |
 DELIMITER ;

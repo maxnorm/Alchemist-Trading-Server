@@ -36,11 +36,11 @@ class Database:
         tick_info = tick.split(",")
         if len(tick_info) == 4:
             symbol, date_time, ask, bid = tick_info
+
             try:
-                self.__cursor.execute(
-                    "INSERT INTO ticks_forex(datetime, ask, bid, base_currency_id, quote_currency_id) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (date_time, ask, bid, 1, 1))
+                self.__cursor.callproc(
+                    'insert_tick_forex',
+                    (date_time, ask, bid, symbol[:3], symbol[3:]))
                 return True
             except mariadb.Error as e:
                 print(f"Error: {e}")

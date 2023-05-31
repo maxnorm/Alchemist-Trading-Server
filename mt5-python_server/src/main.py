@@ -4,7 +4,7 @@ from database import Database
 
 def main():
     """Main"""
-    Server(verbose=True)
+    Server()
 
 
 if __name__ == '__main__':

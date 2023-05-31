@@ -1,6 +1,7 @@
 """
 Class Server for connection to MetaTrader5
 """
+
 import socket
 import threading
 
@@ -23,6 +24,9 @@ class Server:
         except mariadb.Error:
             return
 
+        self.db_lock = threading.Lock()
+        self.console_lock = threading.Lock()
+
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.bind((config['SERVER_IP'], int(config['SERVER_PORT'])))
 
@@ -38,13 +42,14 @@ class Server:
         self.socket.listen(5)
 
         if self.verbose:
-            print("Server now listening for MT5 EA")
+            with self.console_lock:
+                print("Server now listening for MT5 EA")
 
         while True:
             client_conn, client_address = self.socket.accept()
             threading.Thread(target=self.receive_tick, args=(client_conn,)).start()
 
-            if self.verbose:
+            with self.console_lock:
                 print('Connected to', client_address)
 
     def receive_tick(self, client):
@@ -54,13 +59,16 @@ class Server:
         while True:
             data = client.recv(10000)
             data = data.decode("utf-8")
+
             if not data:
                 break
 
             if self.verbose:
-                print(data)
+                with self.console_lock:
+                    print(data)
 
-            # self.db.insert_forex_tick(data)
+            with self.db_lock:
+                self.db.insert_forex_tick(data)
 
     def __del__(self):
         self.socket.close()
