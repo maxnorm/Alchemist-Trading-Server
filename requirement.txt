@@ -1,2 +1,5 @@
 mariadb
 python-dotenv
+selenium
+numpy
+pandas

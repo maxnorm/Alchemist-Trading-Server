@@ -60,7 +60,7 @@ void OnTick()
    if(SymbolInfoTick(symbol, tick))
    {
       string request = StringFormat(
-         "%s,%s,%s,%s",
+         "%s|%s|%s|%s",
          symbol, TimeToString(tick.time,TIME_DATE|TIME_SECONDS), DoubleToString(tick.ask,5), DoubleToString(tick.bid,5)
       );
       Print(request);

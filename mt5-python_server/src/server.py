@@ -1,37 +1,41 @@
 """
 Class Server for connection to MetaTrader5
 """
-
+import datetime
 import socket
 import threading
 
-import mariadb
 from dotenv import dotenv_values
-
 from database import Database
+from web_crawler_myfxbook import WebCrawlerMyfxbook
 
 
 class Server:
     """
     Class for the server
+
+    The server and data are base in the GMT+3 timezone
     """
+
     def __init__(self, verbose=False):
-        self.verbose = verbose
         config = dotenv_values("../../.env")
 
-        try:
-            self.db = Database()
-        except mariadb.Error:
-            return
+        self.__verbose = verbose
 
-        self.db_lock = threading.Lock()
-        self.console_lock = threading.Lock()
+        self.__db = Database()
+        self.__myfxbook = WebCrawlerMyfxbook(
+            email=config['MYFXBOOK_EMAIL'],
+            password=config['MYFXBOOK_PASSWORD'],
+            url=config['URL_MYFXBOOK']
+        )
 
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind((config['SERVER_IP'], int(config['SERVER_PORT'])))
+        self.__db_lock = threading.Lock()
+        self.__console_lock = threading.Lock()
+        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__socket.bind((config['SERVER_IP'], int(config['SERVER_PORT'])))
 
-        if self.verbose:
-            print(f"Server socket bind to {config['SERVER_IP']}:{config['SERVER_PORT']}:")
+        if self.__verbose:
+            print(f"Server socket bind to {config['SERVER_IP']}:{config['SERVER_PORT']}")
 
         self.start()
 
@@ -39,22 +43,25 @@ class Server:
         """
         Start of server
         """
-        self.socket.listen(5)
+        self.__socket.listen(5)
 
-        if self.verbose:
-            with self.console_lock:
+        if self.__verbose:
+            with self.__console_lock:
                 print("Server now listening for MT5 EA")
 
-        while True:
-            client_conn, client_address = self.socket.accept()
-            threading.Thread(target=self.receive_tick, args=(client_conn,)).start()
+        threading.Thread(target=self.__collect_economic_calendar)
 
-            with self.console_lock:
+        while True:
+            client_conn, client_address = self.__socket.accept()
+            threading.Thread(target=self.__receive_tick, args=(client_conn,)).start()
+
+            with self.__console_lock:
                 print('Connected to', client_address)
 
-    def receive_tick(self, client):
+    def __receive_tick(self, client):
         """
         Receive tick from mt5 client
+        and store them in the database
         """
         while True:
             data = client.recv(10000)
@@ -63,12 +70,22 @@ class Server:
             if not data:
                 break
 
-            if self.verbose:
-                with self.console_lock:
+            if self.__verbose:
+                with self.__console_lock:
                     print(data)
 
-            with self.db_lock:
-                self.db.insert_forex_tick(data)
+            self.__db.insert_forex_tick(data)
+
+    def __collect_economic_calendar(self, hour, minute):
+        """
+        Collect economic data from the economic calendar of yesterday at a specific time
+        and store them in database
+        """
+        while True:
+            now = datetime.datetime.now()
+            if now.hour == hour and now.minute == minute:
+                data = self.__myfxbook.download_economic_calendar()
+                self.__db.insert_economic_calendar_data(data)
 
     def __del__(self):
-        self.socket.close()
+        self.__socket.close()

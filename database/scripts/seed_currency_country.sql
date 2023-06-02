@@ -9,7 +9,8 @@ VALUES
 ('Australian dollar', 'AUD'),
 ('New Zealand dollar', 'NZD'),
 ('Swiss franc', 'CHF'),
-('Canadian dollar', 'CAD');
+('Canadian dollar', 'CAD'),
+('Yuan', 'CNY');
 
 INSERT INTO country(nom, currency_id)
 VALUES
@@ -39,6 +40,7 @@ VALUES
 ('Australia', 5),
 ('New Zealand', 6),
 ('Switzerland', 7),
-('Canada', 8);
+('Canada', 8),
+('China', 9);
 
 

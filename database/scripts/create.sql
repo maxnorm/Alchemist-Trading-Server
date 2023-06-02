@@ -22,7 +22,7 @@ CREATE OR REPLACE TABLE country(
 );
 
 CREATE OR REPLACE TABLE ticks_forex(
-    id INT PRIMARY KEY AUTO_INCREMENT,
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     datetime DATETIME NOT NULL,
     ask DOUBLE NOT NULL,
     bid DOUBLE NOT NULL,
@@ -40,3 +40,19 @@ CREATE OR REPLACE TABLE ticks_forex(
 	updated_at TIMESTAMP NULL
 );
 
+CREATE OR REPLACE TABLE economic_calendar(
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    datetime DATETIME NOT NULL,
+    event VARCHAR(250) NOT NULL,
+    impact ENUM (1 , 2, 3) NOT NULL,
+    previous VARCHAR(10),
+    consensus VARCHAR(10),
+    actual VARCHAR(10),
+    country_id INT NOT NULL,
+    CONSTRAINT country_id_economic_calendar
+	    FOREIGN KEY (country_id)
+	    REFERENCES country(id)
+	    ON UPDATE CASCADE ON DELETE RESTRICT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP NULL
+)

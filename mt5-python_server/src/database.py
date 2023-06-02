@@ -3,6 +3,7 @@ Database interaction from server to MariaDB Docker Container
 """
 
 import mariadb
+import pandas
 from dotenv import dotenv_values
 
 
@@ -12,35 +13,38 @@ class Database:
     """
 
     def __init__(self):
-        try:
-            config = dotenv_values("../../.env")
-            self.__conn = mariadb.connect(
-                user=config['DB_USERNAME'],
-                password=config['DB_PASSWORD'],
-                host=config['DB_HOST'],
-                port=int(config['DB_PORT']),
-                database=config['DB_DATABASE']
-            )
-            self.__conn.autocommit = True
-            self.__cursor = self.__conn.cursor()
-        except mariadb.Error as e:
-            print(f"Error connecting to MariaDB Platform: {e}")
-            raise e
+        config = dotenv_values("../../.env")
+        self.__user = config['DB_USERNAME']
+        self.__password = config['DB_PASSWORD']
+        self.__host = config['DB_HOST']
+        self.__port = int(config['DB_PORT'])
+        self.__db = config['DB_DATABASE']
 
-    def insert_forex_tick(self, tick: str) -> bool:
+
+    def insert_forex_tick(self, tick):
         """
         Insert a tick to the database
-        :param tick: tick [symbol, datetime, ask, bid]
-        :return True if insert is done
+        
+        :param tick: [symbol, datetime, ask, bid]
+        :return: True if insert is done
         """
-        tick_info = tick.split(",")
+
+        tick_info = tick.split("|")
         if len(tick_info) == 4:
             symbol, date_time, ask, bid = tick_info
 
+            conn = self.__create_conn()
+            cursor = conn.cursor()
+
             try:
-                self.__cursor.callproc(
+                cursor.callproc(
                     'insert_tick_forex',
                     (date_time, ask, bid, symbol[:3], symbol[3:]))
+                conn.commit()
+
+                cursor.close()
+                conn.close()
+
                 return True
             except mariadb.Error as e:
                 print(f"Error: {e}")
@@ -49,5 +53,35 @@ class Database:
             print("Error wrong format of tick: 'symbol,datetime,ask,bid'")
             return False
 
-    def __del__(self):
-        self.__conn.close()
+    def insert_economic_calendar_data(self, data):
+        """
+        Insert multiple data from the economic calendar
+
+        :param data: Pandas Dataframe
+        """
+        conn = self.__create_conn()
+        cursor = conn.cursor()
+
+        for _, row in data.iterrows():
+            pass
+
+
+
+    def __create_conn(self):
+        """
+        Create the database connection
+
+        :return: MariaDB connection
+        """
+        try:
+            conn = mariadb.connect(
+                user=self.__user,
+                password=self.__password,
+                host=self.__host,
+                port=self.__port,
+                database=self.__db
+            )
+            return conn
+        except mariadb.Error as e:
+            print(f"Error connecting to MariaDB Platform: {e}")
+            raise e
