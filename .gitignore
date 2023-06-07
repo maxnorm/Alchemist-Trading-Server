@@ -4,3 +4,4 @@
 /mt5-python_server/venv
 /.idea
 .env
+docker-compose.yml

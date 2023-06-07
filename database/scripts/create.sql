@@ -44,10 +44,10 @@ CREATE OR REPLACE TABLE economic_calendar(
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     datetime DATETIME NOT NULL,
     event VARCHAR(250) NOT NULL,
-    impact ENUM (1 , 2, 3) NOT NULL,
-    previous VARCHAR(10),
-    consensus VARCHAR(10),
-    actual VARCHAR(10),
+    impact INT NOT NULL,
+    previous VARCHAR(20),
+    consensus VARCHAR(20),
+    actual VARCHAR(20),
     country_id INT NOT NULL,
     CONSTRAINT country_id_economic_calendar
 	    FOREIGN KEY (country_id)

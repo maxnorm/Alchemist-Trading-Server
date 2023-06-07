@@ -3,20 +3,18 @@ USE db_forex;
 DELIMITER |
 CREATE OR REPLACE PROCEDURE insert_economic_calendar_data(
     IN p_datetime DATETIME, IN p_country VARCHAR(100), IN p_event VARCHAR(250),
-    IN p_impact INT, IN p_quoted_currency CHAR(3))
+    IN p_impact INT, IN p_previous VARCHAR(20),
+     IN p_consesus VARCHAR(20), IN p_actual VARCHAR(20))
 BEGIN
-    DECLARE base_id INT DEFAULT -1;
-    DECLARE quoted_id INT DEFAULT -1;
+    DECLARE id_country INT DEFAULT -1;
 
     SELECT id
-    INTO base_id
-    FROM currency WHERE iso_code = p_base_currency;
+    INTO id_country
+    FROM country WHERE nom = p_country;
 
-    SELECT id
-    INTO quoted_id
-    FROM currency WHERE iso_code = p_quoted_currency;
-
-    INSERT INTO ticks_forex(datetime, ask, bid, base_currency_id, quote_currency_id)
-    VALUES (p_datetime, p_ask, p_bid, base_id, quoted_id);
+    IF id_country <> -1 THEN
+        INSERT INTO economic_calendar(datetime, event, impact, previous, consensus, actual, country_id)
+        VALUES (p_datetime, p_event, p_impact, p_previous, p_consesus, p_actual, id_country);
+    END IF;
 END |
 DELIMITER ;
