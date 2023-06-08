@@ -84,7 +84,7 @@ class Server:
         """
         while True:
             now = datetime.datetime.now()
-            if now.hour == hour and now.minute == minute:
+            if now.hour == hour and now.minute == minute and now.weekday() > 5:
                 data = self.__myfxbook.download_economic_calendar()
                 self.__db.insert_economic_calendar_data(data)
                 if self.__verbose:
