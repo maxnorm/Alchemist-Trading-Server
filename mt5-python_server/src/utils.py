@@ -15,7 +15,7 @@ def get_current_datetime_str():
     """
     Get the current datetime string formatted %Y-%m-%d %H:%M:%S
     """
-    return datetime.now().strptime("%Y-%m-%d %H:%M:%S")
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_datetime(date):
