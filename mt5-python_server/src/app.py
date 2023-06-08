@@ -18,11 +18,11 @@ def parse_arguments():
     return args
 
 
-def main():
+def start():
     """Main"""
     args = parse_arguments()
     Server(verbose=args.verbose)
 
 
 if __name__ == '__main__':
-    main()
+    start()
