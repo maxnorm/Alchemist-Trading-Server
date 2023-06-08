@@ -71,7 +71,6 @@ class Database:
                 actual = row['Actual'] if row['Actual'] != '' else None
                 cursor.callproc('insert_economic_calendar_data',
                                 (date, country, event, impact, previous, consensus, actual))
-                print((date, country, event, impact, previous, consensus, actual))
             conn.commit()
 
             cursor.close()
