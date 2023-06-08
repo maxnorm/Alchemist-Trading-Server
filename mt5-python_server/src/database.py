@@ -3,7 +3,6 @@ Database interaction from server to MariaDB Docker Container
 """
 
 import mariadb
-import pandas
 from dotenv import dotenv_values
 
 
@@ -19,7 +18,6 @@ class Database:
         self.__host = config['DB_HOST']
         self.__port = int(config['DB_PORT'])
         self.__db = config['DB_DATABASE']
-
 
     def insert_forex_tick(self, tick):
         """
@@ -62,10 +60,27 @@ class Database:
         conn = self.__create_conn()
         cursor = conn.cursor()
 
-        for _, row in data.iterrows():
-            pass
+        try:
+            for _, row in data.iterrows():
+                date = row['Date']
+                country = row['Country']
+                event = row['Event']
+                impact = row['Impact']
+                previous = row['Previous'] if row['Previous'] != '' else None
+                consensus = row['Consensus'] if row['Consensus'] != '' else None
+                actual = row['Actual'] if row['Actual'] != '' else None
+                cursor.callproc('insert_economic_calendar_data',
+                                (date, country, event, impact, previous, consensus, actual))
+                print((date, country, event, impact, previous, consensus, actual))
+            conn.commit()
 
+            cursor.close()
+            conn.close()
 
+            return True
+        except mariadb.Error as e:
+            print(f"Error: {e}")
+            return False
 
     def __create_conn(self):
         """

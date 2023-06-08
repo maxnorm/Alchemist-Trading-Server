@@ -4,6 +4,7 @@ Class Server for connection to MetaTrader5
 import datetime
 import socket
 import threading
+import time
 
 from dotenv import dotenv_values
 from database import Database
@@ -49,7 +50,7 @@ class Server:
             with self.__console_lock:
                 print("Server now listening for MT5 EA")
 
-        threading.Thread(target=self.__collect_economic_calendar)
+        threading.Thread(target=self.__collect_economic_calendar, args=(17, 10)).start()
 
         while True:
             client_conn, client_address = self.__socket.accept()
@@ -86,6 +87,10 @@ class Server:
             if now.hour == hour and now.minute == minute:
                 data = self.__myfxbook.download_economic_calendar()
                 self.__db.insert_economic_calendar_data(data)
+                if self.__verbose:
+                    with self.__console_lock:
+                        print("Economic Calendar download")
+            time.sleep(60)
 
     def __del__(self):
         self.__socket.close()

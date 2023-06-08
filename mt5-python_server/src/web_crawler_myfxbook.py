@@ -36,9 +36,7 @@ class WebCrawlerMyfxbook:
         df = self.__parse_calendar(table_html)
         df.replace('', None, inplace=True)
 
-        print(df.to_string())
-
-        # return self.__parse_calendar(table_html)
+        return self.__parse_calendar(table_html)
 
     def __parse_calendar(self, html):
         """
@@ -75,6 +73,7 @@ class WebCrawlerMyfxbook:
             index += 1
 
         df = pd.DataFrame(data, columns=headers)
+
         return df
 
     def __navigate_myfxbook_economic_calendar(self, driver):
