@@ -71,7 +71,7 @@ class Server:
         and store them in the database
         """
         while True:
-            data = client.recv(10000)
+            data = client.recv(200)
             data = data.decode("utf-8")
 
             if not data:
