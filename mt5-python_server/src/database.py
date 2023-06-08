@@ -1,9 +1,11 @@
 """
 Database interaction from server to MariaDB Docker Container
 """
+import datetime
 
 import mariadb
 from dotenv import dotenv_values
+from utils import print_with_datetime
 
 
 class Database:
@@ -48,7 +50,7 @@ class Database:
                 print(f"Error: {e}")
                 return False
         else:
-            print("Error wrong format of tick: 'symbol,datetime,ask,bid'")
+            print_with_datetime(f"Error wrong format of tick: 'symbol|datetime|ask|bid' | {tick_info}")
             return False
 
     def insert_economic_calendar_data(self, data):
@@ -78,7 +80,7 @@ class Database:
 
             return True
         except mariadb.Error as e:
-            print(f"Error: {e}")
+            print_with_datetime(f"Error: {e}")
             return False
 
     def __create_conn(self):
@@ -97,5 +99,5 @@ class Database:
             )
             return conn
         except mariadb.Error as e:
-            print(f"Error connecting to MariaDB Platform: {e}")
+            print_with_datetime(f"Error connecting to MariaDB Platform: {e}")
             raise e

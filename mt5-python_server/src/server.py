@@ -9,6 +9,7 @@ import time
 from dotenv import dotenv_values
 from database import Database
 from web_crawler_myfxbook import WebCrawlerMyfxbook
+from utils import print_with_datetime
 
 
 class Server:
@@ -36,8 +37,11 @@ class Server:
         self.__socket.bind((config['SERVER_IP'], int(config['SERVER_PORT'])))
 
         if self.__verbose:
-            print(f"Server socket bind to {config['SERVER_IP']}:{config['SERVER_PORT']}")
+            print_with_datetime(
+                f"Server socket bind to {config['SERVER_IP']}:{config['SERVER_PORT']}"
+            )
 
+        self.__all_client = []
         self.start()
 
     def start(self):
@@ -48,7 +52,7 @@ class Server:
 
         if self.__verbose:
             with self.__console_lock:
-                print("Server now listening for MT5 EA")
+                print_with_datetime("Server now listening for MT5 EA")
 
         threading.Thread(target=self.__collect_economic_calendar, args=(17, 10)).start()
 
@@ -56,8 +60,10 @@ class Server:
             client_conn, client_address = self.__socket.accept()
             threading.Thread(target=self.__receive_tick, args=(client_conn,)).start()
 
+            self.__all_client.append(client_conn)
+
             with self.__console_lock:
-                print('Connected to', client_address)
+                print_with_datetime(f'Connected to {client_address}')
 
     def __receive_tick(self, client):
         """
@@ -73,7 +79,7 @@ class Server:
 
             if self.__verbose:
                 with self.__console_lock:
-                    print(data)
+                    print_with_datetime(data)
 
             self.__db.insert_forex_tick(data)
 
@@ -89,7 +95,7 @@ class Server:
                 self.__db.insert_economic_calendar_data(data)
                 if self.__verbose:
                     with self.__console_lock:
-                        print("Economic Calendar download")
+                        print_with_datetime("Economic Calendar download")
             time.sleep(60)
 
     def __del__(self):
