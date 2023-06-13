@@ -26,7 +26,6 @@ class Server:
 
         self.__all_client = []
         self.__stop_char_tick = '\n'
-        self.__ea_streamer = config['MT5_TICK_STREAMER']
 
         self.__db = Database()
         self.__myfxbook = WebCrawlerMyfxbook(
