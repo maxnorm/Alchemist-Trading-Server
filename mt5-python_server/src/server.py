@@ -24,6 +24,10 @@ class Server:
 
         self.__verbose = verbose
 
+        self.__all_client = []
+        self.__stop_char_tick = '\n'
+        self.__ea_streamer = config['MT5_TICK_STREAMER']
+
         self.__db = Database()
         self.__myfxbook = WebCrawlerMyfxbook(
             email=config['MYFXBOOK_EMAIL'],
@@ -41,7 +45,6 @@ class Server:
                 f"Server socket bind to {config['SERVER_IP']}:{config['SERVER_PORT']}"
             )
 
-        self.__all_client = []
         self.start()
 
     def start(self):
@@ -70,18 +73,22 @@ class Server:
         Receive tick from mt5 client
         and store them in the database
         """
+        cum_data = ''
         while True:
-            data = client.recv(200)
-            data = data.decode("utf-8")
+            data = client.recv(1024).decode("utf-8")
 
-            if not data:
-                break
+            cum_data += data
 
-            if self.__verbose:
-                with self.__console_lock:
-                    print_with_datetime(data)
+            if self.__stop_char_tick in cum_data:
 
-            self.__db.insert_forex_tick(data)
+                final_data = cum_data[:cum_data.index(self.__stop_char_tick)]
+
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(final_data)
+
+                self.__db.insert_forex_tick(final_data)
+                cum_data = ''
 
     def __collect_economic_calendar(self, hour, minute):
         """
@@ -90,7 +97,7 @@ class Server:
         """
         while True:
             now = datetime.datetime.now()
-            if now.hour == hour and now.minute == minute and now.weekday() > 5:
+            if now.hour == hour and now.minute == minute and now.weekday() < 5:
                 data = self.__myfxbook.download_economic_calendar()
                 self.__db.insert_economic_calendar_data(data)
                 if self.__verbose:

@@ -12,6 +12,37 @@ VALUES
 ('Canadian dollar', 'CAD'),
 ('Yuan', 'CNY');
 
+INSERT INTO forex_pairs(symbol, base_currency_id, quote_currency_id)
+VALUES
+('EURUSD',2, 1),
+('GBPUSD',3, 1),
+('USDJPY', 1, 4),
+('AUDUSD',5, 1),
+('NZDUSD', 6, 1),
+('USDCHF', 1, 7),
+('USDCAD', 1, 8),
+('EURGBP', 2, 3),
+('EURJPY', 2, 4),
+('EURAUD', 2, 5),
+('EURNZD', 2, 6),
+('EURCHF', 2, 7),
+('EURCAD', 2, 8),
+('GBPJPY', 3, 4),
+('GBPAUD', 3, 5),
+('GBPNZD', 3, 6),
+('GBPCHF', 3, 7),
+('GBPCAD', 3, 8),
+('AUDJPY', 5, 4),
+('NZDJPY', 6, 4),
+('CHFJPY', 7, 4),
+('CADJPY',8, 4),
+('AUDNZD', 5, 6),
+('AUDCHF', 5, 7),
+('AUDCAD', 5, 8),
+('NZDCHF', 6, 7),
+('NZDCAD', 6, 8),
+('CADCHF', 8, 7);
+
 INSERT INTO country(nom, currency_id)
 VALUES
 ('United States', 1),
@@ -42,5 +73,3 @@ VALUES
 ('Switzerland', 7),
 ('Canada', 8),
 ('China', 9);
-
-

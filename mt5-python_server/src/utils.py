@@ -11,6 +11,7 @@ def print_with_datetime(msg):
     now = get_current_datetime_str()
     print(f"{now} | {msg}")
 
+
 def get_current_datetime_str():
     """
     Get the current datetime string formatted %Y-%m-%d %H:%M:%S

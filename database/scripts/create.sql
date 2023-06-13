@@ -21,20 +21,31 @@ CREATE OR REPLACE TABLE country(
 	updated_at TIMESTAMP NULL
 );
 
-CREATE OR REPLACE TABLE ticks_forex(
-    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-    datetime DATETIME NOT NULL,
-    ask DOUBLE NOT NULL,
-    bid DOUBLE NOT NULL,
+CREATE OR REPLACE TABLE forex_pairs(
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    symbol CHAR(6) NOT NULL,
     base_currency_id INT NOT NULL,
     CONSTRAINT base_currency_id_ticks
 	    FOREIGN KEY (base_currency_id)
 	    REFERENCES currency(id)
 	    ON UPDATE CASCADE ON DELETE RESTRICT,
-    quote_currency_id INT NOT NULL,
+	quote_currency_id INT NOT NULL,
     CONSTRAINT quote_currency_id_ticks
 	    FOREIGN KEY (quote_currency_id)
 	    REFERENCES currency(id)
+	    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+CREATE OR REPLACE TABLE ticks_forex(
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    datetime DATETIME NOT NULL,
+    ask DOUBLE NOT NULL,
+    bid DOUBLE NOT NULL,
+    volume DOUBLE,
+    forex_pairs_id INT NOT NULL,
+    CONSTRAINT forex_pairs_id_ticks
+	    FOREIGN KEY (forex_pairs_id)
+	    REFERENCES forex_pairs(id)
 	    ON UPDATE CASCADE ON DELETE RESTRICT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	updated_at TIMESTAMP NULL
