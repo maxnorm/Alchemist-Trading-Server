@@ -1,8 +1,6 @@
 """
 Database interaction from server to MariaDB Docker Container
 """
-import datetime
-
 import mariadb
 from dotenv import dotenv_values
 from utils import print_with_datetime
