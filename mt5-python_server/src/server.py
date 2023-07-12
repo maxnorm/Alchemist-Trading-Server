@@ -10,6 +10,9 @@ from dotenv import dotenv_values
 from database import Database
 from web_crawler_myfxbook import WebCrawlerMyfxbook
 from utils import print_with_datetime
+from socket_auth_code import SocketAuthCode
+from tick_streamer import TickStreamer
+from mt5_terminal import Terminal
 
 
 class Server:
@@ -24,8 +27,9 @@ class Server:
 
         self.__verbose = verbose
 
-        self.__all_client = []
-        self.__stop_char_tick = '\n'
+        self.__streamers = []
+        self.__terminals = {}
+        self.__stop_char = '\n'
 
         self.__db = Database()
         self.__myfxbook = WebCrawlerMyfxbook(
@@ -34,7 +38,6 @@ class Server:
             url=config['URL_MYFXBOOK']
         )
 
-        self.__db_lock = threading.Lock()
         self.__console_lock = threading.Lock()
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__socket.bind((config['SERVER_IP'], int(config['SERVER_PORT'])))
@@ -60,34 +63,11 @@ class Server:
 
         while True:
             client_conn, client_address = self.__socket.accept()
-            threading.Thread(target=self.__receive_tick, args=(client_conn,)).start()
-
-            self.__all_client.append(client_conn)
 
             with self.__console_lock:
                 print_with_datetime(f'Connected to {client_address}')
 
-    def __receive_tick(self, client):
-        """
-        Receive tick from mt5 client
-        and store them in the database
-        """
-        cum_data = ''
-        while True:
-            data = client.recv(1024).decode("utf-8")
-
-            cum_data += data
-
-            if self.__stop_char_tick in cum_data:
-
-                final_data = cum_data[:cum_data.index(self.__stop_char_tick)]
-
-                if self.__verbose:
-                    with self.__console_lock:
-                        print_with_datetime(final_data)
-
-                self.__db.insert_forex_tick(final_data)
-                cum_data = ''
+            self.__auth_socket(client_conn)
 
     def __collect_economic_calendar(self, hour, minute):
         """
@@ -103,6 +83,38 @@ class Server:
                     with self.__console_lock:
                         print_with_datetime("Economic Calendar download")
             time.sleep(60)
+
+    def __auth_socket(self, client):
+        """
+        Receive auth code from the newly connected socket
+        and create a new instance of the proper
+        """
+        cum_data = ''
+        while True:
+            data = client.recv(1024).decode("utf-8")
+
+            cum_data += data
+
+            if self.__stop_char in cum_data:
+
+                final_data = cum_data[:cum_data.index(self.__stop_char)]
+
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(final_data)
+
+                if int(final_data) == SocketAuthCode.STREAMER.value:
+                    streamer = TickStreamer(client, self.__stop_char,
+                                            self.__verbose, self.__console_lock)
+                    threading.Thread(target=streamer.receive_tick).start()
+                    self.__streamers.append(streamer)
+                elif int(final_data) == SocketAuthCode.TERMINAL.value:
+                    self.__terminals = Terminal(client)
+                else:
+                    print_with_datetime(f"Error: Invalid authentification code from {client.getpeername()}. "
+                                        f"Closing connection.")
+                    client.close()
+                break
 
     def __del__(self):
         self.__socket.close()
