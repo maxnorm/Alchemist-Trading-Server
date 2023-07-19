@@ -3,7 +3,7 @@ Database interaction from server to MariaDB Docker Container
 """
 import mariadb
 from dotenv import dotenv_values
-from utils import print_with_datetime
+from utils.time_utils import print_with_datetime
 
 
 class Database:
@@ -19,7 +19,7 @@ class Database:
         self.__port = int(config['DB_PORT'])
         self.__db = config['DB_DATABASE']
 
-    def insert_forex_tick(self, tick):
+    def insert_forex_tick(self, symbol, date_time, ask, bid):
         """
         Insert a tick to the database
         
@@ -27,28 +27,21 @@ class Database:
         :return: True if insert is done
         """
 
-        tick_info = tick.split("|")
-        if len(tick_info) == 4:
-            symbol, date_time, ask, bid = tick_info
+        conn = self.__create_conn()
+        cursor = conn.cursor()
 
-            conn = self.__create_conn()
-            cursor = conn.cursor()
+        try:
+            cursor.callproc(
+                'insert_tick_forex',
+                (date_time, ask, bid, symbol[:3], symbol[3:]))
+            conn.commit()
 
-            try:
-                cursor.callproc(
-                    'insert_tick_forex',
-                    (date_time, ask, bid, symbol[:3], symbol[3:]))
-                conn.commit()
+            cursor.close()
+            conn.close()
 
-                cursor.close()
-                conn.close()
-
-                return True
-            except mariadb.Error as e:
-                print(f"Error: {e}")
-                return False
-        else:
-            print_with_datetime(f"Error wrong format of tick: 'symbol|datetime|ask|bid' | {tick_info}")
+            return True
+        except mariadb.Error as e:
+            print(f"Error: {e}")
             return False
 
     def insert_economic_calendar_data(self, data):
