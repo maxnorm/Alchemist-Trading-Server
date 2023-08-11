@@ -1,22 +1,22 @@
-//+------------------------------------------------------------------+
-//|                                            mt5_tick_streamer.mq5 |
-//|                                                 Maxime Normandin |
-//|                                                                  |
-//+------------------------------------------------------------------+
 #property copyright "Maxime Normandin"
 #property link      ""
 #property version   "1.00"
 
 #include <JAson.mqh>
+#include <socket_utils.mqh>
 
 input string ip = "127.0.0.1";
 input int port = 1234;
+
+string separator = "|";
 
 int auth_code = 1;
 int successful_auth_code = 0;
 
 int socket;
+
 string symbol;
+int digits;
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -24,6 +24,7 @@ int OnInit()
   {
 //---
    symbol = Symbol();
+   digits = Digits();
    socket = SocketCreate();
 
    if (socket!=INVALID_HANDLE)
@@ -80,7 +81,7 @@ void OnTick()
       json["ask"] = tick.ask;
       json["bid"] = tick.bid;
 
-      send_msg(json);
+      send_msg(socket, json);
    }
    else
    {
@@ -95,53 +96,13 @@ bool auth()
       CJAVal json;
       json["auth_code"] = auth_code;
       json["symbol"] = symbol;
+      json["digits"] = digits;
 
-      send_msg(json);
-      CJAVal msg = receive_msg();
+      send_msg(socket, json);
+      CJAVal msg = receive_msg(socket);
       if (msg["auth_status"] == successful_auth_code)
       {
          return true;
       }
       return false;
-   }
-
-// Send a message to the server
-void send_msg(CJAVal& json)
-   {
-      string out = "";
-      json.Serialize(out);
-      string request = out + "\n";
-      char req[];
-      int len=StringToCharArray(request, req);
-      SocketSend(socket,req,len);
-   }
-
-// Receive message from server
-CJAVal receive_msg()
-   {
-      string result = "";
-      CJAVal json;
-      bool line_complete = false;
-
-      while (!line_complete)
-      {
-         char c[1];
-         int rsp_len;
-
-         rsp_len = SocketRead(socket, c, 1, 1000);
-
-         if (rsp_len > 0)
-         {
-            result += CharArrayToString(c, 0, rsp_len);
-
-            if (CharArrayToString(c, 0, rsp_len) == "\n")
-            {
-               StringReplace(result, "\n", "");
-               json.Deserialize(result);
-               line_complete = true;
-            }
-         }
-      }
-
-      return json;
    }
