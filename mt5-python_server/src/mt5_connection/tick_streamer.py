@@ -7,13 +7,13 @@ from database import Database
 from utils.time_utils import print_with_datetime
 
 
-class TickStreamer:
+class MT5TickStreamer:
     """
     MT5 terminal connection for tick streaming
     """
 
     def __init__(self, socket, asset, stop_char='\n',
-                 verbose=False, console_lock=None, ):
+                 verbose=False, console_lock=None):
         self.__socket = socket
         self.__asset = asset
         self.__stop_char = stop_char
@@ -46,7 +46,8 @@ class TickStreamer:
                     ask = tick_info['ask']
                     bid = tick_info['bid']
 
-                    self.__db.insert_forex_tick(symbol, date_time, ask, bid)
+                    # TODO remove this comment
+                    # self.__db.insert_forex_tick(symbol, date_time, ask, bid)
                     self.__asset.update(bid, ask)
                 else:
                     print_with_datetime(f"Error wrong format of tick. Tick received: {tick_info}")

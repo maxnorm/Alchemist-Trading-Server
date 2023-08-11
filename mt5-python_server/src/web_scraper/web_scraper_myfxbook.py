@@ -20,7 +20,47 @@ def convert_impact_str_to_int(impact_str):
         raise ValueError
 
 
-class WebCrawlerMyfxbook:
+def parse_calendar(html):
+    """
+    Parse the html to collect the data
+
+    return: Pandas Dataframe
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    rows = soup.find_all('tr')
+    headers = [th.text.strip() for th in rows[0].find_all("th")][:-1]
+    headers[3] = 'Country'
+    headers.pop(1)
+    headers.pop(1)
+
+    calendar_tips = soup.find_all(id="calendarTip0")
+    countries = []
+    for country in calendar_tips:
+        countries.append(country.get('title'))
+
+    data = []
+    index = 0
+    for row in rows[2:]:
+        row_data = []
+        for td in row.find_all("td")[:-1]:
+            row_data.append(td.text.strip())
+        row_data.pop(1)
+        row_data.pop(1)
+        row_data[0] = format_datetime(row_data[0])
+        row_data[1] = countries[index]
+        row_data[3] = convert_impact_str_to_int(row_data[3])
+
+        data.append(row_data)
+        index += 1
+
+    df = pd.DataFrame(data, columns=headers)
+    df.replace('', None, inplace=True)
+
+    return df
+
+
+class WebScraperMyfxbook:
     """WebCrawler for myfxbook"""
 
     def __init__(self, email, password, url):
@@ -47,48 +87,7 @@ class WebCrawlerMyfxbook:
         table = driver.find_element(By.ID, 'economicCalendarTable')
         table_html = table.get_attribute("outerHTML")
 
-        df = self.__parse_calendar(table_html)
-        df.replace('', None, inplace=True)
-
-        return self.__parse_calendar(table_html)
-
-    def __parse_calendar(self, html):
-        """
-        Parse the html to collect the data
-
-        return: Pandas Dataframe
-        """
-        soup = BeautifulSoup(html, "html.parser")
-
-        rows = soup.find_all('tr')
-        headers = [th.text.strip() for th in rows[0].find_all("th")][:-1]
-        headers[3] = 'Country'
-        headers.pop(1)
-        headers.pop(1)
-
-        calendar_tips = soup.find_all(id="calendarTip0")
-        countries = []
-        for country in calendar_tips:
-            countries.append(country.get('title'))
-
-        data = []
-        index = 0
-        for row in rows[2:]:
-            row_data = []
-            for td in row.find_all("td")[:-1]:
-                row_data.append(td.text.strip())
-            row_data.pop(1)
-            row_data.pop(1)
-            row_data[0] = format_datetime(row_data[0])
-            row_data[1] = countries[index]
-            row_data[3] = convert_impact_str_to_int(row_data[3])
-
-            data.append(row_data)
-            index += 1
-
-        df = pd.DataFrame(data, columns=headers)
-
-        return df
+        return parse_calendar(table_html)
 
     def __navigate_myfxbook_economic_calendar(self, driver):
         """

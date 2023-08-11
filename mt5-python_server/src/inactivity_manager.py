@@ -6,6 +6,7 @@ class InactivityManager:
     """
     Class for managing socket inactivity
     """
+    # TODO See if this class is necessary
 
     def __init__(self, minute_inactivity_allowed):
         self.__minute_inactivity_allowed = minute_inactivity_allowed

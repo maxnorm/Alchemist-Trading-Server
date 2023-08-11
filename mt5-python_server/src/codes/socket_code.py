@@ -1,12 +1,12 @@
 """
-Enum for socket connection code_enum from MetaTrader5
+Enum for socket connection codes from MetaTrader5
 """
 from enum import IntEnum
 
 
-class SocketCode(IntEnum):
+class Socket(IntEnum):
     """
-    Enum for all code_enum use to
+    Enum for all codes use to
     authentification of socket from mt5
     """
     DECONNECTION = -2

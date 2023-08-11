@@ -9,12 +9,13 @@ import time
 
 from dotenv import dotenv_values
 from database import Database
-from web_crawler_myfxbook import WebCrawlerMyfxbook
+from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 from utils.time_utils import print_with_datetime
-from code_enum.socket_code import SocketCode
-from tick_streamer import TickStreamer
-from mt5_terminal import MT5Terminal
-from currency_pair import CurrencyPair
+from codes.socket_code import Socket
+from mt5_connection.tick_streamer import MT5TickStreamer
+from mt5_connection.terminal import MT5Terminal
+from models.currency_pair import CurrencyPair
+from models.account import Account
 
 
 class Server:
@@ -30,13 +31,13 @@ class Server:
         self.__verbose = verbose
 
         self.__streamers = []
-        self.__terminals = []
+        self.__accounts = []
         self.__all_currency_pairs = {}
 
         self.__stop_char = '\n'
 
         self.__db = Database()
-        self.__myfxbook = WebCrawlerMyfxbook(
+        self.__myfxbook = WebScraperMyfxbook(
             email=config['MYFXBOOK_EMAIL'],
             password=config['MYFXBOOK_PASSWORD'],
             url=config['URL_MYFXBOOK']
@@ -81,19 +82,23 @@ class Server:
         while True:
             now = datetime.datetime.now()
             if now.hour == hour and now.minute == minute and now.weekday() < 5:
-                data = self.__myfxbook.download_economic_calendar()
-                self.__db.insert_economic_calendar_data(data)
+                try:
+                    data = self.__myfxbook.download_economic_calendar()
+                    self.__db.insert_economic_calendar_data(data)
 
-                if self.__verbose:
+                    if self.__verbose:
+                        with self.__console_lock:
+                            print_with_datetime("Economic Calendar was download")
+                except Exception as e:
                     with self.__console_lock:
-                        print_with_datetime("Economic Calendar was download")
+                        print_with_datetime(f"Error while downloading economic calendar: {e}")
 
             time.sleep(60)
 
     def __auth_socket(self, client):
         """
         Receive auth code from the newly connected socket
-        and create a new instance of the proper
+        and create a new instance of TickStreamer or MT5Terminal
         """
         cum_data = ''
         while True:
@@ -112,10 +117,10 @@ class Server:
 
                 auth_code = infos['auth_code']
 
-                if auth_code == SocketCode.STREAMER.value:
+                if auth_code == Socket.STREAMER.value:
                     self.__auth_streamer(client, infos)
-                elif auth_code == SocketCode.TERMINAL.value:
-                    self.__auth_terminal(client)
+                elif auth_code == Socket.TERMINAL.value:
+                    self.__auth_terminal(client, infos)
                 else:
                     self.__invalid_auth(client, f'Invalid authentification code [{auth_code}]')
                 break
@@ -123,53 +128,92 @@ class Server:
     def __auth_streamer(self, client, infos):
         """
         Authentification step for a tick streamer
-        Send an authentification code_enum if succesfull or not
+        Send an authentification codes if succesfull or not
+
+        Expected message format:
+            {
+                "auth_code": 1,
+                "symbol": Currency pair symbol
+            }
+
+        Successfull authentification response:
+            {
+                "auth_status": 0
+            }
         """
-        if len(infos) == 2:
+        if len(infos) == 3:
             data = {
-                "auth_status": SocketCode.SUCCESSFUL_AUTH.value
+                "auth_status": Socket.SUCCESSFUL_AUTH.value
             }
 
             client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
 
-            pair = CurrencyPair(infos['symbol'])
+            pair = CurrencyPair(infos['symbol'], infos['digits'])
             self.__all_currency_pairs[infos['symbol']] = pair
 
-            streamer = TickStreamer(client, pair, self.__stop_char, self.__verbose, self.__console_lock)
+            streamer = MT5TickStreamer(client, pair, self.__stop_char, self.__verbose, self.__console_lock)
 
             threading.Thread(target=streamer.receive_tick).start()
             self.__streamers.append(streamer)
         else:
-            self.__invalid_auth(client, 'Invalid message format. Missing currency pair symbol')
+            self.__invalid_auth(client, 'Invalid message format.')
 
-    def __auth_terminal(self, client):
+    def __auth_terminal(self, client, infos):
         """
         Manage the authentification of a mt5 trading terminal
-        Create a new MT5Terminal object.
-        Send to the socket a successful authentification code_enum and the terminal id
-        for later authentification
-        "auth_code|id"
+        Create a new MT5Terminal and attach it to an Account.
+
+        Expected message format:
+            {
+                "auth_code": 2,
+                "login": Account login
+            }
+
+        Successfull authentification response:
+            {
+                "auth_status": 0,
+                "terminal_id": Current terminal id
+            }
         """
-        terminal = MT5Terminal(client)
+        if len(infos) == 2:
+            terminal = MT5Terminal(client)
 
-        data = {
-            'auth_status': SocketCode.SUCCESSFUL_AUTH.value,
-            'terminal_id': terminal.id
-        }
+            data = {
+                'auth_status': Socket.SUCCESSFUL_AUTH.value,
+                'terminal_id': terminal.id
+            }
 
-        client.send(bytes(json.dumps(data) + '\n',
-                          'utf-8'))
+            client.send(bytes(json.dumps(data) + '\n',
+                              'utf-8'))
 
-        self.__terminals.append(terminal)
+            for account in self.__accounts:
+                if account.login == infos['login']:
+                    account.set_terminal(terminal)
+                    return
+
+            account = Account(infos['login'], terminal)
+            self.__accounts.append(account)
+        else:
+            self.__invalid_auth(client, 'Invalid message format. Missing account login')
 
     def __invalid_auth(self, client, msg):
         """
-        Step when the socket failed the authentification
+        When the socket failed the authentification
+
+        Failed authentification response:
+            {
+                "auth_status": -1
+                "message": Error message provided
+            }
         """
-        client.send(bytes(str(SocketCode.FAILED_AUTH.value) + '\n', 'utf-8'))
+        data = {
+            'auth_status': Socket.FAILED_AUTH.value,
+            'message': msg
+        }
+        client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
 
         with self.__console_lock:
-            print_with_datetime(f'Error from {client.getpeername()}: {msg}.'
+            print_with_datetime(f'Error from {client.getpeername()}: {msg} .'
                                 f'Closing connection.')
         client.close()
 
