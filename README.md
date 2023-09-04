@@ -1,6 +1,6 @@
 # funds
 
-Python server for trading purposes.
+Python server for trading engine purpose.
 
 ## Features
 - Use a docker container for running a MariaDB database
