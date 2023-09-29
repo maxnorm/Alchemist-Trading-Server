@@ -13,6 +13,9 @@ The repository also contains a Python server for trading purposes.
 - Collect economic data from MyFxBook (https://www.myfxbook.com/) and store it into a database.
 - Trading server for sending orders to the MetaTrader 5 platform.
 
+## Current Features in dev
+- WebScraper Forexlive
+
 ## Installation
 ### MetaTrader 5
 - Download and install the MetaTrader 5 platform (https://www.metatrader5.com/en/download).
