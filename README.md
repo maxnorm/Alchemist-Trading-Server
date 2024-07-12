@@ -1,11 +1,14 @@
 # funds
 
+## Currently in pause and unmaintained (Use at your own risk)
+
 ## Description
 This repository contains a set of tools for trading purposes.
 It is based on the MetaTrader 5 platform (https://www.metatrader5.com/en) and Python 3.11.
 
 The main goal is to collect tick data from the MetaTrader 5 platform and store it into a database. 
-The data can be used for backtesting purposes or for the development trading models.
+The data can be used for backtesting purposes or for the development of trading models.
+
 The repository also contains a Python server for trading purposes.
 
 ## Features
@@ -14,7 +17,7 @@ The repository also contains a Python server for trading purposes.
 - Trading server for sending orders to the MetaTrader 5 platform.
 
 ## In dev
-- WebScraper Forexlive
+- WebScraper for Forexlive
 - Docker container of the server
 
 ## Installation
