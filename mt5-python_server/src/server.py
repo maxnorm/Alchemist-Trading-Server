@@ -1,6 +1,7 @@
 """
 Class Server for connection to MetaTrader5
 """
+import os
 import datetime
 import json
 import socket
@@ -26,9 +27,8 @@ class Server:
     """
 
     def __init__(self, verbose=False):
-        config = dotenv_values("../../.env")
-
         self.__verbose = verbose
+        self.__socket = None
 
         self.__streamers = []
         self.__accounts = []
@@ -38,25 +38,29 @@ class Server:
 
         self.__db = Database()
         self.__myfxbook = WebScraperMyfxbook(
-            email=config['MYFXBOOK_EMAIL'],
-            password=config['MYFXBOOK_PASSWORD'],
-            url=config['URL_MYFXBOOK']
+            email=os.getenv('MYFXBOOK_EMAIL'),
+            password=os.getenv('MYFXBOOK_PASSWORD'),
+            url=os.getenv('URL_MYFXBOOK')
         )
 
         self.__console_lock = threading.Lock()
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__socket.bind((config['SERVER_IP'], int(config['SERVER_PORT'])))
+
+        server_ip = os.getenv('SERVER_IP')
+        server_port = int(os.getenv('SERVER_PORT'))
+
+        self.__socket.bind((server_ip, server_port))
 
         if self.__verbose:
             print_with_datetime(
-                f"Server socket bind to {config['SERVER_IP']}:{config['SERVER_PORT']}"
+                f"Server socket bind to {server_ip}:{server_port}"
             )
 
         self.start()
 
     def start(self):
         """
-        Start of server
+        Start the server
         """
         self.__socket.listen(5)
 
@@ -218,4 +222,5 @@ class Server:
         client.close()
 
     def __del__(self):
-        self.__socket.close()
+        if self.__socket:
+            self.__socket.close()

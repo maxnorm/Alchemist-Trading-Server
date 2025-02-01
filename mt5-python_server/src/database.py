@@ -1,8 +1,8 @@
 """
 Database interaction from server to MariaDB Docker Container
 """
+import os
 import mariadb
-from dotenv import dotenv_values
 from utils.time_utils import print_with_datetime
 
 
@@ -12,18 +12,20 @@ class Database:
     """
 
     def __init__(self):
-        config = dotenv_values("../../.env")
-        self.__user = config['DB_USERNAME']
-        self.__password = config['DB_PASSWORD']
-        self.__host = config['DB_HOST']
-        self.__port = int(config['DB_PORT'])
-        self.__db = config['DB_DATABASE']
+        self.__user = os.getenv('DB_USERNAME')
+        self.__password = os.getenv('DB_PASSWORD')
+        self.__host = os.getenv('DB_HOST')
+        self.__port = int(os.getenv('DB_PORT'))
+        self.__db = os.getenv('DB_DATABASE')
 
     def insert_forex_tick(self, symbol, date_time, ask, bid):
         """
         Insert a tick to the database
-        
-        :param tick: [symbol, datetime, ask, bid]
+
+        :param symbol: Symbol of the tick
+        :param date_time: Datetime of the tick
+        :param ask: Ask price
+        :param bid: Bid price
         :return: True if insert is done
         """
 

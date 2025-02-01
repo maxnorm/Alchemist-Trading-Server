@@ -1,0 +1,17 @@
+CREATE OR REPLACE DATABASE db_forex;
+USE db_forex;
+
+CREATE OR REPLACE TABLE trade(
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    ticket INT NOT NULL,
+    ordertype INT NOT NULL,
+    symbol VARCHAR(10) NOT NULL,
+    volume DOUBLE NOT NULL,
+    openprice DOUBLE NOT NULL,
+    closeprice DOUBLE NULL,
+    stoploss DOUBLE NULL,
+    takeprofit DOUBLE NULL,
+    profit DECIMAL NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

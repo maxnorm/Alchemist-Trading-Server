@@ -1,10 +1,14 @@
+#!/usr/bin/env python3
 """
 Main
 """
+import os
 import argparse
+from dotenv import load_dotenv
 
 from server import Server
 
+env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.env'))
 
 def parse_arguments():
     """
@@ -19,8 +23,9 @@ def parse_arguments():
 
 
 def start():
-    """Main"""
+    """Start the program"""
     args = parse_arguments()
+    load_dotenv(env_path)
     Server(verbose=args.verbose)
 
 
