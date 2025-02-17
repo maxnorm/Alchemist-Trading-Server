@@ -13,6 +13,7 @@ class CurrencyPair:
         self.digits = digits
         self.bid = None
         self.ask = None
+        self.subscribers = []
 
     @property
     def mid_price(self):
@@ -25,8 +26,20 @@ class CurrencyPair:
         """
         Update the pair bid if it changed
         """
-        if self.bid != new_bid:
+        if new_bid != self.bid or new_ask != self.ask:
             self.bid = new_bid
-
-        if self.ask != new_ask:
             self.ask = new_ask
+            self.notify_subscribers()
+
+    def subscribe(self, callback):
+        """
+        Subscribe to the pair
+        """
+        self.subscribers.append(callback)
+
+    def notify_subscribers(self):
+        """
+        Notify all subscribers
+        """
+        for callback in self.subscribers:
+            callback(self)
