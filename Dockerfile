@@ -1,14 +1,18 @@
 FROM python:3.11
 
+# Make Python output unbuffered, so logs are shown immediately
 ENV PYTHONUNBUFFERED 1
 
-workdir /app
+RUN pip install --upgrade pip
 
-COPY requirements.txt /app/
+WORKDIR /app
+COPY ./mt5-python_server .
 
-RUN pip install -r requirements.txt
+COPY .env .env
 
-COPY ./mt5-python_server /app
+RUN pip install --no-cache-dir -r requirements.txt
 
 
-EXPOSE 8000
+EXPOSE 8080
+
+CMD ["python", "src/app.py", "-v"]

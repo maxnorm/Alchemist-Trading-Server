@@ -25,11 +25,9 @@ class Account:
         self.margin_free = None
 
         self.__set_account_infos()
+        print(self)
 
-        gbpjpy = CurrencyPair('GBPJPY', 3)
 
-        trade = self.send_order(OrderType.BUY, gbpjpy, 0.02)
-        self.close_order(trade.ticket, 0.01)
 
     def set_terminal(self, terminal: MT5Terminal):
         """
@@ -107,3 +105,13 @@ class Account:
         self.profit = infos['profit']
         self.margin = infos['margin']
         self.margin_free = infos['margin_free']
+
+    def __str__(self):
+        return (f"Account {self.login}\n"
+                f"Currency: {self.currency}\n"
+                f"Leverage: {self.leverage}\n"
+                f"Balance: {self.balance}\n"
+                f"Equity: {self.equity}\n"
+                f"Profit: {self.profit}\n"
+                f"Margin: {self.margin}\n"
+                f"Margin Free: {self.margin_free}")

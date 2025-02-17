@@ -1,0 +1,6 @@
+beautifulsoup4==4.13.3
+mariadb==1.1.6
+pandas==2.0.3
+numpy==1.24.3
+python-dotenv==1.0.1
+selenium==4.28.1

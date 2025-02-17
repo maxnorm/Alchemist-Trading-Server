@@ -2,7 +2,6 @@
 Class for the trading interaction between MT5 and Python
 """
 import json
-
 from codes.terminal_code import Terminal
 from codes.trade_request_code import TradeRequest
 from models.trade import Trade
@@ -42,8 +41,8 @@ class MT5Terminal(Connection):
         data = {
             'request': Terminal.ACCOUNT_INFO.value
         }
-        self.__send_msg(json.dumps(data))
-        return await self.__get_response()
+        self.send_msg(json.dumps(data))
+        return await self.get_response()
 
     async def send_order(self, order_type, pair, lotsize, price=None, sl=None, tp=None):
         """
@@ -75,8 +74,8 @@ class MT5Terminal(Connection):
             'sl': sl,
             'tp': tp
         }
-        self.__send_msg(json.dumps(data))
-        response = await self.__get_response()
+        self.send_msg(json.dumps(data))
+        response = await self.get_response()
 
         if response['return_code'] == TradeRequest.EXECUTED.value:
             trade = Trade(
@@ -105,8 +104,8 @@ class MT5Terminal(Connection):
             'lotsize': lotsize,
         }
 
-        self.__send_msg(json.dumps(data))
-        response = await self.__get_response()
+        self.send_msg(json.dumps(data))
+        response = await self.get_response()
 
         print(response)
 
@@ -114,6 +113,3 @@ class MT5Terminal(Connection):
             return response
         else:
             raise Exception(f"Error while closing order: {response['comment']}")
-
-    def __del__(self):
-        self.__socket.close()

@@ -29,3 +29,6 @@ class Connection:
             cum_data += data
             if self.__stop_char in cum_data:
                 return json.loads(cum_data[:cum_data.index(self.__stop_char)])
+
+    def __del__(self):
+        self.__socket.close()

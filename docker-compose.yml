@@ -5,8 +5,26 @@ services:
         ports:
             - "3306:3306"
         environment:
-            - MARIADB_ROOT_PASSWORD='${DB_USERNAME}'
-            - MARIADB_DATABASE='${DB_PASSWORD}'
+            - MARIADB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+            - MARIADB_DATABASE=${DB_DATABASE}
+            - MARIADB_USER=${DB_USERNAME}
+            - MARIADB_PASSWORD=${DB_PASSWORD}
         volumes:
             - "./database/database/init:/docker-entrypoint-initdb.d"
             - "./database/database/data/mariadb:/var/lib/mysql"
+
+    server:
+        container_name: "server"
+        build:
+            context: .
+            dockerfile: Dockerfile
+        ports:
+            - "8080:8080"
+        depends_on:
+            - mariadb
+        environment:
+            - DB_HOST=mariadb
+            - DB_PORT=3306
+            - DB_DATABASE=${DB_DATABASE}
+            - DB_USERNAME=${DB_USERNAME}
+            - DB_PASSWORD=${DB_PASSWORD}

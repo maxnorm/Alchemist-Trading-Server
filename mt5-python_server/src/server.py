@@ -8,7 +8,6 @@ import socket
 import threading
 import time
 
-from dotenv import dotenv_values
 from database import Database
 from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 from utils.time_utils import print_with_datetime
@@ -18,13 +17,13 @@ from mt5_connection.terminal import MT5Terminal
 from models.currency_pair import CurrencyPair
 from models.account import Account
 
-
 class Server:
     """
     Class for the server
 
     The server and data are base in the GMT+3 timezone
     """
+
 
     def __init__(self, verbose=False):
         self.__verbose = verbose
