@@ -46,9 +46,8 @@ class MT5TickStreamer:
                     ask = tick_info['ask']
                     bid = tick_info['bid']
 
-                    # TODO remove this comment
-                    # self.__db.insert_forex_tick(symbol, date_time, ask, bid)
                     self.__asset.update(bid, ask)
+                    self.__db.insert_forex_tick(symbol, date_time, ask, bid)
                 else:
                     print_with_datetime(f"Error wrong format of tick. Tick received: {tick_info}")
                 cum_data = ''
