@@ -4,6 +4,7 @@ Main
 """
 import os
 import argparse
+from datetime import datetime
 from dotenv import load_dotenv
 
 from server import Server
@@ -16,7 +17,7 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(
         description='Server with database to connect with MT5',
-        epilog='2023, Alchemist Capital Management')
+        epilog=f'{datetime.now().year}, Alchemist Capital')
     parser.add_argument('-v', '--verbose', action='store_true', help="Activate the verbose mode on the server")
     args = parser.parse_args()
     return args
