@@ -1,4 +1,5 @@
-# funds
+# The Alchemist
+© 2025, Alchemist Capital. All rights reserved.
 
 ## Description
 This repository contains a set of tools for trading purposes.
