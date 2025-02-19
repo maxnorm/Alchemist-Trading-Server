@@ -12,7 +12,7 @@ The repository also contains a Python server for trading purposes.
 ## Features
 - Collect tick data from the MetaTrader 5 platform and store it into a database.
 - Collect economic data from MyFxBook (https://www.myfxbook.com/) and store it into a database.
-- Trading server for sending orders to the MetaTrader 5 platform.
+- Terminal connection to a MetaTrader 5 trading EA from get infos on the account, sending and closing orders
 
 ## In dev
 - WebScraper Forexlive
