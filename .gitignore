@@ -1,8 +1,6 @@
-./database/.idea
-./database/database
-./mt5-python_server/.idea
-./mt5-python_server/venv
-drivers
+/database/database
+/mt5-python_server/venv
+/drivers
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
