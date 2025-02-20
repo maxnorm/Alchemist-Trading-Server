@@ -1,4 +1,3 @@
-CREATE OR REPLACE DATABASE db_forex;
 USE db_forex;
 
 CREATE OR REPLACE TABLE trade(
