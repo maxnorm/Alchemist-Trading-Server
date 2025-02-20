@@ -17,7 +17,40 @@ class Database:
         self.__host = os.getenv('DB_HOST')
         self.__port = int(os.getenv('DB_PORT'))
         self.__db = os.getenv('DB_NAME')
-        print(self.__user, self.__password, self.__host, self.__port, self.__db)    
+
+    def __create_pool(self):
+        """
+        Create the database connection pool
+
+        :return: MariaDB connection pool
+        """
+        try:
+            return mariadb.ConnectionPool(
+                pool_name="server_pool",
+                pool_size=20,
+                user=self.__user,
+                password=self.__password,
+                host=self.__host,
+                port=self.__port,
+                database=self.__db
+            )
+        except mariadb.Error as e:
+            print_with_datetime(f"Error creating connection pool: {e}")
+            raise e
+         
+    def __get_connection(self):
+        """
+        Get a connection from the pool in a thread-safe manner
+
+        :return: MariaDB connection
+        """
+        with self.__connection_lock:
+            try:
+                return self.__pool.get_connection()
+            except mariadb.Error as e:
+                print_with_datetime(f"Error getting connection from pool: {e}")
+                raise e
+
 
     def insert_forex_tick(self, symbol, date_time, ask, bid):
         """
