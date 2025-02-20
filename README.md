@@ -1,29 +1,38 @@
 # The Alchemist
-© 2025, Alchemist Capital. All rights reserved.
+The Alchemist is a comprehensive trading system that integrates with MetaTrader 5 (MT5) platform. It serves as a data collection and trading execution system with multiple capabilities.
 
-## Description
-This repository contains a set of tools for trading purposes.
-It is based on the MetaTrader 5 platform (https://www.metatrader5.com/en) and Python 3.11.
+## Core Functionalities
+1. **Data Collection**
+   - Real-time tick data collection from MT5
+   - Economic data harvesting from MyFxBook
+   - Database storage for collected data
 
-The main goal is to collect tick data from the MetaTrader 5 platform and store it into a database. 
-The data can be used for backtesting purposes or for the development trading models.
-The repository also contains a Python server for trading purposes.
+2. **Trading Operations**
+   - Direct terminal connection to MT5 Expert Advisors (EA)
+   - Account information retrieval
+   - Order management (sending and closing)
 
-## Features
-- Collect tick data from the MetaTrader 5 platform and store it into a database.
-- Collect economic data from MyFxBook (https://www.myfxbook.com/) and store it into a database.
-- Terminal connection to a MetaTrader 5 trading EA from get infos on the account, sending and closing orders
+## Requirements
+- Docker and Docker Compose
+- Python 3.11
+- MetaTrader 5 platform with a valid paper or live account
 
-## In dev
-- WebScraper Forexlive
-- Docker container of the server
+## Quick Start
+```bash
+docker compose up -d --build
+```
 
-## Installation
-### MetaTrader 5
-- Download and install the MetaTrader 5 platform (https://www.metatrader5.com/en/download).
-- Open the MetaTrader 5 platform and go to Tools -> Options -> Expert Advisors and check the following options:
-  - Allow WebRequest for listed URL
-  - Add URL: http://localhost:8080 to allow the communication with the Python server.
+## MT5 Platform Configuration
+1. Install MetaTrader 5 from the [official website](https://www.metatrader5.com/en/download)
+2. Configure Expert Advisors:
+   - Navigate to: Tools -> Options -> Expert Advisors
+   - Enable "Allow WebRequest for listed URL"
+   - Add your endpoint: `http://<your ip>:<your port>`
 
-NOTE:
-Activate Virtual Env Command: .\.venv\Scripts\Activate
+
+## License
+Proprietary software of Alchemist Capital
+
+Unauthorized use or distribution is prohibited
+
+© 2025, Alchemist Capital - All rights reserved
