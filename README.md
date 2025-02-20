@@ -24,3 +24,6 @@ The repository also contains a Python server for trading purposes.
 - Open the MetaTrader 5 platform and go to Tools -> Options -> Expert Advisors and check the following options:
   - Allow WebRequest for listed URL
   - Add URL: http://localhost:8080 to allow the communication with the Python server.
+
+NOTE:
+Activate Virtual Env Command: .\.venv\Scripts\Activate

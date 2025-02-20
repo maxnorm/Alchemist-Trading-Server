@@ -72,4 +72,5 @@ VALUES
 ('New Zealand', 6),
 ('Switzerland', 7),
 ('Canada', 8),
-('China', 9);
+('China', 9);;
+

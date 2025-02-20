@@ -12,11 +12,12 @@ class Database:
     """
 
     def __init__(self):
-        self.__user = os.getenv('DB_USERNAME')
+        self.__user = os.getenv('DB_USER')
         self.__password = os.getenv('DB_PASSWORD')
         self.__host = os.getenv('DB_HOST')
         self.__port = int(os.getenv('DB_PORT'))
-        self.__db = os.getenv('DB_DATABASE')
+        self.__db = os.getenv('DB_NAME')
+        print(self.__user, self.__password, self.__host, self.__port, self.__db)    
 
     def insert_forex_tick(self, symbol, date_time, ask, bid):
         """
