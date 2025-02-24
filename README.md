@@ -27,7 +27,7 @@ docker compose up -d --build
 2. Configure Expert Advisors:
    - Navigate to: Tools -> Options -> Expert Advisors
    - Enable "Allow WebRequest for listed URL"
-   - Add your endpoint: `http://<your ip>:<your port>`
+   - Add your endpoint: `http://<- your ip ->:<- your port ->`
 
 
 ## License
