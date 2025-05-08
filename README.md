@@ -1,9 +1,10 @@
-# funds
+# Alchemist: Trading Server
 
-## Currently in pause and unmaintained (Use at your own risk)
+## Currently unmaintained and in pause (Use at your own risk)
 
 ## Description
-This repository contains a set of tools for trading purposes.
+This project contains a set of tools for trading purposes.
+
 It is based on the MetaTrader 5 platform (https://www.metatrader5.com/en) and Python 3.11.
 
 The main goal is to collect tick data from the MetaTrader 5 platform and store it into a database. 
