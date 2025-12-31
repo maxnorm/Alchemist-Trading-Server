@@ -3,7 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import pandas as pd
-from utils.time_utils import format_datetime
+from utils.time_utils import format_datetime, parse_scraped_timestamp
 
 
 def convert_impact_str_to_int(impact_str):
@@ -47,7 +47,15 @@ def parse_calendar(html):
             row_data.append(td.text.strip())
         row_data.pop(1)
         row_data.pop(1)
-        row_data[0] = format_datetime(row_data[0])
+        # Normalize timestamp to UTC timezone
+        # MyFXBook typically uses UTC or EST for timestamps
+        # Try UTC first, as it's most common for economic calendars
+        try:
+            utc_datetime = parse_scraped_timestamp(row_data[0], source_timezone='UTC')
+            row_data[0] = utc_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            # Fallback to original format_datetime if parsing fails
+            row_data[0] = format_datetime(row_data[0], source_timezone='UTC')
         row_data[1] = countries[index]
         row_data[3] = convert_impact_str_to_int(row_data[3])
 

@@ -42,7 +42,7 @@ The Alchemist Trading Dashboard is a secure, real-time web application for monit
 | Deliverable | Description |
 |-------------|-------------|
 | **FastAPI Backend** | REST API + WebSocket layer for dashboard communication |
-| **Next.js Frontend** | Real-time trading dashboard with professional charts |
+| **Vite/React Frontend** | Real-time trading dashboard with professional charts (SPA) |
 | **Authentication System** | JWT + 2FA security for secure access |
 | **Real-time Streaming** | WebSocket-based tick and metrics streaming |
 | **Control Interface** | Enable/disable AI trading, configure risk parameters |
@@ -51,14 +51,14 @@ The Alchemist Trading Dashboard is a secure, real-time web application for monit
 
 | Layer | Technology | Justification |
 |-------|------------|---------------|
-| **Frontend** | Next.js 14 + TypeScript | SSR, excellent DX, React ecosystem |
+| **Frontend** | Vite + React + TypeScript | Fast SPA, simpler deployment, better for local use |
 | **UI Components** | shadcn/ui + Tailwind CSS | Beautiful, accessible, customizable |
 | **Charts** | Lightweight Charts (TradingView) | Industry-standard trading charts |
 | **State Management** | Zustand + TanStack Query | Simple, performant, real-time ready |
 | **Backend API** | FastAPI (Python) | Async, WebSocket support, auto-docs |
 | **Real-time** | WebSockets | Low latency for tick streaming |
 | **Authentication** | JWT + TOTP (2FA) | Secure remote access |
-| **Deployment** | Local Network + Tailscale VPN | Zero internet exposure |
+| **Deployment** | Local Network Only (VPN optional for remote) | Zero internet exposure |
 
 ---
 
@@ -435,8 +435,8 @@ Build a comprehensive web-based dashboard that provides:
 |-------|----------------|
 | **Network Isolation** | Bind to local IP (192.168.x.x) only |
 | **Firewall** | Block external access to API ports |
-| **Remote Access** | Tailscale VPN only |
-| **HTTPS** | Self-signed cert for local |
+| **Remote Access** | Optional: Tailscale VPN (only if needed) |
+| **HTTPS** | Optional: Self-signed cert (HTTP OK for local) |
 | **CORS** | Restrict to dashboard origin only |
 | **Rate Limiting** | 100 req/min per IP, 5 login attempts/min |
 | **JWT Expiration** | Access: 30 min, Refresh: 7 days |
@@ -749,23 +749,26 @@ CREATE TABLE alert_history (
 
 ### Phase 3: Frontend Foundation (Week 3-4)
 
-**Objective**: Create Next.js dashboard with core UI
+**Objective**: Create Vite/React dashboard with core UI
 
 | Task | Description | Priority | Estimate |
 |------|-------------|----------|----------|
-| 3.1 | Initialize Next.js with TypeScript | P0 | 1h |
+| 3.1 | Initialize Vite project with React + TypeScript | P0 | 0.5h |
 | 3.2 | Set up Tailwind CSS + shadcn/ui | P0 | 2h |
-| 3.3 | Create authentication pages | P0 | 4h |
-| 3.4 | Implement auth context + protected routes | P0 | 3h |
-| 3.5 | Create main dashboard layout | P0 | 3h |
-| 3.6 | Build navigation sidebar | P1 | 2h |
-| 3.7 | Create WebSocket connection hook | P0 | 3h |
-| 3.8 | Set up API client with interceptors | P0 | 2h |
+| 3.3 | Set up React Router for routing | P0 | 1h |
+| 3.4 | Create authentication pages | P0 | 4h |
+| 3.5 | Implement auth context + protected routes | P0 | 3h |
+| 3.6 | Create main dashboard layout | P0 | 3h |
+| 3.7 | Build navigation sidebar | P1 | 2h |
+| 3.8 | Create WebSocket connection hook | P0 | 3h |
+| 3.9 | Set up API client with interceptors | P0 | 2h |
 
 **Deliverables**:
-- [ ] Next.js app with authentication
+- [ ] Vite/React app with authentication
 - [ ] Responsive dashboard layout
 - [ ] Real-time connection established
+
+**Note:** Vite is recommended for local-only dashboard (simpler, faster). Next.js is optional if you prefer file-based routing. See `NEXTJS_VS_VITE.md` for comparison.
 
 ### Phase 4: Dashboard Features (Week 4-6)
 
@@ -816,18 +819,22 @@ CREATE TABLE alert_history (
 | Task | Description | Priority | Estimate |
 |------|-------------|----------|----------|
 | 6.1 | Configure Windows Firewall | P0 | 1h |
-| 6.2 | Set up Tailscale VPN | P0 | 2h |
-| 6.3 | Create startup scripts | P1 | 2h |
-| 6.4 | SSL certificate generation | P0 | 1h |
-| 6.5 | Docker compose update | P1 | 2h |
-| 6.6 | Backup strategy | P2 | 1h |
-| 6.7 | Monitoring setup | P1 | 2h |
-| 6.8 | Final testing | P0 | 4h |
+| 6.2 | Set up local network access | P0 | 1h |
+| 6.3 | (Optional) Set up Tailscale VPN | P2 | 2h |
+| 6.4 | (Optional) SSL certificate generation | P2 | 1h |
+| 6.5 | Create startup scripts | P1 | 2h |
+| 6.6 | Docker compose update | P1 | 2h |
+| 6.7 | Backup strategy | P2 | 1h |
+| 6.8 | Monitoring setup | P1 | 2h |
+| 6.9 | Final testing | P0 | 4h |
 
 **Deliverables**:
 - [ ] Application running on local network
-- [ ] VPN access configured
+- [ ] Accessible from devices on same WiFi
+- [ ] (Optional) VPN access configured if needed
 - [ ] Auto-start on system boot
+
+**Note:** VPN is optional. For local-only access, see `docs/LOCAL_SETUP.md`.
 
 ---
 
@@ -967,14 +974,14 @@ pydantic==2.5.3
 email-validator==2.1.0
 ```
 
-### 14.2 Frontend (Node.js)
+### 14.2 Frontend (Node.js) - Vite/React
 
 ```json
 {
   "dependencies": {
-    "next": "14.1.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-router-dom": "6.21.0",
     "typescript": "5.3.3",
     "tailwindcss": "3.4.1",
     "@radix-ui/react-icons": "1.3.0",
@@ -983,13 +990,21 @@ email-validator==2.1.0
     "tailwind-merge": "2.2.0",
     "lightweight-charts": "4.1.0",
     "zustand": "4.5.0",
-    "socket.io-client": "4.7.4",
+    "axios": "1.6.0",
     "date-fns": "3.3.1",
     "lucide-react": "0.321.0",
     "@tanstack/react-query": "5.17.0"
+  },
+  "devDependencies": {
+    "vite": "5.0.0",
+    "@vitejs/plugin-react": "4.2.0",
+    "@types/react": "18.2.0",
+    "@types/react-dom": "18.2.0"
   }
 }
 ```
+
+**Note:** Vite is recommended for local-only dashboard. Next.js is optional. See `NEXTJS_VS_VITE.md` for comparison.
 
 ---
 
@@ -1108,7 +1123,7 @@ MYFXBOOK_PASSWORD=your-password
 ### B. Useful Commands
 
 ```bash
-# Start backend API
+# Start backend API (bind to local IP)
 cd src/mt5-python_server
 python -m uvicorn src.api.main:app --host 192.168.1.100 --port 8000
 
@@ -1116,21 +1131,34 @@ python -m uvicorn src.api.main:app --host 192.168.1.100 --port 8000
 cd src/dashboard
 npm run dev
 
-# Generate SSL certificates
+# Find your local IP (Windows)
+ipconfig
+
+# Find your local IP (Linux)
+hostname -I
+
+# Configure Windows Firewall (PowerShell as Admin)
+New-NetFirewallRule -DisplayName "FastAPI" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Next.js" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow
+
+# (Optional) Generate SSL certificates for HTTPS
 openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
 
-# Install Tailscale
+# (Optional) Install Tailscale for remote access
 curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up
 ```
+
+**Note:** For local-only setup, you don't need SSL certificates or Tailscale. See `docs/LOCAL_SETUP.md` for details.
 
 ### C. References
 
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [Next.js Documentation](https://nextjs.org/docs)
+- [Vite Documentation](https://vitejs.dev/) (Alternative to Next.js for SPA)
 - [shadcn/ui Components](https://ui.shadcn.com/)
 - [Lightweight Charts](https://tradingview.github.io/lightweight-charts/)
-- [Tailscale VPN](https://tailscale.com/)
+- [Deployment Options Guide](./DEPLOYMENT_OPTIONS.md) - Local, SPA, or VPN setup
 
 ---
 

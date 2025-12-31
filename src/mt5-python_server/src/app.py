@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Merci encore d’avoir répondu à ma question au forum
-Main
-"""
+
 import os
 import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 
 from server import Server
+from database import Database
+from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 
 def parse_arguments():
     """
@@ -21,11 +21,31 @@ def parse_arguments():
     return args
 
 
+def create_composition_root(verbose: bool = False):
+    """
+    Create composition root - wire all dependencies
+    :param verbose: Enable verbose logging
+    :return: Configured Server instance
+    """
+    # Create shared dependencies
+    database = Database()
+    scraper = WebScraperMyfxbook(
+        email=os.getenv('MYFXBOOK_EMAIL'),
+        password=os.getenv('MYFXBOOK_PASSWORD'),
+        url=os.getenv('URL_MYFXBOOK')
+    )
+    
+    server = Server(verbose=verbose, database=database, scraper=scraper)
+    
+    return server
+
+
 def start():
     """Start the program"""
     args = parse_arguments()
     load_dotenv()
-    Server(verbose=args.verbose)
+    
+    server = create_composition_root(verbose=args.verbose)
 
 
 if __name__ == '__main__':

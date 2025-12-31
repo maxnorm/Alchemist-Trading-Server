@@ -6,7 +6,9 @@ import time
 import threading
 import uuid
 import mariadb
-from utils.time_utils import print_with_datetime
+from datetime import datetime
+from typing import List, Dict
+from utils.time_utils import print_with_datetime, normalize_to_utc, ensure_utc_timezone
 
 
 class Database:
@@ -177,24 +179,55 @@ class Database:
             return metrics
 
 
+    def _normalize_timestamp(self, date_time):
+        """
+        Normalize timestamp to UTC timezone for database storage
+        
+        Note: We use UTC consistently throughout the system. This avoids DST issues
+        and provides a universal standard. All timestamps are stored in UTC.
+        
+        :param date_time: datetime object or string
+        :return: Normalized datetime string in UTC timezone
+        """
+        if isinstance(date_time, datetime):
+            # Convert datetime object to UTC
+            utc_dt = ensure_utc_timezone(date_time)
+            return utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+        elif isinstance(date_time, str):
+            # If already a string, assume it's already normalized (from tick_streamer)
+            # But verify format and normalize if needed
+            try:
+                # Try to parse and normalize to UTC
+                dt = datetime.strptime(date_time, "%Y-%m-%d %H:%M:%S")
+                utc_dt = normalize_to_utc(dt)
+                return utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                # If parsing fails, return as-is (might be in different format)
+                return date_time
+        else:
+            return str(date_time)
+    
     def insert_forex_tick(self, symbol, date_time, ask, bid):
         """
         Insert a tick to the database
 
         :param symbol: Symbol of the tick
-        :param date_time: Datetime of the tick
+        :param date_time: Datetime of the tick (datetime object or string, will be normalized to EST)
         :param ask: Ask price
         :param bid: Bid price
         :return: True if insert is done
         """
         conn = None
         try:
+            # Normalize timestamp to EST before storing
+            normalized_date_time = self._normalize_timestamp(date_time)
+            
             conn = self.__get_connection()
             cursor = conn.cursor()
 
             cursor.callproc(
                 'insert_tick_forex',
-                (date_time, ask, bid, symbol[:3], symbol[3:]))
+                (normalized_date_time, ask, bid, symbol[:3], symbol[3:]))
             conn.commit()
 
             cursor.close()
@@ -230,11 +263,13 @@ class Database:
             # We'll use a more efficient approach: bulk insert with subquery for pair_id
             
             # Group ticks by currency pair to optimize lookups
+            # Normalize all timestamps to EST before storing
             tick_data = []
             for symbol, date_time, ask, bid in ticks:
                 base_currency = symbol[:3]
                 quoted_currency = symbol[3:]
-                tick_data.append((date_time, ask, bid, base_currency, quoted_currency))
+                normalized_date_time = self._normalize_timestamp(date_time)
+                tick_data.append((normalized_date_time, ask, bid, base_currency, quoted_currency))
             
             # Use executemany with the optimized stored procedure
             # For better performance, we'll use a direct INSERT with subquery
@@ -291,7 +326,8 @@ class Database:
             cursor = conn.cursor()
 
             for _, row in data.iterrows():
-                date = row['Date']
+                # Normalize timestamp to EST before storing
+                date = self._normalize_timestamp(row['Date'])
                 country = row['Country']
                 event = row['Event']
                 impact = row['Impact']
@@ -311,6 +347,101 @@ class Database:
             if conn:
                 conn.close()  # Return connection to pool
 
+    def get_recent_ticks(self, symbol: str, limit: int = 100, hours: int = 24):
+        """
+        Get recent tick data for a symbol
+        
+        :param symbol: Currency pair symbol (e.g., 'EURUSD')
+        :param limit: Maximum number of ticks to return
+        :param hours: Number of hours to look back
+        :return: List of dictionaries with 'datetime' and 'mid_price' keys
+        """
+        conn = None
+        try:
+            # Extract base and quote currencies from symbol
+            base_currency = symbol[:3]
+            quote_currency = symbol[3:]
+            
+            conn = self.__get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT tf.datetime, (tf.ask + tf.bid) / 2 as mid_price
+                FROM ticks_forex tf
+                JOIN forex_pairs fp ON tf.forex_pairs_id = fp.id
+                JOIN currency c1 ON fp.base_currency_id = c1.id
+                JOIN currency c2 ON fp.quote_currency_id = c2.id
+                WHERE c1.iso_code = %s AND c2.iso_code = %s
+                AND tf.datetime >= DATE_SUB(NOW(), INTERVAL %s HOUR)
+                ORDER BY tf.datetime ASC
+                LIMIT %s
+            """
+            
+            cursor.execute(query, (base_currency, quote_currency, hours, limit))
+            results = cursor.fetchall()
+            
+            ticks = []
+            for row in results:
+                ticks.append({
+                    'datetime': row[0],
+                    'mid_price': float(row[1])
+                })
+            
+            cursor.close()
+            return ticks
+            
+        except mariadb.Error as e:
+            print_with_datetime(f"Error retrieving recent ticks for {symbol}: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+
+    def get_upcoming_events(self, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Get upcoming economic events
+        
+        :param hours_ahead: Number of hours to look ahead
+        :return: List of dictionaries with event information
+        """
+        conn = None
+        try:
+            conn = self.__get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT datetime, event, impact, country, previous, consensus, actual
+                FROM economic_calendar
+                WHERE datetime >= NOW() 
+                AND datetime <= DATE_ADD(NOW(), INTERVAL %s HOUR)
+                ORDER BY datetime ASC
+            """
+            
+            cursor.execute(query, (hours_ahead,))
+            results = cursor.fetchall()
+            
+            events = []
+            for row in results:
+                events.append({
+                    'datetime': row[0],
+                    'event': row[1],
+                    'impact': row[2],
+                    'country': row[3],
+                    'previous': row[4],
+                    'consensus': row[5],
+                    'actual': row[6]
+                })
+            
+            cursor.close()
+            return events
+            
+        except mariadb.Error as e:
+            print_with_datetime(f"Error retrieving upcoming events: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+    
     def __create_conn(self):
         """
         Create the database connection

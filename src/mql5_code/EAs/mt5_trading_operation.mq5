@@ -99,34 +99,52 @@ enum REQUEST_CODE
 // Authentication to the server as a terminal
 bool auth()
    {
+      Print("[EA] auth: Starting authentication...");
       CJAVal json;
       json["auth_code"] = auth_code;
       json["login"] = AccountInfoInteger(ACCOUNT_LOGIN);
+      
+      PrintFormat("[EA] auth: Sending auth - code: %d, login: %d", auth_code, AccountInfoInteger(ACCOUNT_LOGIN));
 
       send_msg(socket, json);
+      Print("[EA] auth: Waiting for authentication response...");
       CJAVal msg = receive_msg(socket);
+      
+      string msg_str = "";
+      msg.Serialize(msg_str);
+      PrintFormat("[EA] auth: Received response: %s", msg_str);
 
       if (msg["auth_status"] == successful_auth_code)
       {
          terminal_id = msg["terminal_id"].ToInt();
-
+         PrintFormat("[EA] auth: Authentication SUCCESS - Terminal ID: %d", terminal_id);
          return true;
       }
+      PrintFormat("[EA] auth: Authentication FAILED - Status: %d (expected: %d)", 
+                  msg["auth_status"].ToInt(), successful_auth_code);
       return false;
    }
 
 // Listen from the server
 void start_listenning()
    {
+      Print("=== EA Started listening for server requests ===");
+      int request_count = 0;
+      
       while (true)
       {
+         PrintFormat("[EA] Waiting for message from server (request #%d)...", request_count);
+         
          CJAVal infos = receive_msg(socket);
+         request_count++;
 
          string out= "";
          infos.Serialize(out);
-         Print(out);
+         PrintFormat("[EA] Received message #%d: %s", request_count, out);
 
          handle_request(infos);
+         
+         PrintFormat("[EA] Finished processing request #%d", request_count);
       }
    }
 
@@ -134,21 +152,37 @@ void start_listenning()
 void handle_request(CJAVal& infos)
    {
       long request = infos["request"].ToInt();
+      PrintFormat("[EA] handle_request: Processing request type %d", request);
 
       if (request == ACCOUNT_INFOS)
       {
+         Print("[EA] handle_request: ACCOUNT_INFOS request");
          CJAVal account_infos = get_account_infos();
          send_msg(socket, account_infos);
+         Print("[EA] handle_request: ACCOUNT_INFOS response sent");
       }
       else if (request == OPEN_ORDER)
       {
+         Print("[EA] handle_request: OPEN_ORDER request received");
          CJAVal res = send_order(infos);
+         
+         string res_str = "";
+         res.Serialize(res_str);
+         PrintFormat("[EA] handle_request: Sending order response: %s", res_str);
+         
          send_msg(socket, res);
+         Print("[EA] handle_request: OPEN_ORDER response sent");
       }
       else if (request == CLOSE_ORDER)
       {
+         Print("[EA] handle_request: CLOSE_ORDER request");
          CJAVal res = close_order(infos);
          send_msg(socket, res);
+         Print("[EA] handle_request: CLOSE_ORDER response sent");
+      }
+      else
+      {
+         PrintFormat("[EA] handle_request: ERROR - Unknown request type: %d", request);
       }
    }
 
@@ -180,52 +214,262 @@ CJAVal update_account_infos()
 // Send order base on request OPEN_ORDER(101)
 CJAVal send_order(CJAVal& infos)
    {
+      Print("=== [EA] send_order: Starting order processing ===");
+      
       MqlTradeRequest request = {};
       MqlTradeResult result = {};
 
+      // Get order type
       ENUM_ORDER_TYPE order_type = (ENUM_ORDER_TYPE)infos["order_type"].ToInt();
-
       request.type = order_type;
-      request.symbol = infos["symbol"].ToStr();
-      request.volume = infos["lotsize"].ToDbl();
+      PrintFormat("[EA] send_order: Order type = %d (%s)", order_type, 
+                  (order_type == ORDER_TYPE_BUY ? "BUY" : 
+                   order_type == ORDER_TYPE_SELL ? "SELL" : "OTHER"));
+      
+      // Get symbol and normalize it
+      string symbol = infos["symbol"].ToStr();
+      request.symbol = symbol;
+      PrintFormat("[EA] send_order: Symbol = %s", symbol);
+      
+      // Validate symbol exists
+      PrintFormat("[EA] send_order: Validating symbol %s...", symbol);
+      if (!m_symbol.Name(symbol))
+      {
+         PrintFormat("[EA] send_order: ERROR - Invalid symbol: %s", symbol);
+         CJAVal res;
+         res["return_code"] = -1;
+         res["ticket"] = 0;
+         res["lotsize"] = 0;
+         res["price"] = 0;
+         res["comment"] = "Invalid symbol: " + symbol;
+         return res;
+      }
+      PrintFormat("[EA] send_order: Symbol validated successfully");
+      
+      // Get volume (lot size)
+      double lotsize = infos["lotsize"].ToDbl();
+      PrintFormat("[EA] send_order: Requested lot size = %.2f", lotsize);
+      
+      // Normalize lot size to broker's requirements
+      double min_lot = m_symbol.LotsMin();
+      double max_lot = m_symbol.LotsMax();
+      double lot_step = m_symbol.LotsStep();
+      PrintFormat("[EA] send_order: Lot constraints - Min: %.2f, Max: %.2f, Step: %.2f", 
+                  min_lot, max_lot, lot_step);
+      
+      // Round to lot step
+      lotsize = MathFloor(lotsize / lot_step) * lot_step;
+      
+      // Clamp to min/max
+      if (lotsize < min_lot) 
+      {
+         PrintFormat("[EA] send_order: Lot size %.2f < min %.2f, adjusting to min", lotsize, min_lot);
+         lotsize = min_lot;
+      }
+      if (lotsize > max_lot) 
+      {
+         PrintFormat("[EA] send_order: Lot size %.2f > max %.2f, adjusting to max", lotsize, max_lot);
+         lotsize = max_lot;
+      }
+      
+      request.volume = lotsize;
+      PrintFormat("[EA] send_order: Final lot size = %.2f", lotsize);
 
+      // Set action based on order type
       if (order_type == ORDER_TYPE_BUY || order_type == ORDER_TYPE_SELL)
       {
          request.action = TRADE_ACTION_DEAL;
+         Print("[EA] send_order: Market order (TRADE_ACTION_DEAL)");
+         
+         // For market orders, get current price
+         if (order_type == ORDER_TYPE_BUY)
+         {
+            request.price = m_symbol.Ask();
+            PrintFormat("[EA] send_order: BUY order - Using Ask price = %.5f", request.price);
+         }
+         else // ORDER_TYPE_SELL
+         {
+            request.price = m_symbol.Bid();
+            PrintFormat("[EA] send_order: SELL order - Using Bid price = %.5f", request.price);
+         }
       }
       else
       {
          request.action = TRADE_ACTION_PENDING;
-         request.price = infos["price"].ToDbl();
+         Print("[EA] send_order: Pending order (TRADE_ACTION_PENDING)");
+         if (infos.HasKey("price"))
+         {
+            request.price = infos["price"].ToDbl();
+            PrintFormat("[EA] send_order: Pending order price = %.5f", request.price);
+         }
       }
 
-      if (infos["sl"].ToStr() != "")
+      // Set stop loss if provided
+      if (infos.HasKey("sl"))
       {
-         request.sl = infos["sl"].ToDbl();
+         Print("[EA] send_order: Stop loss provided");
+         // Check if value is valid (not null, not empty)
+         if (infos["sl"].m_type == jtDBL || infos["sl"].m_type == jtINT)
+         {
+            request.sl = infos["sl"].ToDbl();
+            request.sl = NormalizeDouble(request.sl, m_symbol.Digits());
+            PrintFormat("[EA] send_order: Stop loss = %.5f", request.sl);
+         }
+         else
+         {
+            string sl_str = infos["sl"].ToStr();
+            PrintFormat("[EA] send_order: Stop loss as string: '%s'", sl_str);
+            if (sl_str != "" && sl_str != "null" && sl_str != "None" && sl_str != "NULL")
+            {
+               request.sl = infos["sl"].ToDbl();
+               request.sl = NormalizeDouble(request.sl, m_symbol.Digits());
+               PrintFormat("[EA] send_order: Stop loss parsed = %.5f", request.sl);
+            }
+            else
+            {
+               Print("[EA] send_order: Stop loss is null/empty, skipping");
+            }
+         }
       }
-
-      if (infos["tp"].ToStr() != "")
+      else
       {
-         request.tp = infos["tp"].ToDbl();
+         Print("[EA] send_order: No stop loss provided");
       }
 
+      // Set take profit if provided
+      if (infos.HasKey("tp"))
+      {
+         Print("[EA] send_order: Take profit provided");
+         // Check if value is valid (not null, not empty)
+         if (infos["tp"].m_type == jtDBL || infos["tp"].m_type == jtINT)
+         {
+            request.tp = infos["tp"].ToDbl();
+            request.tp = NormalizeDouble(request.tp, m_symbol.Digits());
+            PrintFormat("[EA] send_order: Take profit = %.5f", request.tp);
+         }
+         else
+         {
+            string tp_str = infos["tp"].ToStr();
+            PrintFormat("[EA] send_order: Take profit as string: '%s'", tp_str);
+            if (tp_str != "" && tp_str != "null" && tp_str != "None" && tp_str != "NULL")
+            {
+               request.tp = infos["tp"].ToDbl();
+               request.tp = NormalizeDouble(request.tp, m_symbol.Digits());
+               PrintFormat("[EA] send_order: Take profit parsed = %.5f", request.tp);
+            }
+            else
+            {
+               Print("[EA] send_order: Take profit is null/empty, skipping");
+            }
+         }
+      }
+      else
+      {
+         Print("[EA] send_order: No take profit provided");
+      }
+
+      // Set required fields for order execution
+      request.deviation = 10; // Slippage tolerance in points
+      request.magic = 123456; // EA magic number
+      request.comment = "AI Trading System";
+      request.type_filling = ORDER_FILLING_FOK; // Try Fill or Kill first
+      
+      PrintFormat("[EA] send_order: Request prepared - Symbol: %s, Type: %d, Volume: %.2f, Price: %.5f, SL: %.5f, TP: %.5f",
+                  request.symbol, request.type, request.volume, request.price, request.sl, request.tp);
+      PrintFormat("[EA] send_order: Deviation: %d, Magic: %d, Filling: FOK", 
+                  request.deviation, request.magic);
+      
+      // Check if AutoTrading is enabled
+      if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      {
+         Print("[EA] send_order: ERROR - AutoTrading is disabled in terminal!");
+      }
+      if (!MQLInfoInteger(MQL_TRADE_ALLOWED))
+      {
+         Print("[EA] send_order: ERROR - Trading is not allowed in MQL!");
+      }
+      
+      Print("[EA] send_order: Attempting OrderSend with FOK filling...");
+      // If FOK is not supported, try IOC
       if (!OrderSend(request, result))
       {
-         PrintFormat("OrderSend error %d",GetLastError());
+         int error = GetLastError();
+         PrintFormat("[EA] send_order: OrderSend FAILED with FOK - Error code: %d", error);
+         
+         if (error == 10021) // ORDER_FILLING_NOT_ALLOWED
+         {
+            Print("[EA] send_order: FOK not allowed, trying IOC...");
+            request.type_filling = ORDER_FILLING_IOC; // Try Immediate or Cancel
+            if (!OrderSend(request, result))
+            {
+               error = GetLastError();
+               PrintFormat("[EA] send_order: OrderSend FAILED with IOC - Error code: %d", error);
+               
+               if (error == 10021) // Still not allowed
+               {
+                  Print("[EA] send_order: IOC not allowed, trying RETURN...");
+                  request.type_filling = ORDER_FILLING_RETURN; // Try Return
+                  if (!OrderSend(request, result))
+                  {
+                     error = GetLastError();
+                     PrintFormat("[EA] send_order: OrderSend FAILED with RETURN - Error code: %d", error);
+                  }
+                  else
+                  {
+                     Print("[EA] send_order: OrderSend SUCCESS with RETURN filling");
+                  }
+               }
+               else
+               {
+                  Print("[EA] send_order: OrderSend SUCCESS with IOC filling");
+               }
+            }
+            else
+            {
+               Print("[EA] send_order: OrderSend SUCCESS with IOC filling");
+            }
+         }
+      }
+      else
+      {
+         Print("[EA] send_order: OrderSend SUCCESS with FOK filling");
       }
 
-      int ret_code = result.retcode;
-      long ticket = result.order;
+      // Get result
+      uint ret_code = result.retcode;
+      ulong ticket = result.order;
       double volume = result.volume;
       double price = result.price;
       string comment = result.comment;
+      
+      PrintFormat("[EA] send_order: Order result - Retcode: %u, Ticket: %llu, Volume: %.2f, Price: %.5f", 
+                  ret_code, ticket, volume, price);
+      PrintFormat("[EA] send_order: Comment: %s", comment);
+      
+      // Log result for debugging
+      if (ret_code != TRADE_RETCODE_DONE && ret_code != TRADE_RETCODE_PLACED)
+      {
+         PrintFormat("[EA] send_order: ORDER FAILED - retcode=%u, error=%d, comment=%s", 
+                     ret_code, GetLastError(), comment);
+         print_MqlTradeResult(result);
+      }
+      else
+      {
+         PrintFormat("[EA] send_order: ORDER SUCCESS - ticket=%llu, volume=%.2f, price=%.5f", 
+                     ticket, volume, price);
+      }
 
       CJAVal res;
-      res["return_code"] = ret_code;
-      res["ticket"] = ticket;
+      res["return_code"] = (int)ret_code;
+      res["ticket"] = (long)ticket;
       res["lotsize"] = volume;
       res["price"] = price;
       res["comment"] = comment;
+      
+      string res_str = "";
+      res.Serialize(res_str);
+      PrintFormat("[EA] send_order: Response JSON: %s", res_str);
+      Print("=== [EA] send_order: Finished order processing ===");
 
       return res;
    }
@@ -239,7 +483,7 @@ CJAVal close_order(CJAVal& infos)
       if (m_order.Select(ticket_to_close))
       {
          // Pending order
-         Print("Closing pending order #" + ticket_to_close);
+         Print("Closing pending order #" + IntegerToString(ticket_to_close));
          m_trade.OrderDelete(ticket_to_close);
 
          m_trade.Result(result);
@@ -247,7 +491,7 @@ CJAVal close_order(CJAVal& infos)
       else if (m_position.SelectByTicket(ticket_to_close))
       {
          // Open order
-         Print("Closing open order #" + ticket_to_close);
+         Print("Closing open order #" + IntegerToString(ticket_to_close));
          m_trade.PositionClosePartial(ticket_to_close, infos["lotsize"].ToDbl());
 
          m_trade.Result(result);
@@ -255,8 +499,8 @@ CJAVal close_order(CJAVal& infos)
 
       print_MqlTradeResult(result);
 
-      int ret_code = result.retcode;
-      long ticket = result.order;
+      uint ret_code = result.retcode;
+      ulong ticket = result.order;
       double volume = result.volume;
       double price = result.price;
       string comment = result.comment;
@@ -268,7 +512,7 @@ CJAVal close_order(CJAVal& infos)
       order["close_price"] = price;
 
       CJAVal res;
-      res["return_code"] = ret_code;
+      res["return_code"] = (int)ret_code;
       res["comment"] = comment;
       res["order"].Set(order);
       res["account"].Set(account_infos);
@@ -281,10 +525,10 @@ void print_MqlTradeResult(MqlTradeResult& res)
    {
       Print("");
       Print("MqlTradeResult");
-      Print("Retcode: " + res.retcode);
+      Print("Retcode: " + IntegerToString(res.retcode));
       Print("Comment: " + res.comment);
-      Print("Deal: " + res.deal);
-      Print("Volume: " + res.volume);
-      Print("Price: " + res.price);
+      Print("Deal: " + IntegerToString(res.deal));
+      Print("Volume: " + DoubleToString(res.volume, 2));
+      Print("Price: " + DoubleToString(res.price, 5));
       Print("");
    }

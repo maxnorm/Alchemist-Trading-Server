@@ -70,10 +70,10 @@ class RiskManager:
         # Calculate stop loss distance
         stop_loss_distance = entry_price * self.stop_loss_pct
         
-        # Position size = Risk Amount / Stop Loss Distance
-        # For forex: 1 lot = 100,000 units
-        # Risk per pip depends on pair and lot size
-        pip_value = 0.0001  # For most pairs (0.01 for JPY pairs)
+        # Determine pip value based on pair type
+        # Most pairs: 1 pip = 0.0001 (4 decimal places)
+        # JPY pairs: 1 pip = 0.01 (2 decimal places)
+        pip_value = 0.0001
         if 'JPY' in pair.symbol:
             pip_value = 0.01
         
@@ -83,12 +83,33 @@ class RiskManager:
         stop_loss_pips = stop_loss_distance / pip_value
         
         if stop_loss_pips > 0:
+            # Position size = Risk Amount / (Stop Loss in pips * Pip Value * Contract Size)
             lot_size = risk_amount / (stop_loss_pips * pip_value * contract_size)
         else:
             lot_size = 0.0
         
-        # Ensure minimum lot size (0.01)
+        # Ensure minimum lot size (0.01) and maximum based on account
         lot_size = max(0.01, min(lot_size, account.balance * self.max_position_size / entry_price))
+        
+        # Validate against margin requirements
+        leverage = getattr(account, 'leverage', 100)  # Default to 100:1 if not set
+        required_margin = (lot_size * entry_price * contract_size) / leverage
+        
+        # Get available margin (margin_free is already calculated by MT5)
+        margin_free = getattr(account, 'margin_free', account.balance)
+        available_margin = margin_free
+        
+        if required_margin > available_margin:
+            # Reduce lot size to fit available margin
+            lot_size = (available_margin * leverage) / (entry_price * contract_size)
+            lot_size = max(0.01, round(lot_size, 2))
+            
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Position size reduced due to margin constraints: "
+                f"required={required_margin:.2f}, available={available_margin:.2f}"
+            )
         
         return round(lot_size, 2)
     
@@ -146,3 +167,46 @@ class RiskManager:
     def reset_daily(self, account: Account):
         """Reset daily tracking"""
         self.daily_start_balance = account.balance
+    
+    def check_correlation_risk(self, account: Account, new_pair: CurrencyPair) -> tuple:
+        """
+        Check if new position would create excessive correlation
+        
+        :param account: Account object
+        :param new_pair: Currency pair for new position
+        :return: (can_trade: bool, reason: str)
+        """
+        if len(account.current_trade) == 0:
+            return True, "OK"
+        
+        # Get symbols of open positions
+        open_symbols = [trade.pair.symbol for trade in account.current_trade.values()]
+        
+        # Extract base and quote currencies
+        new_base = new_pair.symbol[:3]
+        new_quote = new_pair.symbol[3:]
+        
+        # Count correlated positions
+        # High correlation if same base or quote currency
+        correlation_count = 0
+        correlated_symbols = []
+        
+        for symbol in open_symbols:
+            base = symbol[:3]
+            quote = symbol[3:]
+            
+            # Check for same base or quote currency
+            if new_base == base or new_quote == quote:
+                correlation_count += 1
+                correlated_symbols.append(symbol)
+        
+        # Limit: max 2 correlated positions (including the new one)
+        max_correlated = 2
+        if correlation_count >= max_correlated:
+            return False, (
+                f"Too many correlated positions: {correlation_count} positions share "
+                f"base/quote currency with {new_pair.symbol} "
+                f"(correlated: {', '.join(correlated_symbols)})"
+            )
+        
+        return True, "OK"

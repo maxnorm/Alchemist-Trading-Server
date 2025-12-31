@@ -11,6 +11,10 @@ from utils.risk_management import RiskManager
 from models.account import Account
 from models.currency_pair import CurrencyPair
 from codes.order_type import OrderType
+from application.services.action_executor import ActionExecutor
+from utils.market_utils import check_if_market_open
+from utils.logging_config import get_logger
+import logging
 
 
 class TradingController:
@@ -41,6 +45,13 @@ class TradingController:
         self.is_running = False
         self.decision_interval = 60  # Make decision every 60 seconds
         
+        # Initialize structured logger
+        try:
+            self.logger = get_logger('trading_controller', 'trading_controller.log')
+        except Exception:
+            self.logger = logging.getLogger(__name__)
+        self.action_executor = ActionExecutor(self.logger)
+        
     def start(self):
         """Start the trading controller"""
         if self.is_running:
@@ -50,10 +61,32 @@ class TradingController:
         self.is_running = True
         self.risk_manager.initialize(self.account)
         
+        if hasattr(self.logger, 'log_event'):
+            self.logger.log_event(
+                event_type='trading_controller_started',
+                message=f"Trading Controller started (Trading: {'ENABLED' if self.trading_enabled else 'DISABLED'})",
+                metrics={
+                    'trading_enabled': self.trading_enabled,
+                    'account_login': self.account.login if self.account else None
+                }
+            )
         print(f"Trading Controller started (Trading: {'ENABLED' if self.trading_enabled else 'DISABLED'})")
         
         try:
             while self.is_running:
+                # Check if market is open before proceeding
+                if not check_if_market_open():
+                    if hasattr(self.logger, 'log_event'):
+                        self.logger.log_event(
+                            event_type='market_closed',
+                            message="Market is closed - skipping action execution"
+                        )
+                    else:
+                        self.logger.info("Market is closed - skipping action execution")
+                    # Wait before checking again
+                    time.sleep(self.decision_interval)
+                    continue
+                
                 # Get current state
                 state = self.env.get_state()
                 
@@ -64,6 +97,13 @@ class TradingController:
                 can_trade, reason = self.risk_manager.can_trade(self.account)
                 
                 if not can_trade:
+                    if hasattr(self.logger, 'log_event'):
+                        self.logger.log_event(
+                            event_type='trading_blocked',
+                            message=f"Trading blocked: {reason}",
+                            metrics={'reason': reason},
+                            level='WARNING'
+                        )
                     print(f"Trading blocked: {reason}")
                     action = 0  # Force hold
                 
@@ -71,12 +111,24 @@ class TradingController:
                 if self.trading_enabled:
                     self._execute_action(action)
                 else:
+                    if hasattr(self.logger, 'log_event'):
+                        self.logger.log_event(
+                            event_type='action_suggested',
+                            message=f"Action suggested: {action} (Trading disabled - no execution)",
+                            metrics={'action': action}
+                        )
                     print(f"Action suggested: {action} (Trading disabled - no execution)")
                 
                 # Wait before next decision
                 time.sleep(self.decision_interval)
         
         except KeyboardInterrupt:
+            if hasattr(self.logger, 'log_event'):
+                self.logger.log_event(
+                    event_type='trading_controller_stopped',
+                    message="Trading controller stopped by user",
+                    level='WARNING'
+                )
             print("Trading controller stopped by user")
         finally:
             self.stop()
@@ -84,56 +136,53 @@ class TradingController:
     def stop(self):
         """Stop the trading controller"""
         self.is_running = False
+        if hasattr(self.logger, 'log_event'):
+            self.logger.log_event(
+                event_type='trading_controller_stopped',
+                message="Trading Controller stopped"
+            )
         print("Trading Controller stopped")
     
     def _execute_action(self, action: int):
         """
-        Execute trading action
-        :param action: Action to execute (0=Hold, 1=Buy, 2=Sell, 3=Close)
+        Execute trading action using ActionExecutor
+        :param action: Encoded action (pair_index * 4 + action_type)
+                       Decoded: (pair_index, action_type) where action_type: 0=Hold, 1=Buy, 2=Sell, 3=Close
         """
-        has_position = len(self.account.current_trade) > 0
-        
-        # Get currency pair
-        pair = None
-        if self.env.data_providers:
-            pair = self.env.data_providers[0].currency_pair
-        
-        if pair is None:
-            print("No currency pair available")
-            return
-        
         try:
-            if action == 1:  # Buy
-                if not has_position:
-                    entry_price = pair.ask
-                    lot_size = self.risk_manager.calculate_position_size(
-                        self.account, pair, entry_price
-                    )
-                    sl = self.risk_manager.calculate_stop_loss(entry_price, True)
-                    tp = self.risk_manager.calculate_take_profit(entry_price, True)
-                    
-                    trade = self.account.send_order(OrderType.BUY, pair, lot_size, None, sl, tp)
-                    if trade:
-                        print(f"BUY order executed: {lot_size} lots @ {entry_price}, SL: {sl}, TP: {tp}")
-            
-            elif action == 2:  # Sell
-                if not has_position:
-                    entry_price = pair.bid
-                    lot_size = self.risk_manager.calculate_position_size(
-                        self.account, pair, entry_price
-                    )
-                    sl = self.risk_manager.calculate_stop_loss(entry_price, False)
-                    tp = self.risk_manager.calculate_take_profit(entry_price, False)
-                    
-                    trade = self.account.send_order(OrderType.SELL, pair, lot_size, None, sl, tp)
-                    if trade:
-                        print(f"SELL order executed: {lot_size} lots @ {entry_price}, SL: {sl}, TP: {tp}")
-            
-            elif action == 3:  # Close position
-                if has_position:
-                    for ticket in list(self.account.current_trade.keys()):
-                        self.account.close_order(ticket)
-                    print("All positions closed")
-        
+            # Use ActionExecutor to execute the action
+            previous_balance = self.account.balance
+            self.action_executor.execute(
+                action=action,
+                environment=self.env,
+                account=self.account,
+                risk_manager=self.risk_manager,
+                previous_balance=previous_balance,
+                trading_enabled=self.trading_enabled
+            )
         except Exception as e:
-            print(f"Error executing action {action}: {e}")
+            # Decode action for error message
+            try:
+                pair_index, action_type = self.env.decode_action(action)
+                pair = self.env.data_providers[pair_index].currency_pair if self.env.data_providers else None
+                symbol = pair.symbol if pair else "UNKNOWN"
+            except:
+                symbol = "UNKNOWN"
+                action_type = "UNKNOWN"
+            
+            error_msg = f"Error executing action {action} (action_type={action_type}) on {symbol}: {e}"
+            print(error_msg)
+            if hasattr(self.logger, 'log_error'):
+                self.logger.log_error(
+                    event_type='action_execution_error',
+                    error=error_msg,
+                    symbol=symbol,
+                    account_login=self.account.login if self.account else None,
+                    metrics={
+                        'action': action,
+                        'action_type': str(action_type)
+                    },
+                    exc_info=True
+                )
+            else:
+                self.logger.error(error_msg, exc_info=True)

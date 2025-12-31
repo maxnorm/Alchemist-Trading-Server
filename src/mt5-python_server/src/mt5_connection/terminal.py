@@ -70,12 +70,30 @@ class MT5Terminal(Connection):
             'order_type': order_type,
             'symbol': pair.symbol,
             'lotsize': lotsize,
-            'price': price,
-            'sl': sl,
-            'tp': tp
         }
+        
+        # Only include optional fields if they have values
+        if price is not None:
+            data['price'] = price
+        if sl is not None:
+            data['sl'] = sl
+        if tp is not None:
+            data['tp'] = tp
+            
         self.send_msg(json.dumps(data))
-        response = await self.get_response()
+        
+        try:
+            response = await self.get_response()
+        except TimeoutError as e:
+            raise TimeoutError(
+                f"Timeout waiting for order response from MT5 terminal: {e}. "
+                f"Order may not have been processed. Check MT5 terminal connection."
+            )
+        except ConnectionError as e:
+            raise ConnectionError(
+                f"Connection error while waiting for order response: {e}. "
+                f"MT5 terminal connection may be lost."
+            )
 
         if response['return_code'] == TradeRequest.EXECUTED.value:
             trade = Trade(
@@ -89,7 +107,7 @@ class MT5Terminal(Connection):
             )
             return trade
         else:
-            raise Exception(f"Error while sending order: {response['comment']}")
+            raise Exception(f"Error while sending order: {response.get('comment', 'Unknown error')}")
 
     async def close_order(self, trade, lotsize):
         """

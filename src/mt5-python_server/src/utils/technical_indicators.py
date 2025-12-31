@@ -97,7 +97,15 @@ class TechnicalIndicators:
         indicators['bb_lower'] = lower_bb
         indicators['bb_width'] = np.where(middle_bb != 0, (upper_bb - lower_bb) / middle_bb, 0)
         indicators['price_change'] = np.diff(prices, prepend=prices[0])
-        indicators['price_change_pct'] = np.where(prices[:-1] != 0, np.diff(prices, prepend=prices[0]) / prices[:-1], 0)
-        if len(indicators['price_change_pct']) < len(prices):
-            indicators['price_change_pct'] = np.append([0], indicators['price_change_pct'])
+        # Calculate percentage change: (current - previous) / previous
+        # For index i: (prices[i] - prices[i-1]) / prices[i-1]
+        # Use prices[1:] and prices[:-1] to align arrays correctly
+        price_change_pct = np.zeros_like(prices)
+        if len(prices) > 1:
+            price_change_pct[1:] = np.where(
+                prices[:-1] != 0,
+                (prices[1:] - prices[:-1]) / prices[:-1],
+                0
+            )
+        indicators['price_change_pct'] = price_change_pct
         return indicators

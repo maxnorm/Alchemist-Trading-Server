@@ -117,22 +117,27 @@ class AgentTrainer:
     def _execute_action(self, action: int) -> float:
         """
         Execute action and return reward
-        :param action: Action to execute
+        :param action: Encoded action (pair_index * 4 + action_type)
         :return: Reward
         """
-        previous_balance = self.account.balance
-        has_position = len(self.account.current_trade) > 0
+        # Decode action to get pair_index and action_type
+        pair_index, action_type = self.env.decode_action(action)
         
-        # Get currency pair from data providers
-        pair = None
-        if self.env.data_providers:
-            pair = self.env.data_providers[0].currency_pair
+        # Validate pair_index
+        if not self.env.data_providers or pair_index >= len(self.env.data_providers):
+            return 0.0
+        
+        # Get currency pair for the selected pair_index
+        pair = self.env.data_providers[pair_index].currency_pair
         
         if pair is None:
             return 0.0
         
+        previous_balance = self.account.balance
+        has_position = len(self.account.current_trade) > 0
+        
         try:
-            if action == 1:  # Buy
+            if action_type == 1:  # Buy
                 if not has_position and self.risk_manager.can_trade(self.account)[0]:
                     entry_price = pair.ask
                     lot_size = self.risk_manager.calculate_position_size(
@@ -144,7 +149,7 @@ class AgentTrainer:
                     from codes.order_type import OrderType
                     self.account.send_order(OrderType.BUY, pair, lot_size, None, sl, tp)
             
-            elif action == 2:  # Sell
+            elif action_type == 2:  # Sell
                 if not has_position and self.risk_manager.can_trade(self.account)[0]:
                     entry_price = pair.bid
                     lot_size = self.risk_manager.calculate_position_size(
@@ -156,13 +161,15 @@ class AgentTrainer:
                     from codes.order_type import OrderType
                     self.account.send_order(OrderType.SELL, pair, lot_size, None, sl, tp)
             
-            elif action == 3:  # Close position
+            elif action_type == 3:  # Close position
                 if has_position:
                     for ticket in list(self.account.current_trade.keys()):
                         self.account.close_order(ticket)
+            
+            # action_type == 0 (Hold) does nothing
         
         except Exception as e:
-            print(f"Error executing action {action}: {e}")
+            print(f"Error executing action {action} (pair_index={pair_index}, action_type={action_type}) on {pair.symbol}: {e}")
         
         # Calculate reward with detailed transaction cost model
         current_balance = self.account.balance
@@ -173,19 +180,19 @@ class AgentTrainer:
         lot_size = None
         is_long = None
         
-        if action == 1:  # Buy
+        if action_type == 1:  # Buy
             entry_price = pair.ask if pair else None
             lot_size = self.risk_manager.calculate_position_size(
                 self.account, pair, entry_price
             ) if pair and entry_price else None
             is_long = True
-        elif action == 2:  # Sell
+        elif action_type == 2:  # Sell
             entry_price = pair.bid if pair else None
             lot_size = self.risk_manager.calculate_position_size(
                 self.account, pair, entry_price
             ) if pair and entry_price else None
             is_long = False
-        elif action == 3:  # Close
+        elif action_type == 3:  # Close
             if has_position and self.account.current_trade:
                 trade = list(self.account.current_trade.values())[0]
                 entry_price = trade.open_price
@@ -205,7 +212,7 @@ class AgentTrainer:
         reward = self.env.calculate_reward(
             previous_balance, 
             current_balance, 
-            action, 
+            action_type,  # Use action_type (0-3) for reward calculation, not encoded action
             has_position,
             transaction_cost=None,  # Use detailed model instead
             entry_price=entry_price,

@@ -3,6 +3,7 @@ Feature Engineering for Trading AI
 Normalizes and prepares features for machine learning models
 """
 import numpy as np
+import pandas as pd
 from typing import Dict, List, Optional
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
@@ -28,9 +29,22 @@ class FeatureEngineer:
         self.feature_names = list(features.keys())
         
         for name, values in features.items():
-            # Remove NaN values for fitting
-            valid_values = values[~np.isnan(values)]
-            if len(valid_values) > 0:
+            # Handle NaN values with forward-fill, then backward-fill
+            # This preserves data continuity while handling missing values
+            if np.any(np.isnan(values)):
+                # Convert to pandas Series for efficient fill operations
+                values_series = pd.Series(values)
+                # Forward fill (use previous value), then backward fill (for leading NaNs)
+                # Use ffill() and bfill() methods for better pandas compatibility
+                values_filled = values_series.ffill().bfill()
+                # If still NaN (all values were NaN), use zeros
+                if values_filled.isna().any():
+                    values_filled = values_filled.fillna(0.0)
+                values_to_fit = values_filled.values
+            else:
+                values_to_fit = values
+            
+            if len(values_to_fit) > 0 and np.any(~np.isnan(values_to_fit)):
                 if self.normalization_method == 'standard':
                     scaler = StandardScaler()
                 elif self.normalization_method == 'minmax':
@@ -39,8 +53,8 @@ class FeatureEngineer:
                     scaler = RobustScaler()
                 
                 # Reshape for scaler (needs 2D array)
-                valid_values_2d = valid_values.reshape(-1, 1)
-                scaler.fit(valid_values_2d)
+                values_2d = values_to_fit.reshape(-1, 1)
+                scaler.fit(values_2d)
                 self.scalers[name] = scaler
         
         self.is_fitted = True

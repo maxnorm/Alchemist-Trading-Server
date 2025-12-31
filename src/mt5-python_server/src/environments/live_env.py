@@ -1,12 +1,18 @@
 import os
 import pickle
 import numpy as np
-from typing import Optional
+import threading
+import logging
+from typing import Optional, Dict, List
 from environments.base_trading_env import BaseTradingEnv
 from utils.technical_indicators import TechnicalIndicators
 from utils.feature_engineering import FeatureEngineer
 from utils.performance_metrics import PerformanceMetrics
 from utils.transaction_costs import TransactionCostModel
+from application.environment.price_history_manager import PriceHistoryManager
+from application.environment.feature_engine import FeatureEngine
+from application.environment.state_builder import StateBuilder
+from domain.constants import TradingConstants
 
 
 class LiveTradingEnv(BaseTradingEnv):
@@ -24,16 +30,67 @@ class LiveTradingEnv(BaseTradingEnv):
         :param window_size: The window size to use for the environment
         :param feature_engineer: Optional pre-fitted feature engineer
         """
-        super().__init__(window_size, price_shape=15)  # Updated for feature count
+        # Calculate number of pairs and features per pair
+        n_pairs = len(data_providers) if data_providers else 1
+        features_per_pair = 15  # Updated for feature count
+        # Economic calendar features - DISABLED
+        # TODO: Re-enable when new scraping methods are implemented
+        # economic_features = 6  # Economic calendar features added by StateBuilder
+        # total_features = n_pairs * features_per_pair + economic_features
+        total_features = n_pairs * features_per_pair
+        
+        # Update action space to include pair selection: n_pairs * 4 actions
+        # Action encoding: action = pair_index * 4 + action_type
+        # where action_type: 0=Hold, 1=Buy, 2=Sell, 3=Close
+        action_size = n_pairs * 4
+        
+        super().__init__(window_size, price_shape=total_features, action_size=action_size)
         self.account = account
         self.data_providers = data_providers
+        self.n_pairs = n_pairs
+        self.features_per_pair = features_per_pair
         self.state_buffer = []
-        self.price_history = []
+        self._state_lock = threading.Lock()
+        
+        # Initialize feature engineer
         self.feature_engineer = feature_engineer or FeatureEngineer(normalization_method='robust')
         self.account_login = getattr(account, "login", "default")
         self.scaler_dir = os.path.join("models", f"account_{self.account_login}", "scalers")
         os.makedirs(self.scaler_dir, exist_ok=True)
         self._load_feature_engineer()
+        
+        # Initialize components
+        self.price_history_manager = PriceHistoryManager(window_size, data_providers)
+        
+        # Load historical data if available
+        try:
+            from database import Database
+            db = Database()
+            symbols = [provider.currency_pair.symbol for provider in data_providers] if data_providers else []
+            if symbols:
+                self.price_history_manager.load_historical_data(db, symbols, limit=100, hours=24)
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            if hasattr(logger, 'log_error'):
+                logger.log_error(
+                    event_type='historical_data_load_error',
+                    error=f"Could not load historical data: {e}",
+                    exc_info=False
+                )
+            else:
+                logger.warning(f"Could not load historical data: {e}")
+        
+        self.feature_engine = FeatureEngine(
+            feature_engineer=self.feature_engineer,
+            window_size=window_size,
+            features_per_pair=features_per_pair
+        )
+        self.state_builder = StateBuilder(
+            price_history_manager=self.price_history_manager,
+            feature_engine=self.feature_engine,
+            window_size=window_size,
+            data_providers=data_providers
+        )
         
         # Initialize performance metrics tracker
         # Window size of 252 = 1 year of trading days (for annualized metrics)
@@ -53,64 +110,25 @@ class LiveTradingEnv(BaseTradingEnv):
             
     def _on_data_update(self, data):
         """Callback function to handle data updates from any provider"""
-        self.state_buffer.append(data)
-        if len(self.state_buffer) > self.window_size:
-            self.state_buffer.pop(0)
-        
-        # Extract price for technical indicators
-        if 'mid' in data:
-            self.price_history.append(data['mid'])
-            if len(self.price_history) > self.window_size * 2:  # Keep more for indicators
-                self.price_history.pop(0)
+        with self._state_lock:
+            self.state_buffer.append(data)
+            if len(self.state_buffer) > self.window_size:
+                self.state_buffer.pop(0)
+            
+            # Extract price for technical indicators and track by pair
+            if 'mid' in data and 'symbol' in data and data['mid'] is not None:
+                symbol = data['symbol']
+                self.price_history_manager.add_price(symbol, data['mid'])
             
     def get_state(self):
-        """Get current state from all data sources"""
-        # Require sufficient history before producing a state
-        if len(self.price_history) < self.window_size:
-            return None
-        
-        # Get current prices
-        prices = np.array(self.price_history[-self.window_size:])
-        
-        # Calculate technical indicators
-        indicators = TechnicalIndicators.calculate_all_indicators(prices)
-
-        # Fit feature engineer once enough data is present
-        if self.feature_engineer and not self.feature_engineer.is_fitted:
-            try:
-                clean_features = {k: np.nan_to_num(v) for k, v in indicators.items()}
-                clean_features['price'] = prices
-                self.feature_engineer.fit(clean_features)
-                self._save_feature_engineer()
-            except Exception:
-                # If fitting fails, defer and wait for more data
-                return None
-        
-        # Combine all features
-        features = {
-            'price': prices,
-            **indicators
-        }
-        
-        # Process state using feature engineer if available
-        if self.feature_engineer and self.feature_engineer.is_fitted:
-            # Create feature matrix
-            feature_matrix = self.feature_engineer.transform(features)
-            
-            # Ensure correct shape (window_size, n_features)
-            if len(feature_matrix.shape) == 2:
-                if feature_matrix.shape[0] < self.window_size:
-                    # Pad with zeros
-                    padding = np.zeros((self.window_size - feature_matrix.shape[0], feature_matrix.shape[1]))
-                    feature_matrix = np.vstack([padding, feature_matrix])
-                elif feature_matrix.shape[0] > self.window_size:
-                    # Take last window_size
-                    feature_matrix = feature_matrix[-self.window_size:]
-            
-            return feature_matrix.astype(np.float32)
-        
-        # If no fitted feature engineer yet, wait for readiness
-        return None
+        """Get current state from all data sources - delegates to StateBuilder"""
+        return self.state_builder.build_state()
+    
+    # Property for backward compatibility
+    @property
+    def price_history_by_pair(self) -> Dict[str, List[float]]:
+        """Get price history by pair (backward compatibility)"""
+        return self.price_history_manager.get_all_histories()
 
     def _process_state(self, state):
         """Convert raw state data into model input format"""
@@ -166,26 +184,29 @@ class LiveTradingEnv(BaseTradingEnv):
         # Component 1: Sharpe Ratio Reward
         # Why: Reward risk-adjusted returns, not just returns
         # This is the primary learning signal for risk-adjusted performance
+        # Normalize to [-1, 1] range (Sharpe typically ranges from -3 to +3)
         sharpe_ratio = metrics['sharpe_ratio']
-        sharpe_reward = sharpe_ratio * 10  # Scale to meaningful range
+        sharpe_reward = np.clip(sharpe_ratio / 3.0, -1.0, 1.0)
         
         # Component 2: Drawdown Penalty
         # Why: Strongly penalize large losses to protect capital
-        # Exponential penalty prevents account wipeout
+        # Normalize drawdown penalty to [-1, 0] range
+        # Max drawdown of 20% = -1.0 penalty
         current_drawdown = metrics['current_drawdown']
         if current_drawdown > 0.05:  # More than 5% drawdown
-            drawdown_penalty = -abs(current_drawdown) * 50  # Exponential penalty
+            drawdown_penalty = np.clip(-abs(current_drawdown) / 0.20, -1.0, 0.0)
         else:
             drawdown_penalty = 0.0
         
         # Component 3: Volatility Penalty
         # Why: Penalize high volatility strategies (harder to execute, higher risk)
         # Encourages consistent, stable strategies
+        # Normalize volatility penalty to [-1, 0] range
+        # Max volatility of 10% = -1.0 penalty
         # Note: volatility is annualized, so 0.02 = ~0.126% daily (2% / sqrt(252))
         volatility = metrics['volatility']
         if volatility > 0.02:  # More than 2% annualized volatility
-            # Penalty based on annualized volatility (already in correct units)
-            volatility_penalty = -volatility * 20
+            volatility_penalty = np.clip(-volatility / 0.10, -1.0, 0.0)
         else:
             volatility_penalty = 0.0
         
@@ -277,7 +298,55 @@ class LiveTradingEnv(BaseTradingEnv):
         if os.path.exists(filepath):
             try:
                 with open(filepath, "rb") as f:
-                    self.feature_engineer = pickle.load(f)
-            except Exception:
-                # On failure, start fresh with new feature engineer
-                self.feature_engineer = FeatureEngineer(normalization_method='robust')
+                    loaded_engineer = pickle.load(f)
+                
+                # Validate loaded scaler
+                if hasattr(loaded_engineer, 'is_fitted') and loaded_engineer.is_fitted:
+                    # Check that scalers exist and are valid
+                    if hasattr(loaded_engineer, 'scalers') and loaded_engineer.scalers:
+                        # Validate scaler statistics
+                        for name, scaler in loaded_engineer.scalers.items():
+                            if hasattr(scaler, 'mean_') and scaler.mean_ is not None:
+                                if np.any(np.isnan(scaler.mean_)) or np.any(np.isinf(scaler.mean_)):
+                                    raise ValueError(f"Invalid scaler statistics for {name}")
+                            # Check for other scaler types (MinMaxScaler, RobustScaler)
+                            if hasattr(scaler, 'scale_') and scaler.scale_ is not None:
+                                if np.any(np.isnan(scaler.scale_)) or np.any(np.isinf(scaler.scale_)):
+                                    raise ValueError(f"Invalid scaler scale for {name}")
+                        
+                        self.feature_engineer = loaded_engineer
+                        logger = logging.getLogger(__name__)
+                        if hasattr(logger, 'log_event'):
+                            logger.log_event(
+                                event_type='feature_engineer_loaded',
+                                message=f"✅ Loaded feature engineer from {filepath}",
+                                metrics={'filepath': filepath}
+                            )
+                        else:
+                            logger.info(f"✅ Loaded feature engineer from {filepath}")
+                        return
+                
+                # If validation fails, fall through to create new
+                logger = logging.getLogger(__name__)
+                if hasattr(logger, 'log_event'):
+                    logger.log_event(
+                        event_type='feature_engineer_validation_failed',
+                        message="Loaded feature engineer failed validation, creating new one",
+                        level='WARNING'
+                    )
+                else:
+                    logger.warning(f"Loaded feature engineer failed validation, creating new one")
+                
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                if hasattr(logger, 'log_error'):
+                    logger.log_error(
+                        event_type='feature_engineer_load_error',
+                        error=f"Error loading feature engineer: {e}, creating new one",
+                        exc_info=False
+                    )
+                else:
+                    logger.warning(f"Error loading feature engineer: {e}, creating new one")
+        
+        # On failure, start fresh with new feature engineer
+        self.feature_engineer = FeatureEngineer(normalization_method='robust')

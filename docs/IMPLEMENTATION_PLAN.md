@@ -16,8 +16,8 @@ Once complete, the system will be started with:
 docker compose up -d
 
 # Access dashboard
-# Local: http://192.168.1.100:3000
-# Remote: Install Tailscale, then http://100.x.x.x:3000
+# Local network: http://192.168.1.100:3000
+# (Optional) Remote: Install Tailscale, then http://100.x.x.x:3000
 ```
 
 ---
@@ -65,13 +65,17 @@ Set up the development environment with both FastAPI backend and Next.js fronten
   websockets>=12.0
   ```
 
-- [ ] **0.3** Create Next.js project
+- [ ] **0.3** Create Vite/React project (recommended for local dashboard)
   ```bash
   cd src
-  npx create-next-app@latest dashboard --typescript --tailwind --eslint --app --src-dir
+  npm create vite@latest dashboard -- --template react-ts
   cd dashboard
+  npm install
+  npm install react-router-dom
   npx shadcn-ui@latest init
   ```
+  
+  **Why Vite?** Simpler, faster, better for local SPAs. See `NEXTJS_VS_VITE.md` for comparison.
 
 - [ ] **0.4** Install frontend dependencies
   ```bash
@@ -672,17 +676,23 @@ Deploy production-ready system with secure remote access.
 - [ ] **6.7** Update frontend to use HTTPS
 - [ ] **6.8** Harden security settings
 
-#### Day 4: VPN & Remote Access
+#### Day 4: Network Access
 
-- [ ] **6.9** Install Tailscale on server
+- [ ] **6.9** Configure local network access
+  - Find server IP: `ipconfig` (Windows) or `hostname -I` (Linux)
+  - Update API_HOST in config to server's local IP
+  - Configure CORS for local network IPs
+  - See `docs/LOCAL_SETUP.md` for details
+
+- [ ] **6.10** (Optional) Install Tailscale for remote access
   ```bash
   curl -fsSL https://tailscale.com/install.sh | sh
   tailscale up
   ```
+  Only needed if you want access from outside your home network
 
-- [ ] **6.10** Install Tailscale on mobile/remote devices
-- [ ] **6.11** Configure firewall to only allow Tailscale
-- [ ] **6.12** Test remote access via VPN
+- [ ] **6.11** Configure firewall to block external access
+- [ ] **6.12** Test local network access
 
 #### Day 5: Documentation & Backup
 

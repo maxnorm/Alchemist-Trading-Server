@@ -65,6 +65,13 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Application logs (keep directory structure)
+logs/*.log
+logs/*.log.*
+
+# Trained models (persisted via Docker volume)
+models/*
+
 # Flask stuff:
 instance/
 .webassets-cache

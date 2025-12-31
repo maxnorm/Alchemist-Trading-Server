@@ -4,6 +4,8 @@ from codes.order_type import OrderType
 from models.currency_pair import CurrencyPair
 from mt5_connection.terminal import MT5Terminal
 from utils.time_utils import print_with_datetime
+from domain.entities.account_info import AccountInfo
+from application.trading.trade_executor import TradeExecutor
 
 
 class Account:
@@ -13,18 +15,11 @@ class Account:
 
     def __init__(self, login, terminal: MT5Terminal):
         self.login = login
-        self.__terminal = terminal
+        self.trade_executor = TradeExecutor(terminal)
         self.current_trade = {}
-
-        self.currency = None
-        self.leverage = None
-        self.balance = None
-        self.equity = None
-        self.profit = None
-        self.margin = None
-        self.margin_free = None
-
-        self.__set_account_infos()
+        
+        # Initialize account info
+        self.info = self._fetch_account_info()
         print(self)
 
 
@@ -34,8 +29,8 @@ class Account:
         Set the terminal for the account
         :param terminal: Terminal to set
         """
-        self.__terminal = terminal
-        self.__set_account_infos()
+        self.trade_executor = TradeExecutor(terminal)
+        self.update_info()
 
     def send_order(self, order_type, pair, lotsize, price=None, sl=None, tp=None):
         """
@@ -47,13 +42,10 @@ class Account:
         :param sl: Stop loss (optional)
         :param tp: Take profit (optional)
         """
-        try:
-            trade = asyncio.run(self.__terminal.send_order(order_type, pair, lotsize, price, sl, tp))
+        trade = self.trade_executor.send_order(order_type, pair, lotsize, price, sl, tp)
+        if trade:
             self.current_trade[trade.ticket] = trade
-            return trade
-        except Exception as e:
-            print_with_datetime(f"Account {self.login} | {e}.\n"
-                                f"[ORDER:{order_type}|PAIR:{pair}|LOTSIZE:{lotsize}|PRICE:{price}|SL:{sl}|TP:{tp}]")
+        return trade
 
     def close_order(self, ticket, lotsize=None):
         """
@@ -67,51 +59,86 @@ class Account:
             if lotsize is None:
                 lotsize = trade.lotsize
 
-            result = asyncio.run(self.__terminal.close_order(trade, lotsize))
+            result = self.trade_executor.close_order(trade, lotsize)
 
-            if trade.lotsize == result['order']['lotsize']:
-                trade.close(result['order']['close_price'])
-                self.current_trade.pop(ticket)
-                print(f"Trade closed: {trade.ticket}")
-            else:
-                trade.update_lotsize(result['order']['lotsize'])
-                print(f"Trade partially closed: {trade.ticket}. New lotsize: {trade.lotsize}")
+            if result:
+                if trade.lotsize == result['order']['lotsize']:
+                    trade.close(result['order']['close_price'])
+                    self.current_trade.pop(ticket)
+                    print(f"Trade closed: {trade.ticket}")
+                else:
+                    trade.update_lotsize(result['order']['lotsize'])
+                    print(f"Trade partially closed: {trade.ticket}. New lotsize: {trade.lotsize}")
 
-            self.__update_account_infos(result['account'])
+                # Update account info from result
+                if 'account' in result:
+                    self._update_from_dict(result['account'])
         except Exception as e:
-            print_with_datetime(f"Account {self.login} | {e}.\n"
-                                f"[TICKET:{ticket}]")
+            print_with_datetime(f"Account {self.login} | {e}.\n[TICKET:{ticket}]")
 
-    def __set_account_infos(self):
-        """
-        Set the account infos by getting them from the terminal
-        """
-        infos = asyncio.run(self.__terminal.get_all_infos())
+    def update_info(self):
+        """Update account information from terminal"""
+        self.info = self._fetch_account_info()
 
-        self.currency = infos['currency']
-        self.leverage = infos['leverage']
-        self.balance = infos['balance']
-        self.equity = infos['equity']
-        self.profit = infos['profit']
-        self.margin = infos['margin']
-        self.margin_free = infos['margin_free']
-
-    def __update_account_infos(self, infos):
+    def _fetch_account_info(self) -> AccountInfo:
         """
-        Update the account infos by getting them from the terminal
+        Fetch account information from terminal
+        :return: AccountInfo instance
         """
-        self.balance = infos['balance']
-        self.equity = infos['equity']
-        self.profit = infos['profit']
-        self.margin = infos['margin']
-        self.margin_free = infos['margin_free']
+        infos = asyncio.run(self.trade_executor.terminal.get_all_infos())
+        return AccountInfo.from_dict({
+            'login': self.login,
+            **infos
+        })
+    
+    def _update_from_dict(self, infos: dict):
+        """
+        Update account info from dictionary
+        :param infos: Dictionary with account data
+        """
+        self.info = self.info.update(
+            balance=infos.get('balance', self.info.balance),
+            equity=infos.get('equity', self.info.equity),
+            profit=infos.get('profit', self.info.profit),
+            margin=infos.get('margin', self.info.margin),
+            margin_free=infos.get('margin_free', self.info.margin_free)
+        )
+    
+    # Properties for backward compatibility
+    @property
+    def currency(self):
+        return self.info.currency
+    
+    @property
+    def leverage(self):
+        return self.info.leverage
+    
+    @property
+    def balance(self):
+        return self.info.balance
+    
+    @property
+    def equity(self):
+        return self.info.equity
+    
+    @property
+    def profit(self):
+        return self.info.profit
+    
+    @property
+    def margin(self):
+        return self.info.margin
+    
+    @property
+    def margin_free(self):
+        return self.info.margin_free
 
     def __str__(self):
         return (f"Account {self.login}\n"
-                f"Currency: {self.currency}\n"
-                f"Leverage: {self.leverage}\n"
-                f"Balance: {self.balance}\n"
-                f"Equity: {self.equity}\n"
-                f"Profit: {self.profit}\n"
-                f"Margin: {self.margin}\n"
-                f"Margin Free: {self.margin_free}")
+                f"Currency: {self.info.currency}\n"
+                f"Leverage: {self.info.leverage}\n"
+                f"Balance: {self.info.balance}\n"
+                f"Equity: {self.info.equity}\n"
+                f"Profit: {self.info.profit}\n"
+                f"Margin: {self.info.margin}\n"
+                f"Margin Free: {self.info.margin_free}")
