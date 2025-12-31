@@ -7,10 +7,16 @@ services:
         environment:
             MYSQL_ROOT_PASSWORD: root
             MYSQL_DATABASE: db_forex
-            MYSQL_USER: forex_user
-            MYSQL_PASSWORD: forex_password
         volumes:
             - "./database/scripts:/docker-entrypoint-initdb.d"
+            - "./database/mariadb.cnf:/etc/mysql/conf.d/custom.cnf:ro"
+            - "mariadb_data:/var/lib/mysql"
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
 
     server:
         container_name: "server"
@@ -20,6 +26,46 @@ services:
         ports:
             - "8080:8080"
         depends_on:
-            - mariadb
-        env_file:
-            - .env
+            mariadb:
+                condition: service_healthy
+        environment:
+            DB_HOST: mariadb
+            DB_PORT: 3306
+            DB_USER: forex_user
+            DB_PASSWORD: forex_password
+            DB_NAME: db_forex
+        restart: unless-stopped
+
+    # Backup service - run manually with: docker compose run --rm backup
+    # Or schedule with external cron: 0 2 * * * cd /path/to/project && docker compose run --rm backup
+    backup:
+        container_name: "db_backup"
+        image: mariadb:10.9.5
+        depends_on:
+            mariadb:
+                condition: service_healthy
+        environment:
+            DB_HOST: mariadb
+            DB_PORT: 3306
+            DB_USER: forex_user
+            DB_PASSWORD: forex_password
+            DB_NAME: db_forex
+            DB_BACKUP_DIR: /backups
+            DB_BACKUP_RETENTION_DAYS: 7
+        volumes:
+            - "./database/backup.py:/app/backup.py:ro"
+            - "backup_data:/backups"
+            - "mariadb_data:/var/lib/mysql:ro"
+        command: >
+            sh -c "
+            apt-get update -qq && 
+            apt-get install -y -qq python3 python3-pip gzip && 
+            pip3 install -q mysql-connector-python && 
+            python3 /app/backup.py
+            "
+        profiles:
+            - backup
+
+volumes:
+    mariadb_data:
+    backup_data:

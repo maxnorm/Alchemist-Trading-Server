@@ -16,6 +16,9 @@ from mt5_connection.tick_streamer import MT5TickStreamer
 from mt5_connection.terminal import MT5Terminal
 from models.currency_pair import CurrencyPair
 from models.account import Account
+from data_providers.price_provider import PriceDataProvider
+from environments.live_env import LiveTradingEnv
+from ai_trading_integration import AITradingIntegration
 
 class Server:
     """
@@ -32,6 +35,8 @@ class Server:
         self.__streamers = []
         self.__accounts = []
         self.__all_currency_pairs = {}
+        self.__price_data_providers = []
+        self.__environments = {}
 
         self.__stop_char = '\n'
 
@@ -44,6 +49,8 @@ class Server:
 
         self.__console_lock = threading.Lock()
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.__ai_integration = AITradingIntegration(self)
+        self.__auto_start_ai = os.getenv('AI_AUTO_START', 'true').lower() == 'true'
 
         server_ip = os.getenv('SERVER_IP')
         server_port = int(os.getenv('SERVER_PORT'))
@@ -154,7 +161,10 @@ class Server:
             pair = CurrencyPair(infos['symbol'], infos['digits'])
             self.__all_currency_pairs[infos['symbol']] = pair
 
-            streamer = MT5TickStreamer(client, pair, self.__stop_char, self.__verbose, self.__console_lock)
+            price_provider = PriceDataProvider(pair)
+            self.__price_data_providers.append(price_provider)
+
+            streamer = MT5TickStreamer(client, pair, self.__stop_char, self.__verbose, self.__console_lock, self.__db)
 
             threading.Thread(target=streamer.receive_tick).start()
             self.__streamers.append(streamer)
@@ -193,9 +203,40 @@ class Server:
                 if account.login == infos['login']:
                     account.set_terminal(terminal)
                     return
+                
 
             account = Account(infos['login'], terminal)
             self.__accounts.append(account)
+            
+            if infos['login'] not in self.__environments:
+                # Create environment
+                env = LiveTradingEnv(
+                    account=account,
+                    data_providers=self.__price_data_providers,
+                    window_size=50
+                )
+                self.__environments[infos['login']] = env
+                
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(f"Created trading environment for account {infos['login']}")
+
+            # Initialize AI agent and (optionally) start training/trading
+            try:
+                self.__ai_integration.initialize_agent_for_account(account)
+                if self.__auto_start_ai:
+                    self.__ai_integration.start_trading_for_account(account.login)
+                    if self.__verbose:
+                        with self.__console_lock:
+                            print_with_datetime(f"AI live training started for account {account.login}")
+                else:
+                    if self.__verbose:
+                        with self.__console_lock:
+                            print_with_datetime(f"AI initialized for account {account.login} (auto-start disabled)")
+            except Exception as e:
+                with self.__console_lock:
+                    print_with_datetime(f"Error initializing AI for account {account.login}: {e}")
+
         else:
             self.__invalid_auth(client, 'Invalid message format. Missing account login')
 

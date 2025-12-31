@@ -1,0 +1,52 @@
+[mysqld]
+# InnoDB Buffer Pool - Set to 70-80% of available RAM for write-heavy workloads
+# Adjust based on your container's memory limits
+innodb_buffer_pool_size = 256M
+
+# InnoDB Log File Size - Larger log files improve write performance
+# Default is 48M, increasing to 128M for better write throughput
+innodb_log_file_size = 128M
+
+# InnoDB Flush Log at Transaction Commit
+# 2 = Write to OS cache, flush to disk once per second (better performance)
+innodb_flush_log_at_trx_commit = 2
+
+# InnoDB Flush Method - O_DIRECT avoids double buffering
+innodb_flush_method = O_DIRECT
+
+# Maximum Connections - Adjust based on your connection pool size
+max_connections = 100
+
+# Query Cache (disabled in MariaDB 10.6+, but keeping for compatibility)
+query_cache_type = 0
+query_cache_size = 0
+
+# Table Open Cache - Increase for better performance with many tables
+table_open_cache = 2000
+
+# Thread Cache - Reuse threads for better performance
+thread_cache_size = 50
+
+# Sort Buffer Size - For sorting operations
+sort_buffer_size = 2M
+
+# Read Buffer Size
+read_buffer_size = 1M
+
+# Write-heavy optimizations
+innodb_file_per_table = 1
+innodb_flush_neighbors = 0
+
+# Binary Logging (optional, for replication)
+# Uncomment if you need replication
+# log_bin = /var/log/mysql/mysql-bin.log
+# binlog_format = ROW
+# expire_logs_days = 7
+
+[mysql]
+default-character-set = utf8mb4
+
+[mysqldump]
+quick
+quote-names
+max_allowed_packet = 16M
