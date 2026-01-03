@@ -83,7 +83,10 @@ async def promote_to_paper(model_id: int, db: Session = Depends(get_db)):
 
         # Broadcast stage change
         await ws_channels.broadcast_model_stage_change(
-            model_id=model_id, old_stage=model.stage, new_stage="paper", promoted_by=None
+            model_id=model_id,
+            old_stage=model.stage,
+            new_stage="paper",
+            promoted_by=None,
         )
 
         return promoted
