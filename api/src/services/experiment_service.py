@@ -5,7 +5,7 @@ Experiment service
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
-from typing import List, Optional, Dict, Any, cast
+from typing import List, Optional, Any, cast
 from schemas.experiments import ExperimentCreate, ExperimentResponse
 import json
 import logging

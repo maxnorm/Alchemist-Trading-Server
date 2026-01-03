@@ -5,6 +5,7 @@ Business logic for performance tracking
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.engine import Row
 from typing import List, Optional, Dict, Any, cast
 from schemas.performance import (
     PortfolioPerformanceResponse,
@@ -66,13 +67,13 @@ def get_portfolio_performance(
 
     try:
         result = db.execute(text(query), params)
-        row = result.fetchone()
+        trade_row: Optional[Row[Any]] = result.fetchone()
 
-        if row is None:
+        if trade_row is None:
             return None
 
-        # Type narrowing: row is not None here
-        row_data = cast(Any, row)
+        # Type narrowing: trade_row is not None here
+        row_data = cast(Any, trade_row)
         total_trades = int(row_data[0]) if row_data[0] else 0
         winning_trades = int(row_data[1]) if row_data[1] else 0
         losing_trades = int(row_data[2]) if row_data[2] else 0
@@ -226,13 +227,13 @@ def get_model_performance(
 
     try:
         result = db.execute(text(query), {"model_id": model_id})
-        row = result.fetchone()
+        trade_row: Optional[Row[Any]] = result.fetchone()
 
-        if row is None:
+        if trade_row is None:
             return None
 
-        # Type narrowing: row is not None here
-        row_data = cast(Any, row)
+        # Type narrowing: trade_row is not None here
+        row_data = cast(Any, trade_row)
         if not row_data[0]:
             return None
 
@@ -436,10 +437,10 @@ def get_model_statistics(
 
     try:
         result = db.execute(text(query), {"model_id": model_id})
-        row = result.fetchone()
-        if row is not None:
-            # Type narrowing: row is not None here
-            row_data = cast(Any, row)
+        duration_row: Optional[Row[Any]] = result.fetchone()
+        if duration_row is not None:
+            # Type narrowing: duration_row is not None here
+            row_data = cast(Any, duration_row)
             stats["avg_duration_seconds"] = (
                 float(row_data[0]) if row_data[0] is not None else None
             )

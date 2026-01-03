@@ -41,7 +41,7 @@ except ImportError:
 
 # Try to import WebSocket channels
 try:
-    from websocket import channels as ws_channels
+    from websocket import channels as ws_channels  # type: ignore[attr-defined]
 
     WS_AVAILABLE = True
 except ImportError:

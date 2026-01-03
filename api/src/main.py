@@ -21,7 +21,7 @@ from routers import (
     health,
 )
 from websocket.manager import websocket_manager
-from websocket import channels
+from websocket import channels  # type: ignore[attr-defined]
 from services.database import init_db, close_db
 
 # Configure logging

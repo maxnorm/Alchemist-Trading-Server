@@ -67,7 +67,7 @@ async def promote_to_staging(model_id: int, db: Session = Depends(get_db)):
 @router.post("/{model_id}/promote/paper", response_model=ModelResponse)
 async def promote_to_paper(model_id: int, db: Session = Depends(get_db)):
     """Promote model to paper trading stage"""
-    from websocket import channels as ws_channels
+    from websocket import channels as ws_channels  # type: ignore[attr-defined]
 
     model = model_service.get_model_by_id(db, model_id)
     if not model:
@@ -134,7 +134,7 @@ async def promote_to_production(
             detail=f"Model validation failed: {', '.join(validation['messages'])}",
         )
 
-    from websocket import channels as ws_channels
+    from websocket import channels as ws_channels  # type: ignore[attr-defined]
 
     old_stage = model.stage
 
@@ -201,7 +201,7 @@ async def start_paper_session(
     db: Session = Depends(get_db),
 ):
     """Start a paper trading session"""
-    from websocket import channels as ws_channels
+    from websocket import channels as ws_channels  # type: ignore[attr-defined]
 
     model = model_service.get_model_by_id(db, model_id)
     if not model:
@@ -235,7 +235,7 @@ async def stop_paper_session(
     model_id: int, session_id: int, db: Session = Depends(get_db)
 ):
     """Stop a paper trading session"""
-    from websocket import channels as ws_channels
+    from websocket import channels as ws_channels  # type: ignore[attr-defined]
 
     session = model_service.get_paper_session(db, session_id)
     if not session:
