@@ -146,7 +146,7 @@ def get_trials_by_study_id(db: Session, study_id: int) -> List[TrialResponse]:
             if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
                 try:
                     row_dict[json_field] = json.loads(row_dict[json_field])
-                except:
+                except (ValueError, TypeError):
                     row_dict[json_field] = {} if json_field == "params" else {}
         trials.append(TrialResponse(**row_dict))
 

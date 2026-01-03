@@ -2,8 +2,9 @@
 WebSocket connection manager
 """
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 from typing import Dict, Set
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class ConnectionManager:
             for connection in list(self.connections):
                 try:
                     await connection.close()
-                except:
+                except Exception:
                     pass
             self.connections.clear()
             self.channels.clear()

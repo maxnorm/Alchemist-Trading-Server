@@ -8,7 +8,6 @@ from typing import List, Optional
 from schemas.experiments import ExperimentCreate, ExperimentResponse
 import json
 import logging
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +91,7 @@ def get_experiment_by_id(
         if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
             try:
                 row_dict[json_field] = json.loads(row_dict[json_field])
-            except:
+            except (ValueError, TypeError):
                 row_dict[json_field] = (
                     [] if json_field in ["features", "currency_pairs"] else {}
                 )

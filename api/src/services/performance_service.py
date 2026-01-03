@@ -193,7 +193,7 @@ def get_model_performance(
     """Get model performance"""
     # Get metrics from performance_metrics table
     query = """
-        SELECT 
+        SELECT
             metric_type,
             value
         FROM performance_metrics
@@ -440,14 +440,15 @@ def get_model_comparison(db: Session, model_id: int) -> Dict[str, Any]:
     """Compare paper vs live trading performance"""
     # Get paper trading metrics (sessions with specific status or from paper accounts)
     # This is a simplified version - in production, you'd distinguish paper vs live sessions
-    query = """
-        SELECT
-            metric_type,
-            value
-        FROM performance_metrics
-        WHERE model_id = :model_id AND period = 'all_time'
-        LIMIT 1
-    """
+    # TODO: Implement query to fetch paper vs live metrics
+    # query = """
+    #     SELECT
+    #         metric_type,
+    #         value
+    #     FROM performance_metrics
+    #     WHERE model_id = :model_id AND period = 'all_time'
+    #     LIMIT 1
+    # """
 
     # For now, return a placeholder structure
     # In Phase 7, this will properly distinguish paper vs live sessions

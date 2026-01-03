@@ -65,7 +65,7 @@ def get_feature_by_name(db: Session, name: str) -> Optional[FeatureResponse]:
 
         try:
             row_dict["statistics"] = json.loads(row_dict["statistics"])
-        except:
+        except (ValueError, TypeError):
             row_dict["statistics"] = None
 
     return FeatureResponse(**row_dict)
@@ -109,7 +109,7 @@ def get_data_source_health(db: Session, source_id: int) -> Optional[DataSourceRe
 
         try:
             row_dict["config"] = json.loads(row_dict["config"])
-        except:
+        except (ValueError, TypeError):
             row_dict["config"] = None
 
     return DataSourceResponse(**row_dict)

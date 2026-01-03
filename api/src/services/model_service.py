@@ -107,7 +107,7 @@ def get_model_by_id(db: Session, model_id: int) -> Optional[ModelResponse]:
         if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
             try:
                 row_dict[json_field] = json.loads(row_dict[json_field])
-            except:
+            except (ValueError, TypeError):
                 row_dict[json_field] = [] if json_field == "features" else {}
 
     return ModelResponse(**row_dict)
@@ -134,7 +134,7 @@ def get_model_by_version(db: Session, version: str) -> Optional[ModelResponse]:
         if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
             try:
                 row_dict[json_field] = json.loads(row_dict[json_field])
-            except:
+            except (ValueError, TypeError):
                 row_dict[json_field] = [] if json_field == "features" else {}
 
     return ModelResponse(**row_dict)
@@ -152,8 +152,6 @@ def promote_model(
     current_model = get_model_by_id(db, model_id)
     if not current_model:
         raise ValueError(f"Model {model_id} not found")
-
-    old_stage = current_model.stage
 
     # Validate 2FA for production promotion
     if target_stage == "production":
