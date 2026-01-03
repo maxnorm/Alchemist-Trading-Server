@@ -433,9 +433,15 @@ def get_model_statistics(
         result = db.execute(text(query), {"model_id": model_id})
         row = result.fetchone()
         if row:
-            stats["avg_duration_seconds"] = float(row[0]) if row[0] is not None else None
-            stats["min_duration_seconds"] = float(row[1]) if row[1] is not None else None
-            stats["max_duration_seconds"] = float(row[2]) if row[2] is not None else None
+            stats["avg_duration_seconds"] = (
+                float(row[0]) if row[0] is not None else None
+            )
+            stats["min_duration_seconds"] = (
+                float(row[1]) if row[1] is not None else None
+            )
+            stats["max_duration_seconds"] = (
+                float(row[2]) if row[2] is not None else None
+            )
     except Exception as e:
         logger.warning(f"Failed to get duration stats: {e}")
 
