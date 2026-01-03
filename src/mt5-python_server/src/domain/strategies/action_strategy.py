@@ -1,6 +1,7 @@
 """
 Base action strategy interface
 """
+
 from abc import ABC, abstractmethod
 from typing import Tuple
 
@@ -9,7 +10,7 @@ from domain.execution_context import ExecutionContext
 
 class ActionStrategy(ABC):
     """Abstract base class for action strategies"""
-    
+
     @abstractmethod
     def execute(self, context: ExecutionContext) -> float:
         """
@@ -18,7 +19,7 @@ class ActionStrategy(ABC):
         :return: Reward value
         """
         pass
-    
+
     @abstractmethod
     def can_execute(self, context: ExecutionContext) -> Tuple[bool, str]:
         """
@@ -27,7 +28,7 @@ class ActionStrategy(ABC):
         :return: Tuple of (can_execute: bool, reason: str)
         """
         pass
-    
+
     @property
     @abstractmethod
     def action_type(self):

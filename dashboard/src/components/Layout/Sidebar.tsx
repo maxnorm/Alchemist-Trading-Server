@@ -38,7 +38,7 @@ export function Sidebar() {
     >
       <div className="flex h-16 items-center border-b px-4">
         {!sidebarCollapsed && (
-          <h1 className="text-xl font-bold">The Alchemist</h1>
+          <h1 className="text-xl font-bold">Alchemist</h1>
         )}
         <button
           onClick={toggleSidebar}

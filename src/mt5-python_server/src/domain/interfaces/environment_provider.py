@@ -2,6 +2,7 @@
 Environment provider protocol
 Defines contract for environment providers
 """
+
 from typing import Protocol, Optional
 
 from environments.live_env import LiveTradingEnv
@@ -9,7 +10,7 @@ from environments.live_env import LiveTradingEnv
 
 class IEnvironmentProvider(Protocol):
     """Protocol for environment providers"""
-    
+
     def get_environment(self, account_login: str) -> Optional[LiveTradingEnv]:
         """
         Get environment for an account
@@ -17,12 +18,9 @@ class IEnvironmentProvider(Protocol):
         :return: LiveTradingEnv instance or None if not found
         """
         ...
-    
+
     def create_environment(
-        self,
-        account,
-        data_providers,
-        window_size: int = 50
+        self, account, data_providers, window_size: int = 50
     ) -> LiveTradingEnv:
         """
         Create a new trading environment
@@ -32,7 +30,7 @@ class IEnvironmentProvider(Protocol):
         :return: Created LiveTradingEnv instance
         """
         ...
-    
+
     def has_environment(self, account_login: str) -> bool:
         """
         Check if environment exists for account

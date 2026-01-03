@@ -1,7 +1,6 @@
 """
 Trade Model
 """
-from codes.order_type import OrderType
 
 
 class Trade:

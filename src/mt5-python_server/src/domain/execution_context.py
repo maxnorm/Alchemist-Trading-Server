@@ -2,6 +2,7 @@
 Execution context value object
 Immutable context for action execution
 """
+
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
@@ -19,6 +20,7 @@ class ExecutionContext:
     """
     Immutable value object representing execution context for actions
     """
+
     account: Account
     pair: CurrencyPair
     environment: LiveTradingEnv
@@ -29,25 +31,25 @@ class ExecutionContext:
     # Performance tracking (optional - set when model is assigned to account)
     model_id: Optional[int] = None
     session_id: Optional[int] = None
-    trade_logger: Optional['TradeLogger'] = None
-    
+    trade_logger: Optional["TradeLogger"] = None
+
     @property
     def current_balance(self) -> float:
         """Get current account balance"""
         return self.account.balance if self.account else 0.0
-    
+
     @property
     def balance_change(self) -> float:
         """Calculate balance change since previous state"""
         return self.current_balance - self.previous_balance
-    
+
     @property
     def can_trade(self) -> tuple[bool, str]:
         """Check if trading is allowed"""
         if not self.trading_enabled:
             return False, "Trading is disabled"
         return self.risk_manager.can_trade(self.account)
-    
+
     @property
     def position_count(self) -> int:
         """Get number of open positions"""

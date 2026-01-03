@@ -1,6 +1,7 @@
 """
 Class for currency pairs
 """
+
 import logging
 import threading
 
@@ -51,7 +52,7 @@ class CurrencyPair:
         """
         with self._lock:
             subscribers_copy = self.subscribers.copy()
-        
+
         for callback in subscribers_copy:
             try:
                 callback(self)
