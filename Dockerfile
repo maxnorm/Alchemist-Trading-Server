@@ -1,7 +1,7 @@
 FROM python:3.11
 
 # Make Python output unbuffered, so logs are shown immediately
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
 RUN pip install --upgrade pip
 
