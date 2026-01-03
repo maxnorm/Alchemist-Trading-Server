@@ -2,7 +2,7 @@
 Database service layer with SQLAlchemy connection pool
 """
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 import logging
@@ -75,7 +75,6 @@ def get_db_session() -> Session:
 
 def close_db():
     """Close database connections"""
-    global _engine
     if _engine is not None:
         _engine.dispose()
         logger.info("Database connections closed")

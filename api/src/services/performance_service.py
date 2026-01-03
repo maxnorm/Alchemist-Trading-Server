@@ -15,7 +15,7 @@ from schemas.performance import (
     AllocationResponse,
 )
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def get_portfolio_performance(
     """Get portfolio performance summary (aggregated across all models)"""
     # Get metrics from performance_metrics table (portfolio-level has model_id = NULL)
     query = """
-        SELECT 
+        SELECT
             metric_type,
             value
         FROM performance_metrics
@@ -46,7 +46,7 @@ def get_portfolio_performance(
 
     # Get trade counts from model_trades
     query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
             SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
@@ -210,7 +210,7 @@ def get_model_performance(
 
     # Get trade statistics
     query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_trades,
             SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as winning_trades,
             SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losing_trades,
@@ -317,7 +317,7 @@ def get_model_trades(
     """Get model trade history with pagination"""
     # Count total
     count_query = """
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM model_trades
         WHERE model_id = :model_id
     """
@@ -340,7 +340,7 @@ def get_model_trades(
 
     # Get trades
     query = """
-        SELECT 
+        SELECT
             id, session_id, model_id, order_uuid, symbol, action, entry_price,
             exit_price, volume, pnl, pnl_pips, commission, swap, status,
             opened_at, closed_at, duration_seconds
@@ -415,7 +415,7 @@ def get_model_statistics(
 
     # Get additional trade statistics
     query = """
-        SELECT 
+        SELECT
             AVG(duration_seconds) as avg_duration,
             MIN(duration_seconds) as min_duration,
             MAX(duration_seconds) as max_duration
@@ -440,8 +440,8 @@ def get_model_comparison(db: Session, model_id: int) -> Dict[str, Any]:
     """Compare paper vs live trading performance"""
     # Get paper trading metrics (sessions with specific status or from paper accounts)
     # This is a simplified version - in production, you'd distinguish paper vs live sessions
-    paper_query = """
-        SELECT 
+    query = """
+        SELECT
             metric_type,
             value
         FROM performance_metrics
@@ -487,7 +487,7 @@ def get_performance_breakdown(
         date_format = "DATE(closed_at)"
 
     query = f"""
-        SELECT 
+        SELECT
             {date_format} as period,
             SUM(pnl) as pnl,
             COUNT(*) as trades,
@@ -567,7 +567,7 @@ def get_allocation(db: Session) -> AllocationResponse:
 def get_realtime_metrics(db: Session) -> Dict[str, Any]:
     """Get real-time performance metrics for all active models"""
     query = """
-        SELECT 
+        SELECT
             m.id,
             m.version,
             lts.current_balance,

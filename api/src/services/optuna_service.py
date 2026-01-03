@@ -21,7 +21,7 @@ def create_optuna_study(
 ) -> OptunaStudyResponse:
     """Create a new Optuna study"""
     query = """
-        INSERT INTO optuna_studies 
+        INSERT INTO optuna_studies
         (experiment_id, study_name, n_trials, optimize_metric, direction, status)
         VALUES (:experiment_id, :study_name, :n_trials, :optimize_metric, :direction, 'running')
     """
@@ -57,7 +57,7 @@ def get_study_by_id(db: Session, study_id: int) -> Optional[OptunaStudyResponse]
         if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
             try:
                 row_dict[json_field] = json.loads(row_dict[json_field])
-            except:
+            except (ValueError, TypeError):
                 row_dict[json_field] = {}
 
     return OptunaStudyResponse(**row_dict)
@@ -84,7 +84,7 @@ def get_study_by_experiment_id(
         if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
             try:
                 row_dict[json_field] = json.loads(row_dict[json_field])
-            except:
+            except (ValueError, TypeError):
                 row_dict[json_field] = {}
 
     return OptunaStudyResponse(**row_dict)

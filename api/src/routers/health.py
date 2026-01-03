@@ -2,7 +2,7 @@
 Health check endpoints
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from services.database import check_db_health
 from config import settings

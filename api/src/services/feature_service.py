@@ -41,7 +41,7 @@ def get_all_features(
 
             try:
                 row_dict["statistics"] = json.loads(row_dict["statistics"])
-            except:
+            except (ValueError, TypeError):
                 row_dict["statistics"] = None
         features.append(FeatureResponse(**row_dict))
 
@@ -85,7 +85,7 @@ def get_all_data_sources(db: Session) -> List[DataSourceResponse]:
 
             try:
                 row_dict["config"] = json.loads(row_dict["config"])
-            except:
+            except (ValueError, TypeError):
                 row_dict["config"] = None
         sources.append(DataSourceResponse(**row_dict))
 

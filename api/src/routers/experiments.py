@@ -4,7 +4,7 @@ Experiment management endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 from dependencies import get_db
 from services import experiment_service
 from schemas.experiments import (
@@ -24,7 +24,7 @@ async def list_experiments(
 ):
     """List all experiments"""
     try:
-        experiments = get_all_experiments(db, status=status)
+        experiments = experiment_service.get_all_experiments(db, status=status)
         return ExperimentListResponse(experiments=experiments, total=len(experiments))
     except Exception as e:
         raise HTTPException(
@@ -48,7 +48,7 @@ async def create_experiment(
 @router.get("/experiments/{id}", response_model=ExperimentResponse)
 async def get_experiment(id: int, db: Session = Depends(get_db)):
     """Get experiment details"""
-    experiment = get_experiment_by_id(db, id)
+    experiment = experiment_service.get_experiment_by_id(db, id)
     if not experiment:
         raise HTTPException(status_code=404, detail=f"Experiment {id} not found")
     return experiment
@@ -65,7 +65,7 @@ async def start_experiment(
             detail="Confirmation required. Set 'confirm' to true to start training.",
         )
 
-    experiment = get_experiment_by_id(db, id)
+    experiment = experiment_service.get_experiment_by_id(db, id)
     if not experiment:
         raise HTTPException(status_code=404, detail=f"Experiment {id} not found")
 
@@ -86,7 +86,7 @@ async def start_experiment(
 @router.post("/experiments/{id}/stop", response_model=ExperimentResponse)
 async def stop_experiment(id: int, db: Session = Depends(get_db)):
     """Stop experiment training"""
-    experiment = get_experiment_by_id(db, id)
+    experiment = experiment_service.get_experiment_by_id(db, id)
     if not experiment:
         raise HTTPException(status_code=404, detail=f"Experiment {id} not found")
 
@@ -97,7 +97,7 @@ async def stop_experiment(id: int, db: Session = Depends(get_db)):
 
     try:
         # Update status to completed (or failed)
-        updated = update_experiment_status(db, id, "completed")
+        updated = experiment_service.update_experiment_status(db, id, "completed")
         return updated
     except Exception as e:
         raise HTTPException(
@@ -123,6 +123,6 @@ async def clone_experiment(
 @router.delete("/experiments/{id}", status_code=204)
 async def delete_experiment(id: int, db: Session = Depends(get_db)):
     """Delete an experiment"""
-    success = delete_experiment(db, id)
+    success = experiment_service.delete_experiment(db, id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Experiment {id} not found")

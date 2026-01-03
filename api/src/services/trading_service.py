@@ -4,7 +4,7 @@ Trading control service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from datetime import datetime
 from schemas.trading import (
     TradingStatusResponse,
@@ -13,7 +13,6 @@ from schemas.trading import (
     PositionResponse,
 )
 from config import settings
-import os
 import logging
 from pathlib import Path
 
@@ -48,7 +47,7 @@ def get_trading_status(db: Session) -> TradingStatusResponse:
         row = result.fetchone()
         if row:
             circuit_breaker_active = bool(row[0])
-    except:
+    except Exception:
         # Table might not exist yet
         pass
 

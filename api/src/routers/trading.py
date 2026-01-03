@@ -6,14 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from dependencies import get_db
+from services import trading_service
 from services.trading_service import (
-    get_trading_status,
     check_kill_switch_status,
-    get_kill_switch_status,
-    trigger_kill_switch,
-    reset_kill_switch,
-    get_circuit_breaker_status,
-    reset_circuit_breaker,
     get_open_positions,
     get_trade_history,
     get_available_currency_pairs,
@@ -93,13 +88,13 @@ async def emergency_kill_switch(
 
 
 @router.get("/trading/kill-switch/status", response_model=KillSwitchStatusResponse)
-async def get_kill_switch_status():
+async def get_kill_switch_status_route():
     """Get kill switch status"""
-    return get_kill_switch_status()
+    return trading_service.get_kill_switch_status()
 
 
 @router.post("/trading/kill-switch/trigger")
-async def trigger_kill_switch(
+async def trigger_kill_switch_route(
     reason: str = Query("API trigger", description="Reason for kill switch")
 ):
     """Trigger kill switch"""
@@ -110,7 +105,7 @@ async def trigger_kill_switch(
 
 
 @router.post("/trading/kill-switch/reset")
-async def reset_kill_switch():
+async def reset_kill_switch_route():
     """Reset kill switch"""
     success = trading_service.reset_kill_switch()
     if not success:
@@ -121,13 +116,13 @@ async def reset_kill_switch():
 @router.get(
     "/trading/circuit-breaker/status", response_model=CircuitBreakerStatusResponse
 )
-async def get_circuit_breaker_status(db: Session = Depends(get_db)):
+async def get_circuit_breaker_status_route(db: Session = Depends(get_db)):
     """Get circuit breaker status"""
-    return get_circuit_breaker_status(db)
+    return trading_service.get_circuit_breaker_status(db)
 
 
 @router.post("/trading/circuit-breaker/reset")
-async def reset_circuit_breaker(db: Session = Depends(get_db)):
+async def reset_circuit_breaker_route(db: Session = Depends(get_db)):
     """Reset circuit breaker"""
     success = trading_service.reset_circuit_breaker(db)
     if not success:
@@ -147,7 +142,7 @@ async def get_positions(db: Session = Depends(get_db)):
 
 
 @router.get("/trading/history", response_model=TradeHistoryResponse)
-async def get_trade_history(
+async def get_trade_history_route(
     experiment_id: Optional[int] = Query(None, description="Filter by experiment ID"),
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of trades to return"

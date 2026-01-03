@@ -3,10 +3,8 @@ WebSocket connection manager
 """
 
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict, List, Set
-import json
+from typing import Dict, Set
 import logging
-import asyncio
 
 logger = logging.getLogger(__name__)
 

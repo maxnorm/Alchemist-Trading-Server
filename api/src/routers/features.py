@@ -6,10 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from dependencies import get_db
+from services import feature_service
 from services.feature_service import (
-    get_all_features,
     get_feature_by_name,
-    get_all_data_sources,
     get_data_source_health,
 )
 from schemas.features import FeatureResponse, FeatureListResponse, DataSourceResponse

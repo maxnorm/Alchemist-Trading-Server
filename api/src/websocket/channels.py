@@ -6,7 +6,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import Optional
 import json
 import logging
-import asyncio
 from websocket.manager import websocket_manager
 
 logger = logging.getLogger(__name__)

@@ -34,7 +34,7 @@ async def start_optuna_search(
                 status_code=404, detail=f"Experiment {search.experiment_id} not found"
             )
 
-        study = create_optuna_study(db, search)
+        study = optuna_service.create_optuna_study(db, search)
         return study
     except HTTPException:
         raise
@@ -60,7 +60,7 @@ async def get_experiment_optuna_status(
     experiment_id: int, db: Session = Depends(get_db)
 ):
     """Get Optuna study status for an experiment"""
-    study = get_study_by_experiment_id(db, experiment_id)
+    study = optuna_service.get_study_by_experiment_id(db, experiment_id)
     if not study:
         raise HTTPException(
             status_code=404,
@@ -76,7 +76,7 @@ async def get_trials(id: int, db: Session = Depends(get_db)):
     if not study:
         raise HTTPException(status_code=404, detail=f"Optuna study {id} not found")
 
-    trials = get_trials_by_study_id(db, id)
+    trials = optuna_service.get_trials_by_study_id(db, id)
     return trials
 
 
@@ -119,7 +119,7 @@ async def get_parameter_importance(id: int, db: Session = Depends(get_db)):
     if not study:
         raise HTTPException(status_code=404, detail=f"Optuna study {id} not found")
 
-    importance = get_parameter_importance(db, id)
+    importance = optuna_service.get_parameter_importance(db, id)
     if not importance:
         raise HTTPException(
             status_code=404, detail="Parameter importance not available"

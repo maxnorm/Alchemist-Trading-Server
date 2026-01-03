@@ -5,8 +5,7 @@ Model registry service
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional, Dict, Any
-from schemas.models import ModelResponse, PaperSessionResponse, ValidationResultResponse
-from datetime import datetime
+from schemas.models import ModelResponse, PaperSessionResponse
 import json
 import logging
 import sys
@@ -82,7 +81,7 @@ def get_all_models(
             if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
                 try:
                     row_dict[json_field] = json.loads(row_dict[json_field])
-                except:
+                except (ValueError, TypeError):
                     row_dict[json_field] = [] if json_field == "features" else {}
         models.append(ModelResponse(**row_dict))
 
@@ -245,7 +244,7 @@ def rollback_production(
                 if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
                     try:
                         row_dict[json_field] = json.loads(row_dict[json_field])
-                    except:
+                    except (ValueError, TypeError):
                         row_dict[json_field] = [] if json_field == "features" else {}
             target = ModelResponse(**row_dict)
         else:
@@ -263,8 +262,8 @@ def get_paper_sessions(db: Session, model_id: int) -> List[PaperSessionResponse]
     result = db.execute(
         text(
             """
-            SELECT * FROM paper_trading_sessions 
-            WHERE model_id = :model_id 
+            SELECT * FROM paper_trading_sessions
+            WHERE model_id = :model_id
             ORDER BY started_at DESC
         """
         ),
@@ -294,7 +293,7 @@ def start_paper_session(
     result = db.execute(
         text(
             """
-            INSERT INTO paper_trading_sessions 
+            INSERT INTO paper_trading_sessions
             (model_id, status, start_balance, current_balance, started_at)
             VALUES (:model_id, 'running', :start_balance, :start_balance, NOW())
         """
@@ -347,7 +346,7 @@ def stop_paper_session(db: Session, session_id: int) -> PaperSessionResponse:
     db.execute(
         text(
             """
-            UPDATE paper_trading_sessions 
+            UPDATE paper_trading_sessions
             SET status = 'completed', ended_at = NOW()
             WHERE id = :id
         """

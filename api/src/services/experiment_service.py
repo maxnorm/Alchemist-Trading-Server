@@ -4,7 +4,7 @@ Experiment service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from schemas.experiments import ExperimentCreate, ExperimentResponse
 import json
 import logging
@@ -65,7 +65,7 @@ def get_all_experiments(
             if row_dict.get(json_field) and isinstance(row_dict[json_field], str):
                 try:
                     row_dict[json_field] = json.loads(row_dict[json_field])
-                except:
+                except (ValueError, TypeError):
                     row_dict[json_field] = (
                         [] if json_field in ["features", "currency_pairs"] else {}
                     )

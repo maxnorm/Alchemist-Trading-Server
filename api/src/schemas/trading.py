@@ -2,8 +2,8 @@
 Pydantic schemas for trading control
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from typing import Optional, List
 from datetime import datetime
 
 

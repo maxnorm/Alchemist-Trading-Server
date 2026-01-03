@@ -4,7 +4,7 @@ Model registry endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional
 from dependencies import get_db
 from services import model_service
 from schemas.models import (
@@ -78,13 +78,12 @@ async def promote_to_paper(model_id: int, db: Session = Depends(get_db)):
             status_code=400, detail=f"Model must be in staging, currently {model.stage}"
         )
 
-    old_stage = model.stage
     try:
         promoted = model_service.promote_model(db, model_id, "paper")
 
         # Broadcast stage change
         await ws_channels.broadcast_model_stage_change(
-            model_id=model_id, old_stage=old_stage, new_stage="paper", promoted_by=None
+            model_id=model_id, old_stage=model.stage, new_stage="paper", promoted_by=None
         )
 
         return promoted
