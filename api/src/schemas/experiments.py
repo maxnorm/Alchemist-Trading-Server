@@ -1,6 +1,7 @@
 """
 Pydantic schemas for experiments
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 
 class ExperimentCreate(BaseModel):
     """Experiment creation request"""
+
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     features: List[str] = Field(..., min_items=1)
@@ -18,11 +20,13 @@ class ExperimentCreate(BaseModel):
 
 class ExperimentStartRequest(BaseModel):
     """Start experiment request"""
+
     confirm: bool = Field(default=False, description="Confirmation required to start")
 
 
 class ExperimentResponse(BaseModel):
     """Experiment details response"""
+
     id: int
     name: str
     description: Optional[str] = None
@@ -35,12 +39,13 @@ class ExperimentResponse(BaseModel):
     created_at: datetime
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class ExperimentListResponse(BaseModel):
     """List of experiments response"""
+
     experiments: List[ExperimentResponse]
     total: int

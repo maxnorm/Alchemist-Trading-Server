@@ -1,6 +1,7 @@
 """
 Pydantic schemas for performance metrics
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 
 class EquityCurvePoint(BaseModel):
     """Equity curve data point"""
+
     timestamp: datetime
     balance: float
     equity: float
@@ -15,6 +17,7 @@ class EquityCurvePoint(BaseModel):
 
 class EquityCurveResponse(BaseModel):
     """Equity curve response"""
+
     experiment_id: Optional[int] = None
     model_version: Optional[str] = None
     data: List[EquityCurvePoint]
@@ -23,6 +26,7 @@ class EquityCurveResponse(BaseModel):
 
 class PortfolioPerformanceResponse(BaseModel):
     """Portfolio performance summary"""
+
     total_trades: int
     winning_trades: int
     losing_trades: int
@@ -40,6 +44,7 @@ class PortfolioPerformanceResponse(BaseModel):
 
 class ModelPerformanceResponse(BaseModel):
     """Model performance details"""
+
     model_version: str
     total_trades: int
     winning_trades: int
@@ -55,12 +60,14 @@ class ModelPerformanceResponse(BaseModel):
 
 class TradeHistoryResponse(BaseModel):
     """Trade history response"""
+
     trades: List[Dict[str, Any]]
     total: int
 
 
 class PerformanceBreakdownResponse(BaseModel):
     """P&L breakdown by period"""
+
     period: str
     pnl: float
     trades: int
@@ -69,5 +76,6 @@ class PerformanceBreakdownResponse(BaseModel):
 
 class AllocationResponse(BaseModel):
     """Allocation by pair/model"""
+
     by_pair: Dict[str, float]
     by_model: Dict[str, float]

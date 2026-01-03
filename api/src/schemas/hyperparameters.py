@@ -1,6 +1,7 @@
 """
 Pydantic schemas for Optuna hyperparameter search
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 
 class OptunaSearchCreate(BaseModel):
     """Optuna search creation request"""
+
     experiment_id: int
     study_name: str = Field(..., min_length=1, max_length=200)
     n_trials: int = Field(..., gt=0, le=1000)
@@ -17,6 +19,7 @@ class OptunaSearchCreate(BaseModel):
 
 class OptunaStudyResponse(BaseModel):
     """Optuna study response"""
+
     id: int
     experiment_id: int
     study_name: str
@@ -30,13 +33,14 @@ class OptunaStudyResponse(BaseModel):
     param_importance: Optional[Dict[str, float]] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class TrialResponse(BaseModel):
     """Optuna trial response"""
+
     id: int
     study_id: int
     trial_number: int
@@ -46,12 +50,13 @@ class TrialResponse(BaseModel):
     metrics: Optional[Dict[str, Any]] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class ParameterImportanceResponse(BaseModel):
     """Parameter importance response"""
+
     study_id: int
     importance: Dict[str, float]

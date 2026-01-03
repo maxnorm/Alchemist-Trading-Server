@@ -1,6 +1,7 @@
 """
 Pydantic schemas for model registry
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 
 class ModelResponse(BaseModel):
     """Model details response"""
+
     id: int
     version: str
     experiment_id: Optional[int] = None
@@ -21,26 +23,35 @@ class ModelResponse(BaseModel):
     created_at: datetime
     promoted_at: Optional[datetime] = None
     promoted_by: Optional[int] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class ModelListResponse(BaseModel):
     """List of models response"""
+
     models: List[ModelResponse]
     total: int
 
 
 class ModelPromoteRequest(BaseModel):
     """Model promotion request"""
-    target_stage: str = Field(..., description="Target stage: staging, paper, production, archived")
-    totp_token: Optional[str] = Field(None, description="2FA token (required for production promotion)")
-    confirm: bool = Field(default=False, description="Confirmation required for promotion")
+
+    target_stage: str = Field(
+        ..., description="Target stage: staging, paper, production, archived"
+    )
+    totp_token: Optional[str] = Field(
+        None, description="2FA token (required for production promotion)"
+    )
+    confirm: bool = Field(
+        default=False, description="Confirmation required for promotion"
+    )
 
 
 class PaperSessionResponse(BaseModel):
     """Paper trading session response"""
+
     id: int
     model_id: int
     status: str
@@ -57,17 +68,22 @@ class PaperSessionResponse(BaseModel):
 
 class PaperSessionListResponse(BaseModel):
     """List of paper trading sessions"""
+
     sessions: List[PaperSessionResponse]
     total: int
 
 
 class StartPaperSessionRequest(BaseModel):
     """Start paper trading session request"""
-    start_balance: float = Field(10000.0, description="Starting balance for paper trading")
+
+    start_balance: float = Field(
+        10000.0, description="Starting balance for paper trading"
+    )
 
 
 class ValidationResultResponse(BaseModel):
     """Validation result response"""
+
     passed: bool
     checks: Dict[str, bool]
     metrics: Dict[str, float]

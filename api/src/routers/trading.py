@@ -1,6 +1,7 @@
 """
 Trading control endpoints
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
@@ -15,7 +16,7 @@ from services.trading_service import (
     reset_circuit_breaker,
     get_open_positions,
     get_trade_history,
-    get_available_currency_pairs
+    get_available_currency_pairs,
 )
 from schemas.trading import (
     TradingStatusResponse,
@@ -23,7 +24,7 @@ from schemas.trading import (
     CircuitBreakerStatusResponse,
     PositionResponse,
     TradeHistoryResponse,
-    CurrencyPairsResponse
+    CurrencyPairsResponse,
 )
 
 router = APIRouter()
@@ -35,25 +36,29 @@ async def get_trading_status(db: Session = Depends(get_db)):
     try:
         return trading_service.get_trading_status(db)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get trading status: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get trading status: {str(e)}"
+        )
 
 
 @router.post("/trading/start")
 async def start_trading(
     confirm: bool = Query(False, description="Confirmation required to start trading"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Start live trading"""
     if not confirm:
         raise HTTPException(
             status_code=400,
-            detail="Confirmation required. Set 'confirm' to true to start trading."
+            detail="Confirmation required. Set 'confirm' to true to start trading.",
         )
-    
+
     # Check kill switch
     if check_kill_switch_status():
-        raise HTTPException(status_code=400, detail="Cannot start trading: kill switch is active")
-    
+        raise HTTPException(
+            status_code=400, detail="Cannot start trading: kill switch is active"
+        )
+
     # In a real implementation, this would start the trading server
     return {"message": "Trading started", "status": "active"}
 
@@ -67,21 +72,23 @@ async def stop_trading(db: Session = Depends(get_db)):
 
 @router.post("/trading/kill")
 async def emergency_kill_switch(
-    confirm: bool = Query(False, description="Confirmation required for emergency kill"),
+    confirm: bool = Query(
+        False, description="Confirmation required for emergency kill"
+    ),
     reason: str = Query("API emergency kill", description="Reason for kill switch"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Emergency kill switch"""
     if not confirm:
         raise HTTPException(
             status_code=400,
-            detail="Confirmation required. Set 'confirm' to true to trigger kill switch."
+            detail="Confirmation required. Set 'confirm' to true to trigger kill switch.",
         )
-    
+
     success = trading_service.trigger_kill_switch(reason)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to trigger kill switch")
-    
+
     return {"message": "Kill switch activated", "reason": reason}
 
 
@@ -111,7 +118,9 @@ async def reset_kill_switch():
     return {"message": "Kill switch reset"}
 
 
-@router.get("/trading/circuit-breaker/status", response_model=CircuitBreakerStatusResponse)
+@router.get(
+    "/trading/circuit-breaker/status", response_model=CircuitBreakerStatusResponse
+)
 async def get_circuit_breaker_status(db: Session = Depends(get_db)):
     """Get circuit breaker status"""
     return get_circuit_breaker_status(db)
@@ -132,21 +141,27 @@ async def get_positions(db: Session = Depends(get_db)):
     try:
         return get_open_positions(db)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get positions: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get positions: {str(e)}"
+        )
 
 
 @router.get("/trading/history", response_model=TradeHistoryResponse)
 async def get_trade_history(
     experiment_id: Optional[int] = Query(None, description="Filter by experiment ID"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum number of trades to return"),
-    db: Session = Depends(get_db)
+    limit: int = Query(
+        100, ge=1, le=1000, description="Maximum number of trades to return"
+    ),
+    db: Session = Depends(get_db),
 ):
     """Get trade history"""
     try:
         trades = get_trade_history(db, experiment_id=experiment_id, limit=limit)
         return TradeHistoryResponse(trades=trades, total=len(trades))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get trade history: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get trade history: {str(e)}"
+        )
 
 
 @router.get("/trading/currency-pairs", response_model=CurrencyPairsResponse)
@@ -156,4 +171,6 @@ async def get_currency_pairs(db: Session = Depends(get_db)):
         pairs = get_available_currency_pairs(db)
         return CurrencyPairsResponse(pairs=pairs, total=len(pairs))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get currency pairs: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get currency pairs: {str(e)}"
+        )

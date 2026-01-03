@@ -1,6 +1,7 @@
 """
 FastAPI application entry point
 """
+
 from fastapi import FastAPI, Request, WebSocket, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,7 @@ from routers import (
     models,
     trading,
     performance,
-    health
+    health,
 )
 from websocket.manager import websocket_manager
 from websocket import channels
@@ -27,9 +28,7 @@ from services.database import init_db, close_db
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger(__name__)
@@ -40,16 +39,18 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
     logger.info("Starting FastAPI service...")
-   
+
     try:
         init_db()
         logger.info("Database connection initialized")
     except Exception as e:
         logger.warning(f"Database connection not available at startup: {e}")
-        logger.info("API will start without database connection. Health checks will indicate status.")
-    
+        logger.info(
+            "API will start without database connection. Health checks will indicate status."
+        )
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down FastAPI service...")
     close_db()
@@ -61,13 +62,16 @@ app = FastAPI(
     title="Alchemist Trading Platform API",
     description="REST API and WebSocket service for the Alchemist AI Forex Experimentation Platform",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ],  # React dev servers
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,11 +83,7 @@ app.add_middleware(
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle validation errors"""
     return JSONResponse(
-        status_code=422,
-        content={
-            "error": "Validation error",
-            "detail": exc.errors()
-        }
+        status_code=422, content={"error": "Validation error", "detail": exc.errors()}
     )
 
 
@@ -92,10 +92,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions"""
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "error": exc.detail,
-            "status_code": exc.status_code
-        }
+        content={"error": exc.detail, "status_code": exc.status_code},
     )
 
 
@@ -107,8 +104,12 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={
             "error": "Internal server error",
-            "detail": str(exc) if settings.log_level == "DEBUG" else "An unexpected error occurred"
-        }
+            "detail": (
+                str(exc)
+                if settings.log_level == "DEBUG"
+                else "An unexpected error occurred"
+            ),
+        },
     )
 
 
@@ -194,5 +195,5 @@ async def root():
         "service": "Alchemist Trading Platform API",
         "version": "1.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
     }

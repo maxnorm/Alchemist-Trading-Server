@@ -1,6 +1,7 @@
 """
 Pydantic schemas for feature catalog
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 
 class FeatureResponse(BaseModel):
     """Feature details response"""
+
     id: int
     name: str
     data_type: str
@@ -18,19 +20,21 @@ class FeatureResponse(BaseModel):
     statistics: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class FeatureListResponse(BaseModel):
     """List of features response"""
+
     features: List[FeatureResponse]
     total: int
 
 
 class DataSourceResponse(BaseModel):
     """Data source information"""
+
     id: int
     name: str
     provider_class: str
@@ -39,6 +43,6 @@ class DataSourceResponse(BaseModel):
     last_health_check: Optional[datetime] = None
     config: Optional[Dict[str, Any]] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True

@@ -1,6 +1,7 @@
 """
 Pydantic schemas for trading control
 """
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -8,6 +9,7 @@ from datetime import datetime
 
 class TradingStatusResponse(BaseModel):
     """Trading status response"""
+
     is_active: bool
     active_experiments: List[int]
     open_positions: int
@@ -18,6 +20,7 @@ class TradingStatusResponse(BaseModel):
 
 class KillSwitchStatusResponse(BaseModel):
     """Kill switch status response"""
+
     is_active: bool
     reason: Optional[str] = None
     activated_at: Optional[datetime] = None
@@ -25,6 +28,7 @@ class KillSwitchStatusResponse(BaseModel):
 
 class CircuitBreakerStatusResponse(BaseModel):
     """Circuit breaker status response"""
+
     is_active: bool
     reason: Optional[str] = None
     loss_threshold: Optional[float] = None
@@ -34,6 +38,7 @@ class CircuitBreakerStatusResponse(BaseModel):
 
 class PositionResponse(BaseModel):
     """Position response"""
+
     id: int
     experiment_id: int
     account_login: int
@@ -48,11 +53,13 @@ class PositionResponse(BaseModel):
 
 class TradeHistoryResponse(BaseModel):
     """Trade history response"""
+
     trades: List[PositionResponse]
     total: int
 
 
 class CurrencyPairsResponse(BaseModel):
     """Currency pairs response"""
+
     pairs: List[str]
     total: int
