@@ -4,7 +4,8 @@ Model registry service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional, Dict, Any
+from sqlalchemy.engine import CursorResult
+from typing import List, Optional, Dict, Any, cast
 from schemas.models import ModelResponse, PaperSessionResponse
 import json
 import logging

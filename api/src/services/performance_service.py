@@ -5,7 +5,6 @@ Business logic for performance tracking
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from sqlalchemy.engine import CursorResult
 from typing import List, Optional, Dict, Any, cast
 from schemas.performance import (
     PortfolioPerformanceResponse,
