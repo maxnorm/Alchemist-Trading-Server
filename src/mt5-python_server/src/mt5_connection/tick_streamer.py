@@ -56,6 +56,7 @@ class MT5TickStreamer:
         self.__batch_size = int(os.getenv('TICK_BATCH_SIZE', '50'))
         self.__batch_interval = float(os.getenv('TICK_BATCH_INTERVAL', '2.0'))
         self.__buffer_max_size = int(os.getenv('TICK_BUFFER_MAX_SIZE', '200'))
+        self.__feed_stale_threshold = float(os.getenv('FEED_STALE_THRESHOLD_SECONDS', '180'))
         
         # Thread-safe tick buffer
         self.__tick_buffer = []
@@ -70,6 +71,7 @@ class MT5TickStreamer:
         # Tick monitoring for market closure detection
         self.__last_tick_time = None
         self.__no_tick_warning_logged = False
+        self.__last_feed_live_state = None
         
         # Buffer overflow protection
         self.__buffer_overflow_count = 0
@@ -303,6 +305,17 @@ class MT5TickStreamer:
             # Flush if batch size reached
             elif len(self.__tick_buffer) >= self.__batch_size:
                 self.__flush_buffer_internal()
+
+    def is_feed_live(self, max_age_seconds: float = None) -> bool:
+        """
+        Return True when ticks have been received recently.
+        Uses the last tick timestamp and a configurable staleness threshold.
+        """
+        threshold = max_age_seconds if max_age_seconds is not None else self.__feed_stale_threshold
+        if self.__last_tick_time is None:
+            return False
+        age = (get_utc_time() - self.__last_tick_time).total_seconds()
+        return age <= threshold
     
     def __flush_buffer_internal(self):
         """Internal flush method (must be called with buffer_lock held)"""
@@ -432,6 +445,21 @@ class MT5TickStreamer:
                 if (current_time - last_market_check).total_seconds() >= 300:  # Check every 5 minutes
                     last_market_check = current_time
                     market_open = check_if_market_open()
+                    feed_live = self.is_feed_live()
+                    
+                    # Log feed state transitions concisely
+                    if self.__last_feed_live_state is None or self.__last_feed_live_state != feed_live:
+                        self.__logger.log_event(
+                            event_type='feed_state_change',
+                            message=f"Tick feed is {'LIVE' if feed_live else 'STALE'}",
+                            metrics={
+                                'feed_live': feed_live,
+                                'seconds_since_last_tick': (current_time - self.__last_tick_time).total_seconds() if self.__last_tick_time else None,
+                                'market_open': market_open
+                            },
+                            level='INFO' if feed_live else 'WARNING'
+                        )
+                        self.__last_feed_live_state = feed_live
                     
                     # If market is open but no ticks received for a while, log warning
                     if market_open and self.__last_tick_time is not None:
@@ -491,6 +519,18 @@ class MT5TickStreamer:
                             # Update last tick time and reset warning flag
                             self.__last_tick_time = get_utc_time()
                             self.__no_tick_warning_logged = False
+                            # Mark feed as live when a fresh tick arrives
+                            if self.__last_feed_live_state is not True:
+                                if self.__logger and hasattr(self.__logger, 'log_event'):
+                                    self.__logger.log_event(
+                                        event_type='feed_state_change',
+                                        message="Tick feed is LIVE",
+                                        metrics={
+                                            'feed_live': True,
+                                            'symbol': symbol
+                                        }
+                                    )
+                                self.__last_feed_live_state = True
                             
                             # Log every 100 ticks for monitoring
                             if tick_count % 100 == 0:

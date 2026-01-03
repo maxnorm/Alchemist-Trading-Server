@@ -170,11 +170,18 @@ class LiveTrainer:
     
     def _execute_action(self, action: int, previous_balance: float) -> float:
         """Execute action and return reward"""
+        from domain.action_type import ActionType
+        
+        # Handle global HOLD (action 0)
+        if action == 0:
+            # HOLD does nothing, return 0 reward
+            return 0.0
+        
         # Decode action to get pair_index and action_type for reward calculation
         pair_index, action_type = self.env.decode_action(action)
         
         # Validate pair_index
-        if not self.env.data_providers or pair_index >= len(self.env.data_providers):
+        if pair_index is None or not self.env.data_providers or pair_index >= len(self.env.data_providers):
             return 0.0
         
         # Get currency pair for the selected pair_index
@@ -210,14 +217,13 @@ class LiveTrainer:
                 trading_enabled=self.trading_enabled
             )
         except Exception as e:
-            from domain.action_type import ActionType
             try:
-                action_type_enum = ActionType.from_value(action_type)
-                action_name = str(action_type_enum)
+                action_name = str(action_type)
             except:
                 action_name = f"UNKNOWN({action_type})"
             
-            error_msg = (f"❌ ERROR executing action {action} ({action_name} on {pair.symbol}) | "
+            symbol = pair.symbol if pair else "UNKNOWN"
+            error_msg = (f"❌ ERROR executing action {action} ({action_name} on {symbol}) | "
                         f"Pair index: {pair_index} | "
                         f"Action type: {action_type} | "
                         f"Error: {e}")
@@ -225,14 +231,14 @@ class LiveTrainer:
             print(error_msg)
         
         # Update trade info after execution for reward calculation
-        if action_type == 1 or action_type == 2:  # Buy or Sell
+        if action_type == ActionType.BUY or action_type == ActionType.SELL:  # Buy or Sell
             # New position opened
             if self.account.current_trade:
                 trade = list(self.account.current_trade.values())[0]
                 entry_price = trade.open_price
                 lot_size = trade.lotsize
                 is_long = (trade.ordertype.value == 0)  # 0 = BUY
-        elif action_type == 3:  # Close
+        elif action_type == ActionType.CLOSE:  # Close
             # Position closed, use stored values
             pass
         
@@ -251,7 +257,7 @@ class LiveTrainer:
         reward = self.env.calculate_reward(
             previous_balance, 
             current_balance, 
-            action_type,  # Use action_type (0-3) for reward calculation, not encoded action
+            action_type.value if hasattr(action_type, 'value') else action_type,  # Use action_type value for reward calculation
             has_position,
             transaction_cost=None,  # Use detailed model instead
             entry_price=entry_price,
@@ -269,11 +275,18 @@ class LiveTrainer:
         Simulate action without executing (for training without trading)
         Uses current price movement to estimate reward and mark-to-market balance
         """
+        from domain.action_type import ActionType
+        
+        # Handle global HOLD (action 0)
+        if action == 0:
+            # HOLD does nothing, return 0 reward
+            return 0.0
+        
         # Decode action to get pair_index and action_type
         pair_index, action_type = self.env.decode_action(action)
         
         # Validate pair_index
-        if not self.env.data_providers or pair_index >= len(self.env.data_providers):
+        if pair_index is None or not self.env.data_providers or pair_index >= len(self.env.data_providers):
             return 0.0
         
         # Get currency pair for the selected pair_index
@@ -299,7 +312,7 @@ class LiveTrainer:
         lot_size = None
         is_long = None
         
-        if action_type == 1:  # Buy
+        if action_type == ActionType.BUY:  # Buy
             if not has_position:
                 entry_price = pair.ask
                 lot_size = self.risk_manager.calculate_position_size(
@@ -323,7 +336,7 @@ class LiveTrainer:
                     'is_long': is_long,
                     'pair_index': pair_index  # Track which pair this position is for
                 }
-        elif action_type == 2:  # Sell
+        elif action_type == ActionType.SELL:  # Sell
             if not has_position:
                 entry_price = pair.bid
                 lot_size = self.risk_manager.calculate_position_size(
@@ -346,7 +359,7 @@ class LiveTrainer:
                     'is_long': is_long,
                     'pair_index': pair_index  # Track which pair this position is for
                 }
-        elif action_type == 3:  # Close
+        elif action_type == ActionType.CLOSE:  # Close
             if has_position:
                 entry_price = self.simulated_position['entry_price']
                 lot_size = self.simulated_position['lot_size']
@@ -389,7 +402,7 @@ class LiveTrainer:
         reward = self.env.calculate_reward(
             previous_balance, 
             current_balance_effective, 
-            action_type,  # Use action_type (0-3) for reward calculation, not encoded action
+            action_type.value if hasattr(action_type, 'value') else action_type,  # Use action_type value for reward calculation
             has_position,
             transaction_cost=None,  # Use detailed model instead
             entry_price=entry_price,

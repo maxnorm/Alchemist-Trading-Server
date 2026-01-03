@@ -1,9 +1,9 @@
 import threading
 import time
 import logging
-from typing import Optional
+from typing import Optional, List
 from models.currency_pair import CurrencyPair
-from data_providers.base_provider import DataProvider
+from data_providers.base_provider import DataProvider, Feature
 
 logger = logging.getLogger(__name__)
 
@@ -65,3 +65,41 @@ class PriceDataProvider(DataProvider):
         if self.last_update_time is None:
             return None
         return time.time() - self.last_update_time
+    
+    def get_features(self) -> List[Feature]:
+        """
+        Return list of price features this provider offers.
+        
+        :return: List of Feature objects for price data
+        """
+        symbol = self.currency_pair.symbol
+        return [
+            Feature(
+                name=f"price_bid_{symbol}",
+                data_type=float,
+                source=f"price_{symbol}",
+                description=f"Bid price for {symbol}",
+                category="price"
+            ),
+            Feature(
+                name=f"price_ask_{symbol}",
+                data_type=float,
+                source=f"price_{symbol}",
+                description=f"Ask price for {symbol}",
+                category="price"
+            ),
+            Feature(
+                name=f"price_mid_{symbol}",
+                data_type=float,
+                source=f"price_{symbol}",
+                description=f"Mid price (average of bid and ask) for {symbol}",
+                category="price"
+            ),
+            Feature(
+                name=f"spread_{symbol}",
+                data_type=float,
+                source=f"price_{symbol}",
+                description=f"Spread (ask - bid) for {symbol}",
+                category="price"
+            ),
+        ]

@@ -4,11 +4,14 @@ Manages MT5 terminal connections
 """
 import json
 import socket
+import threading
+import time
 from typing import Dict, List, Optional, Callable
 
 from codes.socket_code import Socket
 from models.account import Account
 from mt5_connection.terminal import MT5Terminal
+
 
 
 class TerminalManager:
@@ -29,10 +32,33 @@ class TerminalManager:
         :param infos: Authentication info dictionary
         :return: Account instance or None if failed
         """
+        # #region agent log
+        try:
+            import json as json_log, os
+            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+            with open(log_path, 'a') as f:
+                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"I","location":"terminal_manager.py:22","message":"authenticate_terminal entry","data":{"infos_keys":list(infos.keys())},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         if len(infos) != 2:
             return None
         
         terminal = MT5Terminal(client)
+        
+        # #region agent log
+        try:
+            import json as json_log, os
+            sock_state = {'closed':False}
+            try:
+                client.getpeername()
+            except Exception as e:
+                sock_state['closed'] = True
+                sock_state['error'] = str(e)
+            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+            with open(log_path, 'a') as f:
+                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"I","location":"terminal_manager.py:22","message":"authenticate_terminal socket state before send","data":sock_state,"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
         # Send successful auth response
         data = {
@@ -41,6 +67,21 @@ class TerminalManager:
         }
         client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
         
+        # #region agent log
+        try:
+            import json as json_log, os
+            sock_state = {'closed':False}
+            try:
+                client.getpeername()
+            except Exception as e:
+                sock_state['closed'] = True
+                sock_state['error'] = str(e)
+            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+            with open(log_path, 'a') as f:
+                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"I","location":"terminal_manager.py:22","message":"authenticate_terminal socket state after send","data":sock_state,"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
+        
         # Find existing account or create new one
         login = infos['login']
         account = self._find_account(login)
@@ -48,9 +89,20 @@ class TerminalManager:
         if account:
             account.set_terminal(terminal)
         else:
-            from models.account import Account
             account = Account(login, terminal)
             self.accounts.append(account)
+        
+        # Start heartbeat to keep connection alive
+        self._start_heartbeat(terminal)
+        
+        # #region agent log
+        try:
+            import json as json_log, os
+            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+            with open(log_path, 'a') as f:
+                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"I","location":"terminal_manager.py:22","message":"authenticate_terminal complete","data":{"login":login,"terminal_id":terminal.id},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         
         return account
     
@@ -68,3 +120,14 @@ class TerminalManager:
     def get_all_accounts(self) -> List[Account]:
         """Get all accounts"""
         return self.accounts.copy()
+    
+    def _start_heartbeat(self, terminal: MT5Terminal, interval: int = 30):
+        """Background heartbeat to keep MT5 terminal connection alive"""
+        def _loop():
+            while True:
+                time.sleep(interval)
+                try:
+                    terminal.ping_sync()
+                except Exception:
+                    break
+        threading.Thread(target=_loop, daemon=True).start()

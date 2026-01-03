@@ -26,11 +26,30 @@ class AgentConfig:
         return cls()
     
     @classmethod
-    def for_live_trading(cls) -> 'AgentConfig':
-        """Get configuration optimized for live trading"""
+    def for_live_trading(cls, experience_count: int = 0) -> 'AgentConfig':
+        """
+        Get configuration optimized for live trading with adaptive epsilon
+        
+        :param experience_count: Current number of experiences (for adaptive epsilon)
+        :return: AgentConfig with adaptive epsilon based on experience
+        """
+        # Calculate adaptive epsilon based on experience count
+        if experience_count < TradingConstants.ADAPTIVE_EPSILON_THRESHOLD_1:
+            initial_epsilon = TradingConstants.ADAPTIVE_EPSILON_HIGH
+        elif experience_count < TradingConstants.ADAPTIVE_EPSILON_THRESHOLD_2:
+            initial_epsilon = TradingConstants.ADAPTIVE_EPSILON_MEDIUM
+        elif experience_count < TradingConstants.ADAPTIVE_EPSILON_THRESHOLD_3:
+            initial_epsilon = TradingConstants.ADAPTIVE_EPSILON_LOW
+        else:
+            initial_epsilon = TradingConstants.ADAPTIVE_EPSILON_MIN
+        
+        # Allow environment variable override
+        epsilon = float(os.getenv('AI_LIVE_EPSILON', str(initial_epsilon)))
+        epsilon_decay = float(os.getenv('AI_LIVE_EPSILON_DECAY', str(TradingConstants.DEFAULT_LIVE_EPSILON_DECAY)))
+        
         return cls(
-            epsilon=TradingConstants.DEFAULT_LIVE_EPSILON,
-            epsilon_decay=TradingConstants.DEFAULT_LIVE_EPSILON_DECAY
+            epsilon=epsilon,
+            epsilon_decay=epsilon_decay
         )
     
     @classmethod

@@ -6,7 +6,7 @@
 #include <socket_utils.mqh>
 
 input string ip = "127.0.0.1";
-input int port = 1234;
+input int port = 8080;
 
 string separator = "|";
 

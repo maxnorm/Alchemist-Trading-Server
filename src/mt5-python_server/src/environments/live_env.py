@@ -39,10 +39,12 @@ class LiveTradingEnv(BaseTradingEnv):
         # total_features = n_pairs * features_per_pair + economic_features
         total_features = n_pairs * features_per_pair
         
-        # Update action space to include pair selection: n_pairs * 4 actions
-        # Action encoding: action = pair_index * 4 + action_type
-        # where action_type: 0=Hold, 1=Buy, 2=Sell, 3=Close
-        action_size = n_pairs * 4
+        # Update action space: (n_pairs * 3) + 1 actions
+        # Action encoding:
+        #   action = 0 → Global HOLD (no pair)
+        #   action = 1 + (pair_index * 3 + action_type_offset) for pair actions
+        #   where action_type_offset: 0=BUY, 1=SELL, 2=CLOSE
+        action_size = (n_pairs * 3) + 1
         
         super().__init__(window_size, price_shape=total_features, action_size=action_size)
         self.account = account

@@ -71,6 +71,37 @@ class CloseActionStrategy(ActionStrategy):
             # Exit price is the opposite of entry (bid for long, ask for short)
             exit_price = context.pair.bid if is_long else context.pair.ask
             
+            # Log trade exit to performance tracking if available
+            performance_trade_id = None
+            if context.trade_logger and context.session_id and context.model_id:
+                try:
+                    # Try to find the trade_id from the trade object or look it up by ticket
+                    if hasattr(trade, 'performance_trade_id') and trade.performance_trade_id:
+                        performance_trade_id = trade.performance_trade_id
+                    else:
+                        # Try to find trade by ticket/uuid
+                        # For now, we'll need to track this mapping - this is a limitation
+                        # In Phase 7, we'll have better order tracking via OMS
+                        pass
+                    
+                    if performance_trade_id:
+                        # Calculate P&L in pips (simplified - would need proper pip calculation)
+                        pnl = trade.profit if hasattr(trade, 'profit') else 0.0
+                        pnl_pips = 0.0  # Would need proper calculation based on symbol
+                        
+                        # Calculate duration (would need entry time from trade)
+                        duration_seconds = 0  # Would need to track entry time
+                        
+                        context.trade_logger.log_trade_exit(
+                            trade_id=performance_trade_id,
+                            exit_price=exit_price,
+                            pnl=pnl,
+                            pnl_pips=pnl_pips,
+                            duration_seconds=duration_seconds
+                        )
+                except Exception as e:
+                    self.logger.warning(f"Failed to log trade exit to performance tracking: {e}")
+            
             if hasattr(self.logger, 'log_trade'):
                 self.logger.log_trade(
                     action='close',

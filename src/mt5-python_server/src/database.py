@@ -142,6 +142,15 @@ class Database:
                     self.__metrics['connection_failures'] += 1
                 raise e
     
+    def get_connection(self, retries=3):
+        """
+        Public method to get a database connection from the pool.
+        
+        :param retries: Number of retry attempts for transient failures
+        :return: MariaDB connection
+        """
+        return self.__get_connection(retries)
+    
     def check_connection_health(self):
         """
         Check if the database connection is healthy

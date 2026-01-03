@@ -39,8 +39,24 @@ class TradingConstants:
     DEFAULT_TARGET_UPDATE_FREQ = 100
     
     # Live trading agent defaults
-    DEFAULT_LIVE_EPSILON = 0.01  # Low epsilon for live trading (minimal exploration)
-    DEFAULT_LIVE_EPSILON_DECAY = 1.0  # No decay in live trading
+    DEFAULT_LIVE_EPSILON = 0.3  # Start with medium exploration
+    DEFAULT_LIVE_EPSILON_DECAY = 0.998  # Gradual decay
+    
+    # Adaptive epsilon thresholds (experience-based)
+    ADAPTIVE_EPSILON_HIGH = 0.5      # 50% exploration (< 100 experiences)
+    ADAPTIVE_EPSILON_MEDIUM = 0.3    # 30% exploration (100-500 experiences)
+    ADAPTIVE_EPSILON_LOW = 0.1       # 10% exploration (500-1000 experiences)
+    ADAPTIVE_EPSILON_MIN = 0.01      # 1% exploration (1000+ experiences)
+    
+    # Adaptive epsilon thresholds (experience count)
+    ADAPTIVE_EPSILON_THRESHOLD_1 = 100   # First threshold
+    ADAPTIVE_EPSILON_THRESHOLD_2 = 500   # Second threshold
+    ADAPTIVE_EPSILON_THRESHOLD_3 = 1000  # Third threshold
+    
+    # Performance-based epsilon adjustment
+    REWARD_VARIANCE_THRESHOLD_HIGH = 0.1   # High variance -> explore more
+    REWARD_VARIANCE_THRESHOLD_LOW = 0.01   # Low variance -> exploit more
+    PERFORMANCE_WINDOW_SIZE = 50           # Window for performance metrics
     
     # Contract sizes
     STANDARD_LOT_SIZE = 100000  # Standard lot = 100,000 units

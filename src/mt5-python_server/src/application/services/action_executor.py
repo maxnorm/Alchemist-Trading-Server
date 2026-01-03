@@ -3,7 +3,7 @@ Action executor service
 Centralized service for executing trading actions using strategies
 """
 import logging
-from typing import Optional
+from typing import Optional, Any
 
 from domain.action_type import ActionType
 from domain.execution_context import ExecutionContext
@@ -35,11 +35,16 @@ class ActionExecutor:
         account,
         risk_manager,
         previous_balance: float,
-        trading_enabled: bool = False
+        trading_enabled: bool = False,
+        model_id: Optional[int] = None,
+        session_id: Optional[int] = None,
+        trade_logger: Optional[Any] = None
     ) -> float:
         """
         Execute an action and return reward
-        :param action: Encoded action (pair_index * 4 + action_type)
+        :param action: Encoded action
+                0 = Global HOLD (no pair)
+                1+ = 1 + (pair_index * 3 + action_type_offset)
         :param environment: Trading environment
         :param account: Account instance
         :param risk_manager: Risk manager instance
@@ -47,11 +52,44 @@ class ActionExecutor:
         :param trading_enabled: Whether trading is enabled
         :return: Reward value
         """
+        # Handle global HOLD action (action 0)
+        if action == 0:
+            # HOLD doesn't need a pair - execute directly
+            has_position = len(account.current_trade) > 0 if account else False
+            # Use first pair for context if available, or None
+            pair = environment.data_providers[0].currency_pair if environment.data_providers else None
+            context = ExecutionContext(
+                account=account,
+                pair=pair,
+                environment=environment,
+                risk_manager=risk_manager,
+                previous_balance=previous_balance,
+                has_position=has_position,
+                trading_enabled=trading_enabled,
+                model_id=model_id,
+                session_id=session_id,
+                trade_logger=trade_logger
+            )
+            strategy = self._strategies.get(ActionType.HOLD)
+            if strategy:
+                try:
+                    return strategy.execute(context)
+                except Exception as e:
+                    if hasattr(self.logger, 'log_error'):
+                        self.logger.log_error(
+                            event_type='action_execution_error',
+                            error=f"Error executing HOLD action: {e}",
+                            exc_info=True
+                        )
+                    else:
+                        self.logger.error(f"Error executing HOLD action: {e}", exc_info=True)
+            return 0.0
+        
         # Decode action to get pair_index and action_type
-        pair_index, action_type_int = environment.decode_action(action)
+        pair_index, action_type = environment.decode_action(action)
         
         # Validate pair_index
-        if not environment.data_providers or pair_index >= len(environment.data_providers):
+        if pair_index is None or not environment.data_providers or pair_index >= len(environment.data_providers):
             if hasattr(self.logger, 'log_event'):
                 self.logger.log_event(
                     event_type='invalid_pair_index',
@@ -78,21 +116,6 @@ class ActionExecutor:
                 self.logger.warning(f"Pair is None for index {pair_index}")
             return 0.0
         
-        # Convert action_type to enum
-        try:
-            action_type = ActionType.from_value(action_type_int)
-        except ValueError as e:
-            if hasattr(self.logger, 'log_error'):
-                self.logger.log_error(
-                    event_type='invalid_action_type',
-                    error=f"Invalid action type: {action_type_int} - {e}",
-                    metrics={'action_type': action_type_int},
-                    exc_info=False
-                )
-            else:
-                self.logger.error(f"Invalid action type: {action_type_int} - {e}")
-            return 0.0
-        
         # Create execution context
         has_position = len(account.current_trade) > 0 if account else False
         context = ExecutionContext(
@@ -102,7 +125,10 @@ class ActionExecutor:
             risk_manager=risk_manager,
             previous_balance=previous_balance,
             has_position=has_position,
-            trading_enabled=trading_enabled
+            trading_enabled=trading_enabled,
+            model_id=model_id,
+            session_id=session_id,
+            trade_logger=trade_logger
         )
         
         # Get strategy for action type

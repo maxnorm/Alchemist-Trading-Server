@@ -70,6 +70,89 @@ services:
         profiles:
             - backup
 
+    # MLflow tracking server for experiment tracking and model registry
+    mlflow:
+        container_name: "mlflow"
+        image: ghcr.io/mlflow/mlflow:v2.10.0
+        ports:
+            - "5000:5000"
+        environment:
+            MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow/mlflow.db
+            MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+        volumes:
+            - "mlflow_data:/mlflow"
+        command: >
+            mlflow server
+            --host 0.0.0.0
+            --port 5000
+            --backend-store-uri sqlite:///mlflow/mlflow.db
+            --default-artifact-root /mlflow/artifacts
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 60s
+        restart: unless-stopped
+
+    # FastAPI REST API and WebSocket service
+    api:
+        container_name: "api"
+        build:
+            context: ./api
+            dockerfile: Dockerfile
+        ports:
+            - "8000:8000"
+        depends_on:
+            mariadb:
+                condition: service_healthy
+            mlflow:
+                condition: service_healthy
+        environment:
+            DATABASE_URL: mysql+pymysql://forex_user:forex_password@mariadb:3306/db_forex
+            DB_HOST: mariadb
+            DB_PORT: 3306
+            DB_USER: forex_user
+            DB_PASSWORD: forex_password
+            DB_NAME: db_forex
+            MLFLOW_TRACKING_URI: http://mlflow:5000
+            API_HOST: 0.0.0.0
+            API_PORT: 8000
+            LOG_LEVEL: INFO
+            KILL_SWITCH_FILE: /app/logs/kill_switch.flag
+        volumes:
+            - "./logs:/app/logs"
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 60s
+
+    # React Dashboard
+    dashboard:
+        container_name: "dashboard"
+        build:
+            context: ./dashboard
+            dockerfile: Dockerfile
+        ports:
+            - "3000:80"
+        environment:
+            VITE_API_URL: http://localhost:8000
+            VITE_WS_URL: ws://localhost:8000
+        depends_on:
+            api:
+                condition: service_started
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
 volumes:
     mariadb_data:
     backup_data:
+    mlflow_data:

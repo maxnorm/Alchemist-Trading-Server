@@ -1,3 +1,8 @@
+//+------------------------------------------------------------------+
+//|                                        mt5_trading_operation.mq5 |
+//|                                                 Maxime Normandin |
+//|                                             https://www.mql5.com |
+//+------------------------------------------------------------------+
 #property copyright "Maxime Normandin"
 #property link      "https://www.mql5.com"
 #property version   "1.00"
@@ -12,7 +17,7 @@
 #include <Trade\OrderInfo.mqh>
 
 input string ip = "127.0.0.1";
-input int port = 1234;
+input int port = 8080;
 
 int auth_code = 2;
 int successful_auth_code = 0;
@@ -129,11 +134,13 @@ bool auth()
 void start_listenning()
    {
       Print("=== EA Started listening for server requests ===");
+      PrintFormat("[EA] start_listenning: Socket handle: %d", socket);
       int request_count = 0;
       
       while (true)
       {
          PrintFormat("[EA] Waiting for message from server (request #%d)...", request_count);
+         PrintFormat("[EA] start_listenning: Socket state check - handle: %d", socket);
          
          CJAVal infos = receive_msg(socket);
          request_count++;
@@ -141,8 +148,20 @@ void start_listenning()
          string out= "";
          infos.Serialize(out);
          PrintFormat("[EA] Received message #%d: %s", request_count, out);
+         
+         // Check if message is valid (has a request field)
+         if (!infos.HasKey("request"))
+         {
+            PrintFormat("[EA] start_listenning: ERROR - Invalid message received (no 'request' field). Socket may be broken.");
+            Print("[EA] start_listenning: Attempting to continue, but connection may be lost.");
+            // Continue loop to try again - socket might recover or we'll detect it on next read
+            continue;
+         }
 
+         // Wrap handle_request in error handling to prevent EA from crashing
+         Print("[EA] start_listenning: About to call handle_request...");
          handle_request(infos);
+         Print("[EA] start_listenning: handle_request completed successfully");
          
          PrintFormat("[EA] Finished processing request #%d", request_count);
       }
@@ -151,6 +170,7 @@ void start_listenning()
 // Handle the request from the server
 void handle_request(CJAVal& infos)
    {
+      Print("[EA] handle_request: Entry");
       long request = infos["request"].ToInt();
       PrintFormat("[EA] handle_request: Processing request type %d", request);
 
@@ -158,20 +178,24 @@ void handle_request(CJAVal& infos)
       {
          Print("[EA] handle_request: ACCOUNT_INFOS request");
          CJAVal account_infos = get_account_infos();
+         Print("[EA] handle_request: Got account infos, sending response...");
          send_msg(socket, account_infos);
          Print("[EA] handle_request: ACCOUNT_INFOS response sent");
       }
       else if (request == OPEN_ORDER)
       {
          Print("[EA] handle_request: OPEN_ORDER request received");
+         Print("[EA] handle_request: Calling send_order...");
          CJAVal res = send_order(infos);
+         Print("[EA] handle_request: send_order completed");
          
          string res_str = "";
          res.Serialize(res_str);
          PrintFormat("[EA] handle_request: Sending order response: %s", res_str);
          
+         Print("[EA] handle_request: About to send response via socket...");
          send_msg(socket, res);
-         Print("[EA] handle_request: OPEN_ORDER response sent");
+         Print("[EA] handle_request: OPEN_ORDER response sent successfully");
       }
       else if (request == CLOSE_ORDER)
       {
@@ -184,6 +208,7 @@ void handle_request(CJAVal& infos)
       {
          PrintFormat("[EA] handle_request: ERROR - Unknown request type: %d", request);
       }
+      Print("[EA] handle_request: Exit");
    }
 
 // Get the necessary account informations for the request ACCOUNT_INFOS(100)
@@ -379,14 +404,28 @@ CJAVal send_order(CJAVal& infos)
       PrintFormat("[EA] send_order: Deviation: %d, Magic: %d, Filling: FOK", 
                   request.deviation, request.magic);
       
-      // Check if AutoTrading is enabled
+      // Check if AutoTrading is enabled - FAIL EARLY if disabled
       if (!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
       {
          Print("[EA] send_order: ERROR - AutoTrading is disabled in terminal!");
+         CJAVal res;
+         res["return_code"] = 10004; // TRADE_RETCODE_REJECT
+         res["ticket"] = 0;
+         res["lotsize"] = 0;
+         res["price"] = 0;
+         res["comment"] = "AutoTrading is disabled in terminal. Enable it in Tools > Options > Expert Advisors";
+         return res;
       }
       if (!MQLInfoInteger(MQL_TRADE_ALLOWED))
       {
          Print("[EA] send_order: ERROR - Trading is not allowed in MQL!");
+         CJAVal res;
+         res["return_code"] = 10004; // TRADE_RETCODE_REJECT
+         res["ticket"] = 0;
+         res["lotsize"] = 0;
+         res["price"] = 0;
+         res["comment"] = "Trading is not allowed in MQL. Check EA permissions.";
+         return res;
       }
       
       Print("[EA] send_order: Attempting OrderSend with FOK filling...");

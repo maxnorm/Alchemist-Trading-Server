@@ -176,25 +176,84 @@ class DQNAgent:
         else:
             self.memory.append((state, action, reward, next_state, done))
     
-    def act(self, state: np.ndarray, training: bool = True) -> int:
+    def act(self, state: np.ndarray, training: bool = True, action_mask: np.ndarray = None) -> int:
         """
-        Choose action using epsilon-greedy policy
+        Choose action using epsilon-greedy policy with optional action masking
         
         :param state: Current state
         :param training: Whether in training mode (affects epsilon)
+        :param action_mask: Optional binary mask (1=valid, 0=invalid) for each action
         :return: Selected action
         """
         if training and np.random.rand() <= self.epsilon:
+            # Exploration: sample only from valid actions when mask provided
+            if action_mask is not None:
+                valid_actions = np.where(action_mask == 1)[0]
+                if len(valid_actions) == 0:
+                    # Fallback: if all actions masked, return HOLD (action 0)
+                    return 0
+                return int(np.random.choice(valid_actions))
             return int(np.random.randint(self.action_size))
         
         # Reshape state for model input
         state = np.expand_dims(state, axis=0)
         
         # Get Q-values from network
-        q_values = self.q_network.predict(state, verbose=0)
+        q_values = self.q_network.predict(state, verbose=0)[0]
+        
+        # Apply action mask: set invalid actions to negative infinity
+        if action_mask is not None:
+            q_values = q_values.copy()  # Don't modify original array
+            q_values[action_mask == 0] = -np.inf
         
         # Return action with highest Q-value (convert to Python int)
-        return int(np.argmax(q_values[0]))
+        return int(np.argmax(q_values))
+    
+    def update_epsilon_adaptive(
+        self, 
+        experience_count: int, 
+        recent_rewards: Optional[List[float]] = None
+    ) -> float:
+        """
+        Update epsilon adaptively based on experience count and optionally performance
+        
+        :param experience_count: Current number of experiences in memory
+        :param recent_rewards: Optional list of recent rewards for performance-based adjustment
+        :return: New epsilon value
+        """
+        from domain.constants import TradingConstants
+        
+        # Calculate base epsilon based on experience count
+        if experience_count < TradingConstants.ADAPTIVE_EPSILON_THRESHOLD_1:
+            target_epsilon = TradingConstants.ADAPTIVE_EPSILON_HIGH
+        elif experience_count < TradingConstants.ADAPTIVE_EPSILON_THRESHOLD_2:
+            target_epsilon = TradingConstants.ADAPTIVE_EPSILON_MEDIUM
+        elif experience_count < TradingConstants.ADAPTIVE_EPSILON_THRESHOLD_3:
+            target_epsilon = TradingConstants.ADAPTIVE_EPSILON_LOW
+        else:
+            target_epsilon = TradingConstants.ADAPTIVE_EPSILON_MIN
+        
+        # Optional: Adjust based on performance metrics
+        if recent_rewards and len(recent_rewards) >= TradingConstants.PERFORMANCE_WINDOW_SIZE:
+            reward_variance = float(np.var(recent_rewards[-TradingConstants.PERFORMANCE_WINDOW_SIZE:]))
+            avg_reward = float(np.mean(recent_rewards[-TradingConstants.PERFORMANCE_WINDOW_SIZE:]))
+            
+            # High variance or negative returns -> explore more
+            if (reward_variance > TradingConstants.REWARD_VARIANCE_THRESHOLD_HIGH or 
+                avg_reward < 0):
+                target_epsilon = min(0.5, target_epsilon * 1.2)
+            # Low variance and positive returns -> exploit more
+            elif (reward_variance < TradingConstants.REWARD_VARIANCE_THRESHOLD_LOW and 
+                  avg_reward > 0):
+                target_epsilon = max(self.epsilon_min, target_epsilon * 0.9)
+        
+        # Smooth transition: only update if change is significant
+        if abs(self.epsilon - target_epsilon) > 0.05:  # 5% threshold
+            old_epsilon = self.epsilon
+            self.epsilon = max(self.epsilon_min, min(0.5, target_epsilon))
+            return self.epsilon
+        
+        return self.epsilon
     
     def replay(self) -> float:
         """
@@ -477,12 +536,13 @@ class DQNAgent:
         # Return as list of arrays
         return [q_values[i] for i in range(len(states))]
     
-    def act_batch(self, states: list, training: bool = True) -> list:
+    def act_batch(self, states: list, training: bool = True, action_masks: list = None) -> list:
         """
-        Choose actions for a batch of states
+        Choose actions for a batch of states with optional action masking
         
         :param states: List of states
         :param training: Whether in training mode
+        :param action_masks: Optional list of binary masks (1=valid, 0=invalid), one per state
         :return: List of selected actions
         """
         if not states:
@@ -493,11 +553,25 @@ class DQNAgent:
         
         actions = []
         for i, q_values in enumerate(q_values_batch):
+            action_mask = action_masks[i] if action_masks and i < len(action_masks) else None
+            
             if training and np.random.rand() <= self.epsilon:
-                # Random action (exploration)
-                actions.append(int(np.random.randint(self.action_size)))
+                # Exploration: sample from valid actions only
+                if action_mask is not None:
+                    valid_actions = np.where(action_mask == 1)[0]
+                    if len(valid_actions) == 0:
+                        # Fallback: if all actions masked, return HOLD (action 0)
+                        actions.append(0)
+                    else:
+                        actions.append(int(np.random.choice(valid_actions)))
+                else:
+                    # Random action (exploration)
+                    actions.append(int(np.random.randint(self.action_size)))
             else:
                 # Greedy action (exploitation)
-                actions.append(int(np.argmax(q_values)))
+                q_values_copy = q_values.copy() if action_mask is not None else q_values
+                if action_mask is not None:
+                    q_values_copy[action_mask == 0] = -np.inf
+                actions.append(int(np.argmax(q_values_copy)))
         
         return actions

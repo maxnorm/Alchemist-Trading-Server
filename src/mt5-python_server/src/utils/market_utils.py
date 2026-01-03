@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Iterable
 from utils.time_utils import get_utc_time, get_est_timezone
 import pytz
 
@@ -98,3 +99,35 @@ def get_next_market_open_time():
     next_open_utc = next_open_est.astimezone(pytz.UTC)
     
     return next_open_utc
+
+
+def get_market_feed_status(
+    data_providers: Iterable = None,
+    max_feed_age_seconds: float = 180.0
+) -> dict:
+    """
+    Combined status helper for calendar + feed freshness.
+    
+    :param data_providers: Iterable of providers implementing is_stale(max_age_seconds)
+    :param max_feed_age_seconds: Max age before feed considered stale
+    :return: Dict with market_open, feed_live, ready flags
+    """
+    market_open = check_if_market_open()
+    feed_live = False
+    
+    if data_providers:
+        for provider in data_providers:
+            is_stale = getattr(provider, "is_stale", None)
+            try:
+                if callable(is_stale) and not is_stale(max_feed_age_seconds):
+                    feed_live = True
+                    break
+            except Exception:
+                # Ignore provider errors; treat as stale
+                continue
+    
+    return {
+        "market_open": market_open,
+        "feed_live": feed_live,
+        "ready": market_open and feed_live
+    }

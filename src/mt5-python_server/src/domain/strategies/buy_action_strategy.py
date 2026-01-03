@@ -25,16 +25,15 @@ class BuyActionStrategy(ActionStrategy):
     def can_execute(self, context: ExecutionContext) -> Tuple[bool, str]:
         """
         Check if buy action can be executed
+        Allows multiple positions up to max_open_positions limit (enforced by RiskManager)
         :param context: Execution context
         :return: Tuple of (can_execute, reason)
         """
-        if context.has_position:
-            return False, f"Already have position on {context.pair.symbol}"
-        
         # Check if market is open
         if not check_if_market_open():
             return False, "Market is closed"
         
+        # Check risk limits (includes max_open_positions check)
         can_trade, reason = context.can_trade
         if not can_trade:
             return False, f"Risk management: {reason}"
@@ -112,6 +111,32 @@ class BuyActionStrategy(ActionStrategy):
             
             if trade:
                 # Order succeeded
+                # Log to performance tracking if available
+                if context.trade_logger and context.session_id and context.model_id:
+                    try:
+                        import uuid
+                        order_uuid = str(uuid.uuid4())  # Generate UUID for order tracking
+                        # Store order_uuid in trade object if possible for later reference
+                        if hasattr(trade, 'uuid'):
+                            trade.uuid = order_uuid
+                        
+                        trade_id = context.trade_logger.log_trade_entry(
+                            session_id=context.session_id,
+                            model_id=context.model_id,
+                            order_uuid=order_uuid,
+                            symbol=context.pair.symbol,
+                            action='BUY',
+                            entry_price=trade.open_price,
+                            volume=trade.lotsize,
+                            commission=0.0,  # Can be extracted from trade if available
+                            swap=0.0
+                        )
+                        # Store trade_id for later reference when closing
+                        if hasattr(trade, 'performance_trade_id'):
+                            trade.performance_trade_id = trade_id
+                    except Exception as e:
+                        self.logger.warning(f"Failed to log trade entry to performance tracking: {e}")
+                
                 if hasattr(self.logger, 'log_trade'):
                     self.logger.log_trade(
                         action='buy',

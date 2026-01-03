@@ -52,9 +52,20 @@ class AITradingIntegration:
         risk_config = RiskConfig.from_env() if os.getenv('RISK_CONFIG_FROM_ENV') else RiskConfig.default()
         risk_manager = RiskManagerFactory.create_risk_manager(risk_config)
         
-        # Create agent using factory
-        agent_config = AgentConfig.for_live_trading()
+        # Create agent using factory (start with 0 experiences, will adapt as it learns)
+        agent_config = AgentConfig.for_live_trading(experience_count=0)
         agent = AgentFactory.create_agent(env, agent_config, model_path)
+        
+        # If loading existing model, update epsilon based on current experience count
+        if model_path and os.path.exists(model_path):
+            try:
+                # Try to get experience count from loaded agent
+                experience_count = len(agent.memory)
+                if experience_count > 0:
+                    agent.update_epsilon_adaptive(experience_count)
+            except Exception as e:
+                # If memory not accessible, use default
+                pass
         
         # Create trading controller
         controller = TradingController(

@@ -48,6 +48,38 @@ class AgentTrainer:
         self.episode_rewards = []
         self.episode_losses = []
         self.episode_profits = []
+    
+    def _build_action_mask(self) -> np.ndarray:
+        """
+        Build action mask based on current state
+        :return: Binary mask array (1=valid, 0=invalid) for each action
+        """
+        if not self.env.data_providers:
+            # If no data providers, only HOLD is valid
+            mask = np.zeros(self.agent.action_size, dtype=np.int32)
+            mask[0] = 1  # HOLD is always valid
+            return mask
+        
+        n_pairs = len(self.env.data_providers)
+        action_mask = np.ones((n_pairs * 3) + 1, dtype=np.int32)  # +1 for global HOLD
+        
+        # Action 0 (HOLD) is always valid
+        action_mask[0] = 1
+        
+        # Check if there's an open position
+        has_position = len(self.account.current_trade) > 0 if self.account else False
+        
+        # For each pair, mask actions based on position status
+        # Allow multiple positions up to max_open_positions (enforced by risk manager)
+        # Only mask CLOSE when no position exists
+        for pair_index in range(n_pairs):
+            if not has_position:
+                # No position: mask CLOSE
+                # CLOSE action: action = 1 + (pair_index * 3 + 2)
+                close_action = 1 + (pair_index * 3 + 2)
+                action_mask[close_action] = 0
+        
+        return action_mask
         
     def train_episode(self, max_steps: int = 1000) -> dict:
         """
@@ -62,8 +94,11 @@ class AgentTrainer:
         steps = 0
         
         for step in range(max_steps):
+            # Build action mask based on current state
+            action_mask = self._build_action_mask()
+            
             # Choose action
-            action = self.agent.act(state, training=True)
+            action = self.agent.act(state, training=True, action_mask=action_mask)
             
             # Check risk limits
             can_trade, reason = self.risk_manager.can_trade(self.account)
@@ -117,14 +152,22 @@ class AgentTrainer:
     def _execute_action(self, action: int) -> float:
         """
         Execute action and return reward
-        :param action: Encoded action (pair_index * 4 + action_type)
+        :param action: Encoded action
+                0 = Global HOLD (no pair)
+                1+ = 1 + (pair_index * 3 + action_type_offset)
         :return: Reward
         """
+        from domain.action_type import ActionType
+        
+        # Handle global HOLD (action 0)
+        if action == 0:
+            return 0.0  # HOLD does nothing, no reward change
+        
         # Decode action to get pair_index and action_type
         pair_index, action_type = self.env.decode_action(action)
         
         # Validate pair_index
-        if not self.env.data_providers or pair_index >= len(self.env.data_providers):
+        if pair_index is None or not self.env.data_providers or pair_index >= len(self.env.data_providers):
             return 0.0
         
         # Get currency pair for the selected pair_index
@@ -137,8 +180,9 @@ class AgentTrainer:
         has_position = len(self.account.current_trade) > 0
         
         try:
-            if action_type == 1:  # Buy
-                if not has_position and self.risk_manager.can_trade(self.account)[0]:
+            if action_type == ActionType.BUY:  # Buy
+                # Allow multiple positions - RiskManager checks max_open_positions
+                if self.risk_manager.can_trade(self.account)[0]:
                     entry_price = pair.ask
                     lot_size = self.risk_manager.calculate_position_size(
                         self.account, pair, entry_price
@@ -149,8 +193,9 @@ class AgentTrainer:
                     from codes.order_type import OrderType
                     self.account.send_order(OrderType.BUY, pair, lot_size, None, sl, tp)
             
-            elif action_type == 2:  # Sell
-                if not has_position and self.risk_manager.can_trade(self.account)[0]:
+            elif action_type == ActionType.SELL:  # Sell
+                # Allow multiple positions - RiskManager checks max_open_positions
+                if self.risk_manager.can_trade(self.account)[0]:
                     entry_price = pair.bid
                     lot_size = self.risk_manager.calculate_position_size(
                         self.account, pair, entry_price
@@ -161,15 +206,14 @@ class AgentTrainer:
                     from codes.order_type import OrderType
                     self.account.send_order(OrderType.SELL, pair, lot_size, None, sl, tp)
             
-            elif action_type == 3:  # Close position
+            elif action_type == ActionType.CLOSE:  # Close position
                 if has_position:
                     for ticket in list(self.account.current_trade.keys()):
                         self.account.close_order(ticket)
-            
-            # action_type == 0 (Hold) does nothing
         
         except Exception as e:
-            print(f"Error executing action {action} (pair_index={pair_index}, action_type={action_type}) on {pair.symbol}: {e}")
+            symbol = pair.symbol if pair else "UNKNOWN"
+            print(f"Error executing action {action} (pair_index={pair_index}, action_type={action_type}) on {symbol}: {e}")
         
         # Calculate reward with detailed transaction cost model
         current_balance = self.account.balance
@@ -180,19 +224,19 @@ class AgentTrainer:
         lot_size = None
         is_long = None
         
-        if action_type == 1:  # Buy
+        if action_type == ActionType.BUY:  # Buy
             entry_price = pair.ask if pair else None
             lot_size = self.risk_manager.calculate_position_size(
                 self.account, pair, entry_price
             ) if pair and entry_price else None
             is_long = True
-        elif action_type == 2:  # Sell
+        elif action_type == ActionType.SELL:  # Sell
             entry_price = pair.bid if pair else None
             lot_size = self.risk_manager.calculate_position_size(
                 self.account, pair, entry_price
             ) if pair and entry_price else None
             is_long = False
-        elif action_type == 3:  # Close
+        elif action_type == ActionType.CLOSE:  # Close
             if has_position and self.account.current_trade:
                 trade = list(self.account.current_trade.values())[0]
                 entry_price = trade.open_price
@@ -212,7 +256,7 @@ class AgentTrainer:
         reward = self.env.calculate_reward(
             previous_balance, 
             current_balance, 
-            action_type,  # Use action_type (0-3) for reward calculation, not encoded action
+            action_type.value if hasattr(action_type, 'value') else action_type,  # Use action_type value for reward calculation
             has_position,
             transaction_cost=None,  # Use detailed model instead
             entry_price=entry_price,

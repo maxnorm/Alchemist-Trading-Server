@@ -3,12 +3,15 @@ Execution context value object
 Immutable context for action execution
 """
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from models.account import Account
 from models.currency_pair import CurrencyPair
 from environments.live_env import LiveTradingEnv
 from utils.risk_management import RiskManager
+
+if TYPE_CHECKING:
+    from performance import TradeLogger
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,10 @@ class ExecutionContext:
     previous_balance: float
     has_position: bool
     trading_enabled: bool = False
+    # Performance tracking (optional - set when model is assigned to account)
+    model_id: Optional[int] = None
+    session_id: Optional[int] = None
+    trade_logger: Optional['TradeLogger'] = None
     
     @property
     def current_balance(self) -> float:

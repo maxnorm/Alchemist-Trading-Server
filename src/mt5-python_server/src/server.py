@@ -2,25 +2,25 @@
 Class Server for connection to MetaTrader5
 """
 import os
+import datetime
+import json
+import socket
 import threading
-from typing import Optional, List
+import time
 
 from database import Database
 from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 from utils.time_utils import print_with_datetime
 from codes.socket_code import Socket
+from mt5_connection.tick_streamer import MT5TickStreamer
+from mt5_connection.terminal import MT5Terminal
+from models.currency_pair import CurrencyPair
 from models.account import Account
 from data_providers.price_provider import PriceDataProvider
+from data_providers.indicator_provider import IndicatorProvider
+from data_providers.registry import DataProviderRegistry
+from features.catalog import FeatureCatalog
 from environments.live_env import LiveTradingEnv
-from ai_trading_integration import AITradingIntegration
-from infrastructure.socket.socket_server import SocketServer
-from infrastructure.auth.authentication_handler import AuthenticationHandler
-from infrastructure.connections.streamer_manager import StreamerManager
-from infrastructure.connections.terminal_manager import TerminalManager
-from infrastructure.collectors.economic_calendar_collector import EconomicCalendarCollector
-from infrastructure.factories.environment_factory import EnvironmentFactory
-from utils.logging_config import get_logger
-from utils.structured_logging import CorrelationContext
 
 class Server:
     """
@@ -31,268 +31,345 @@ class Server:
 
 
     def __init__(self, verbose=False, database=None, scraper=None):
-        """
-        Initialize server
-        :param verbose: Enable verbose logging
-        :param database: Optional database instance (creates new if not provided)
-        :param scraper: Optional web scraper instance (creates new if not provided)
-        """
         self.__verbose = verbose
+        self.__socket = None
+
+        self.__streamers = []
+        self.__accounts = []
+        self.__all_currency_pairs = {}
+        self.__price_data_providers = []
+        self.__indicator_providers = []
+        self.__environments = {}
+
         self.__stop_char = '\n'
+
         self.__console_lock = threading.Lock()
         
-        # Initialize structured logger
+        # Use provided database or create new one
+        self.__db = database if database is not None else Database()
+        
+        # Initialize data provider registry and feature catalog
+        self.__provider_registry = DataProviderRegistry()
+        self.__feature_catalog = FeatureCatalog(self.__db)
+        
+        # Initialize experiment components (Phase 3)
         try:
-            self.__logger = get_logger('server', 'server.log')
-        except Exception:
-            self.__logger = None
+            from experiments import ExperimentBuilder, ExperimentRunner, OptunaHyperparameterTuner
+            from infrastructure.factories.agent_factory import AgentFactory
+            from infrastructure.factories.environment_factory import EnvironmentFactory
+            from mlops.experiment_tracker import get_experiment_tracker
+            
+            # Initialize factories
+            self.__agent_factory = AgentFactory()
+            self.__environment_factory = EnvironmentFactory()
+            
+            # Initialize experiment tracker (MLflow)
+            self.__experiment_tracker = get_experiment_tracker(allow_dummy=True)
+            
+            # Initialize experiment components
+            self.__experiment_builder = ExperimentBuilder(
+                database=self.__db,
+                feature_catalog=self.__feature_catalog
+            )
+            
+            # Helper functions for experiment runner
+            def get_account():
+                # Return first account or create a default one
+                if self.__accounts:
+                    return self.__accounts[0]
+                return None
+            
+            def get_risk_manager():
+                from infrastructure.factories.risk_manager_factory import RiskManagerFactory
+                from domain.config.risk_config import RiskConfig
+                risk_config = RiskConfig.default()
+                return RiskManagerFactory.create_risk_manager(risk_config)
+            
+            self.__experiment_runner = ExperimentRunner(
+                database=self.__db,
+                experiment_tracker=self.__experiment_tracker,
+                agent_factory=self.__agent_factory,
+                environment_factory=self.__environment_factory,
+                get_account_func=get_account,
+                get_risk_manager_func=get_risk_manager
+            )
+            
+            self.__optuna_tuner = OptunaHyperparameterTuner(
+                database=self.__db,
+                experiment_runner=self.__experiment_runner
+            )
+            
+            if self.__verbose:
+                with self.__console_lock:
+                    print_with_datetime("Initialized Experiment Management components (Phase 3)")
+        except Exception as e:
+            # Experiment components are optional - log warning but don't fail
+            with self.__console_lock:
+                print_with_datetime(f"Warning: Failed to initialize experiment components: {e}")
+            self.__experiment_builder = None
+            self.__experiment_runner = None
+            self.__optuna_tuner = None
         
-        # Initialize dependencies
-        self.__db = database or Database()
-        self.__myfxbook = scraper or WebScraperMyfxbook(
-            email=os.getenv('MYFXBOOK_EMAIL'),
-            password=os.getenv('MYFXBOOK_PASSWORD'),
-            url=os.getenv('URL_MYFXBOOK')
-        )
+        # Initialize feature discovery (will be populated as providers register)
+        if self.__verbose:
+            with self.__console_lock:
+                print_with_datetime("Initialized Data Provider Registry and Feature Catalog")
         
-        # Initialize infrastructure components
+        # Use provided scraper or create new one
+        if scraper is not None:
+            self.__myfxbook = scraper
+        else:
+            self.__myfxbook = WebScraperMyfxbook(
+                email=os.getenv('MYFXBOOK_EMAIL'),
+                password=os.getenv('MYFXBOOK_PASSWORD'),
+                url=os.getenv('URL_MYFXBOOK')
+            )
+        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
         server_ip = os.getenv('SERVER_IP')
         server_port = int(os.getenv('SERVER_PORT'))
-        
-        self.socket_server = SocketServer(server_ip, server_port, verbose)
-        self.auth_handler = AuthenticationHandler(self.__stop_char, verbose, self.__console_lock)
-        self.streamer_manager = StreamerManager(
-            self.__db, self.__stop_char, verbose, self.__console_lock
-        )
-        self.terminal_manager = TerminalManager()
-        self.calendar_collector = EconomicCalendarCollector(
-            self.__db, self.__myfxbook, verbose, self.__console_lock
-        )
-        self.env_factory = EnvironmentFactory()
-        
-        # Set up authentication handlers
-        self.auth_handler.set_streamer_handler(self._handle_streamer_auth)
-        self.auth_handler.set_terminal_handler(self._handle_terminal_auth)
-        
-        # Initialize AI integration
-        self.__ai_integration = AITradingIntegration(self)
-        self.__auto_start_ai = os.getenv('AI_AUTO_START', 'true').lower() == 'true'
-        
-        # Bind and start
-        self.socket_server.bind()
+
+        self.__socket.bind((server_ip, server_port))
+
+        if self.__verbose:
+            print_with_datetime(
+                f"Server socket bind to {server_ip}:{server_port}"
+            )
+
         self.start()
 
     def start(self):
         """
         Start the server
         """
-        self.socket_server.listen()
+        self.__socket.listen(5)
 
         if self.__verbose:
             with self.__console_lock:
                 print_with_datetime("Server now listening for MT5 EA")
 
-        # Economic calendar collector - DISABLED
-        # TODO: Re-enable when new scraping methods are implemented
-        # self.calendar_collector.start_scheduled_collection(17, 10)
+        threading.Thread(target=self.__collect_economic_calendar, args=(17, 10)).start()
 
-        # Main server loop
         while True:
-            result = self.socket_server.accept()
-            if result is None:
-                continue
-            
-            client_conn, client_address = result
+            client_conn, client_address = self.__socket.accept()
 
             with self.__console_lock:
                 print_with_datetime(f'Connected to {client_address}')
 
-            # Generate correlation ID for this connection
-            correlation_id = CorrelationContext.generate_correlation_id() if CorrelationContext else None
-            
-            if self.__logger and hasattr(self.__logger, 'log_event'):
-                self.__logger.log_event(
-                    event_type='client_connected',
-                    message=f'Connected to {client_address}',
-                    metrics={'client_address': str(client_address)},
-                    correlation_id=correlation_id
-                )
+            self.__auth_socket(client_conn)
 
-            # Handle authentication in separate thread with correlation ID
-            threading.Thread(
-                target=self._handle_connection,
-                args=(client_conn, correlation_id),
-                daemon=True
-            ).start()
-    
-    def _handle_connection(self, client, correlation_id=None):
-        """Handle new connection"""
-        # Set correlation ID for this thread
-        if correlation_id and CorrelationContext:
-            CorrelationContext.set_correlation_id(correlation_id)
-        
-        try:
-            self.auth_handler.authenticate(client)
-        except Exception as e:
-            if self.__logger and hasattr(self.__logger, 'log_error'):
-                self.__logger.log_error(
-                    event_type='connection_error',
-                    error=f"Error handling connection: {e}",
-                    correlation_id=correlation_id,
-                    exc_info=True
-                )
-            if self.__verbose:
-                with self.__console_lock:
-                    print_with_datetime(f"Error handling connection: {e}")
+    def __collect_economic_calendar(self, hour, minute):
+        """
+        Collect economic data from the economic calendar of yesterday at a specific time
+        and store them in database
+        """
+        while True:
+            now = datetime.datetime.now()
+            if now.hour == hour and now.minute == minute and now.weekday() < 5:
+                try:
+                    data = self.__myfxbook.download_economic_calendar()
+                    self.__db.insert_economic_calendar_data(data)
 
-    def _handle_streamer_auth(self, client, infos):
-        """Handle streamer authentication"""
-        success = self.streamer_manager.authenticate_streamer(client, infos)
-        if not success:
-            self._reject_auth(client, 'Invalid message format.')
-    
-    def _handle_terminal_auth(self, client, infos):
-        """Handle terminal authentication"""
-        correlation_id = CorrelationContext.get_correlation_id() if CorrelationContext else None
-        
-        account = self.terminal_manager.authenticate_terminal(
-            client, infos
-        )
-        
-        if account:
-            if self.__logger and hasattr(self.__logger, 'log_event'):
-                self.__logger.log_event(
-                    event_type='terminal_authenticated',
-                    message=f"Terminal authenticated for account {account.login}",
-                    metrics={'account_login': account.login},
-                    correlation_id=correlation_id
-                )
-            
-            # Create environment if it doesn't exist
-            if not self.env_factory.has_environment(account.login):
-                self._create_environment_for_account(account)
-            
-            # Initialize AI agent and (optionally) start training/trading
-            try:
-                self.__ai_integration.initialize_agent_for_account(account)
-                if self.__auto_start_ai:
-                    self.__ai_integration.start_trading_for_account(account.login)
-                    if self.__logger and hasattr(self.__logger, 'log_event'):
-                        self.__logger.log_event(
-                            event_type='ai_training_started',
-                            message=f"AI live training started for account {account.login}",
-                            metrics={'account_login': account.login},
-                            correlation_id=correlation_id
-                        )
                     if self.__verbose:
                         with self.__console_lock:
-                            print_with_datetime(f"AI live training started for account {account.login}")
+                            print_with_datetime("Economic Calendar was download")
+                except Exception as e:
+                    with self.__console_lock:
+                        print_with_datetime(f"Error while downloading economic calendar: {e}")
+
+            time.sleep(60)
+
+    def __auth_socket(self, client):
+        """
+        Receive auth code from the newly connected socket
+        and create a new instance of TickStreamer or MT5Terminal
+        """
+        cum_data = ''
+        while True:
+            data = client.recv(1024).decode("utf-8")
+
+            cum_data += data
+
+            if self.__stop_char in cum_data:
+
+                infos = cum_data[:cum_data.index(self.__stop_char)]
+                infos = json.loads(infos)
+
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(f"Received authentification infos: {infos}")
+
+                auth_code = infos['auth_code']
+
+                if auth_code == Socket.STREAMER.value:
+                    self.__auth_streamer(client, infos)
+                elif auth_code == Socket.TERMINAL.value:
+                    self.__auth_terminal(client, infos)
                 else:
-                    if self.__logger and hasattr(self.__logger, 'log_event'):
-                        self.__logger.log_event(
-                            event_type='ai_initialized',
-                            message=f"AI initialized for account {account.login} (auto-start disabled)",
-                            metrics={'account_login': account.login},
-                            correlation_id=correlation_id
+                    self.__invalid_auth(client, f'Invalid authentification code [{auth_code}]')
+                break
+
+    def __auth_streamer(self, client, infos):
+        """
+        Authentification step for a tick streamer
+        Send an authentification codes if succesfull or not
+
+        Expected message format:
+            {
+                "auth_code": 1,
+                "symbol": Currency pair symbol
+            }
+
+        Successfull authentification response:
+            {
+                "auth_status": 0
+            }
+        """
+        if len(infos) == 3:
+            data = {
+                "auth_status": Socket.SUCCESSFUL_AUTH.value
+            }
+
+            client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
+
+            pair = CurrencyPair(infos['symbol'], infos['digits'])
+            self.__all_currency_pairs[infos['symbol']] = pair
+
+            price_provider = PriceDataProvider(pair)
+            self.__price_data_providers.append(price_provider)
+            
+            # Register price provider with registry
+            provider_name = f"price_{infos['symbol']}"
+            self.__provider_registry.register_provider(provider_name, price_provider)
+            
+            # Create and register indicator provider
+            indicator_provider = IndicatorProvider(pair, window_size=100)
+            self.__indicator_providers.append(indicator_provider)
+            indicator_name = f"indicator_{infos['symbol']}"
+            self.__provider_registry.register_provider(indicator_name, indicator_provider)
+            
+            # Sync catalog with newly registered providers
+            try:
+                self.__feature_catalog.sync_with_registry(self.__provider_registry)
+                if self.__verbose:
+                    with self.__console_lock:
+                        feature_count = len(self.__provider_registry.discover_features())
+                        print_with_datetime(
+                            f"Registered providers for {infos['symbol']}. "
+                            f"Total features discovered: {feature_count}"
                         )
-                    if self.__verbose:
-                        with self.__console_lock:
-                            print_with_datetime(f"AI initialized for account {account.login} (auto-start disabled)")
             except Exception as e:
-                if self.__logger and hasattr(self.__logger, 'log_error'):
-                    self.__logger.log_error(
-                        event_type='ai_initialization_error',
-                        error=f"Error initializing AI for account {account.login}: {e}",
-                        account_login=account.login,
-                        correlation_id=correlation_id,
-                        exc_info=True
-                    )
                 with self.__console_lock:
-                    print_with_datetime(f"Error initializing AI for account {account.login}: {e}")
+                    print_with_datetime(f"Warning: Failed to sync feature catalog: {e}")
+
+            streamer = MT5TickStreamer(client, pair, self.__stop_char, self.__verbose, self.__console_lock, self.__db)
+
+            threading.Thread(target=streamer.receive_tick).start()
+            self.__streamers.append(streamer)
         else:
-            self._reject_auth(client, 'Invalid message format. Missing account login')
-    
-    def _create_environment_for_account(self, account: Account) -> LiveTradingEnv:
+            self.__invalid_auth(client, 'Invalid message format.')
+
+    def __auth_terminal(self, client, infos):
         """
-        Create environment for account
-        :param account: Account instance
-        :return: Created environment
+        Manage the authentification of a mt5 trading terminal
+        Create a new MT5Terminal and attach it to an Account.
+
+        Expected message format:
+            {
+                "auth_code": 2,
+                "login": Account login
+            }
+
+        Successfull authentification response:
+            {
+                "auth_status": 0,
+                "terminal_id": Current terminal id
+            }
         """
-        data_providers = self.streamer_manager.get_price_data_providers()
-        env = self.env_factory.create_environment(
-            account=account,
-            data_providers=data_providers,
-            window_size=50
-        )
-        
-        correlation_id = CorrelationContext.get_correlation_id() if CorrelationContext else None
-        if self.__logger and hasattr(self.__logger, 'log_event'):
-            self.__logger.log_event(
-                event_type='environment_created',
-                message=f"Created trading environment for account {account.login}",
-                metrics={'account_login': account.login},
-                correlation_id=correlation_id
-            )
-        
-        if self.__verbose:
-            with self.__console_lock:
-                print_with_datetime(f"Created trading environment for account {account.login}")
-        
-        return env
-    
-    def _reject_auth(self, client, msg):
+        if len(infos) == 2:
+            terminal = MT5Terminal(client)
+
+            data = {
+                'auth_status': Socket.SUCCESSFUL_AUTH.value,
+                'terminal_id': terminal.id
+            }
+
+            client.send(bytes(json.dumps(data) + '\n',
+                              'utf-8'))
+
+            for account in self.__accounts:
+                if account.login == infos['login']:
+                    account.set_terminal(terminal)
+                    return
+                
+
+            account = Account(infos['login'], terminal)
+            self.__accounts.append(account)
+            
+            if infos['login'] not in self.__environments:
+
+                # Create environment with all registered providers (price + indicators)
+                all_providers = self.__price_data_providers + self.__indicator_providers
+                env = LiveTradingEnv(
+                    account=account,
+                    data_providers=all_providers,
+                    window_size=50
+                )
+                self.__environments[infos['login']] = env
+                
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(f"Created trading environment for account {infos['login']}")
+
+        else:
+            self.__invalid_auth(client, 'Invalid message format. Missing account login')
+
+    def __invalid_auth(self, client, msg):
         """
-        Reject authentication
-        :param client: Client socket
-        :param msg: Error message
+        When the socket failed the authentification
+
+        Failed authentification response:
+            {
+                "auth_status": -1
+                "message": Error message provided
+            }
         """
-        import json
-        from codes.socket_code import Socket
-        
         data = {
             'auth_status': Socket.FAILED_AUTH.value,
             'message': msg
         }
-        try:
-            client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
-        except Exception:
-            pass
-        
+        client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
+
         with self.__console_lock:
-            try:
-                print_with_datetime(f'Error from {client.getpeername()}: {msg}. Closing connection.')
-            except Exception:
-                print_with_datetime(f'Error: {msg}. Closing connection.')
-        try:
-            client.close()
-        except Exception:
-            pass
+            print_with_datetime(f'Error from {client.getpeername()}: {msg} .'
+                                f'Closing connection.')
+        client.close()
+
+    @property
+    def provider_registry(self):
+        """Get the data provider registry (for API access)"""
+        return self.__provider_registry
     
-    # Public methods for accessing server state
-    def get_environment(self, account_login: int) -> Optional[LiveTradingEnv]:
-        """
-        Get environment for an account
-        :param account_login: Account login identifier
-        :return: LiveTradingEnv instance or None if not found
-        """
-        return self.env_factory.get_environment(account_login)
+    @property
+    def feature_catalog(self):
+        """Get the feature catalog (for API access)"""
+        return self.__feature_catalog
     
-    def get_data_providers(self) -> List[PriceDataProvider]:
-        """
-        Get all price data providers
-        :return: List of price data providers
-        """
-        return self.streamer_manager.get_price_data_providers()
+    @property
+    def experiment_builder(self):
+        """Get the experiment builder (for API access)"""
+        return self.__experiment_builder
     
-    def get_account(self, account_login: int) -> Optional[Account]:
-        """
-        Get account by login
-        :param account_login: Account login
-        :return: Account instance or None if not found
-        """
-        return self.terminal_manager.get_account(account_login)
+    @property
+    def experiment_runner(self):
+        """Get the experiment runner (for API access)"""
+        return self.__experiment_runner
     
+    @property
+    def optuna_tuner(self):
+        """Get the Optuna tuner (for API access)"""
+        return self.__optuna_tuner
+
     def __del__(self):
-        """Cleanup on deletion"""
-        if hasattr(self, 'socket_server') and self.socket_server:
-            self.socket_server.close()
+        if hasattr(self, '_Server__socket') and self.__socket:
+            self.__socket.close()

@@ -42,7 +42,23 @@ class Account:
         :param sl: Stop loss (optional)
         :param tp: Take profit (optional)
         """
+        # #region agent log
+        try:
+            import json as json_log, os
+            log_path = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
+            with open(log_path, 'a') as f:
+                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"account.py:35","message":"Account.send_order entry","data":{"order_type":order_type,"symbol":pair.symbol,"lotsize":lotsize},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         trade = self.trade_executor.send_order(order_type, pair, lotsize, price, sl, tp)
+        # #region agent log
+        try:
+            import json as json_log, os
+            log_path = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
+            with open(log_path, 'a') as f:
+                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"account.py:45","message":"Account.send_order after trade_executor","data":{"trade_is_none":trade is None,"trade_ticket":trade.ticket if trade else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
+        except: pass
+        # #endregion
         if trade:
             self.current_trade[trade.ticket] = trade
         return trade

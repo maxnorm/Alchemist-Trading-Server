@@ -1,0 +1,60 @@
+# DVC Pipeline Configuration
+# 
+# This file defines the data processing pipeline for the trading system.
+# Run with: dvc repro
+#
+# Stages:
+#   1. export_ticks - Export tick data from database
+#   2. export_calendar - Export economic calendar data
+#   3. process_features - Generate features from raw data
+#   4. create_splits - Create train/val/test splits
+
+stages:
+  export_ticks:
+    cmd: python scripts/export-data.py --type ticks --output data/raw/ticks.parquet --days 90
+    deps:
+      - scripts/export-data.py
+    outs:
+      - data/raw/ticks.parquet
+      - data/raw/ticks.metadata.json
+
+  export_calendar:
+    cmd: python scripts/export-data.py --type calendar --output data/raw/calendar.parquet --days 180
+    deps:
+      - scripts/export-data.py
+    outs:
+      - data/raw/calendar.parquet
+      - data/raw/calendar.metadata.json
+
+  process_features:
+    cmd: python scripts/process-features.py --input data/raw --output data/processed
+    deps:
+      - scripts/process-features.py
+      - data/raw/ticks.parquet
+      - data/raw/calendar.parquet
+    outs:
+      - data/processed/features.parquet
+      - data/processed/scalers.pkl
+      - data/processed/feature_metadata.json
+
+  create_splits:
+    cmd: python scripts/create-splits.py --input data/processed --output data/splits
+    deps:
+      - scripts/create-splits.py
+      - data/processed/features.parquet
+    params:
+      - split.train_ratio
+      - split.val_ratio
+      - split.test_ratio
+    outs:
+      - data/splits/train.parquet
+      - data/splits/val.parquet
+      - data/splits/test.parquet
+      - data/splits/split_info.json
+
+# Parameters file for configurable values
+# params.yaml will contain:
+# split:
+#   train_ratio: 0.7
+#   val_ratio: 0.15
+#   test_ratio: 0.15

@@ -43,6 +43,8 @@ CJAVal receive_msg(int s)
       CJAVal json;
       bool line_complete = false;
       int char_count = 0;
+      int consecutive_zeros = 0;
+      const int MAX_CONSECUTIVE_ZEROS = 10; // Max 10 seconds of no data before giving up
       
       while (!line_complete)
       {
@@ -53,6 +55,7 @@ CJAVal receive_msg(int s)
          
          if (rsp_len > 0)
          {
+            consecutive_zeros = 0; // Reset counter on successful read
             char_count++;
             result += CharArrayToString(c, 0, (int)rsp_len);
             
@@ -64,6 +67,7 @@ CJAVal receive_msg(int s)
                if (!json.Deserialize(result))
                {
                   PrintFormat("[EA] receive_msg: ERROR - Failed to deserialize JSON: %s", result);
+                  // Return empty JSON but don't crash - let caller handle it
                }
                else
                {
@@ -74,11 +78,21 @@ CJAVal receive_msg(int s)
          }
          else if (rsp_len == 0)
          {
-            PrintFormat("[EA] receive_msg: SocketRead returned 0 (timeout or connection closed). Error: %d", GetLastError());
+            consecutive_zeros++;
+            PrintFormat("[EA] receive_msg: SocketRead returned 0 (timeout or connection closed). Error: %d, Consecutive zeros: %d", GetLastError(), consecutive_zeros);
+            
+            // If we get too many consecutive zeros, the connection is likely closed
+            if (consecutive_zeros >= MAX_CONSECUTIVE_ZEROS)
+            {
+               PrintFormat("[EA] receive_msg: ERROR - Connection appears to be closed (too many consecutive zeros). Returning empty JSON.");
+               line_complete = true; // Break out of loop
+            }
          }
          else
          {
             PrintFormat("[EA] receive_msg: SocketRead error: %d", GetLastError());
+            // On error, break out to avoid infinite loop
+            line_complete = true;
          }
       }
       

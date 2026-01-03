@@ -30,13 +30,14 @@ class HoldActionStrategy(ActionStrategy):
         :param context: Execution context
         :return: Reward (0.0 for hold)
         """
+        symbol = context.pair.symbol if context.pair else "N/A"
         if hasattr(self.logger, 'log_event'):
             self.logger.log_event(
                 event_type='hold_action',
-                message=f"HOLD action: No action taken on {context.pair.symbol}",
-                symbol=context.pair.symbol,
+                message="HOLD action: No action taken",
+                symbol=symbol if symbol != "N/A" else None,
                 level='DEBUG'
             )
         else:
-            self.logger.debug(f"HOLD action: No action taken on {context.pair.symbol}")
+            self.logger.debug("HOLD action: No action taken")
         return 0.0
