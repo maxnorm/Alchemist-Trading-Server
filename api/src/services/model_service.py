@@ -31,7 +31,7 @@ except ImportError:
     logger.warning("TwoFactorAuth not available - 2FA verification will be limited")
 
     # Create a stub for development
-    class TwoFactorAuth:
+    class TwoFactorAuth:  # type: ignore[no-redef]
         @staticmethod
         def verify_promotion_token(secret, token, user_id):
             # Development mode: accept any 6-digit code
@@ -53,7 +53,7 @@ def get_all_models(
 ) -> List[ModelResponse]:
     """Get all models with optional filters"""
     query = "SELECT * FROM models WHERE 1=1"
-    params = {}
+    params: Dict[str, Any] = {}
 
     if stage:
         query += " AND stage = :stage"
@@ -61,7 +61,7 @@ def get_all_models(
 
     if experiment_id:
         query += " AND experiment_id = :experiment_id"
-        params["experiment_id"] = int(experiment_id)
+        params["experiment_id"] = experiment_id
 
     query += " ORDER BY created_at DESC"
 
@@ -190,7 +190,9 @@ def promote_model(
     result = db.execute(text(query), params)
     db.commit()
 
-    if result.rowcount == 0:
+    # Cast to CursorResult to access rowcount attribute
+    cursor_result = cast(CursorResult[Any], result)
+    if cursor_result.rowcount == 0:
         return None
 
     # Broadcast stage change via WebSocket (async call)
@@ -300,7 +302,9 @@ def start_paper_session(
     )
     db.commit()
 
-    session_id = result.lastrowid  # type: ignore[attr-defined]
+    # Cast to CursorResult to access lastrowid attribute
+    cursor_result = cast(CursorResult[Any], result)
+    session_id = cursor_result.lastrowid
 
     # Broadcast session start via WebSocket
     if WS_AVAILABLE:

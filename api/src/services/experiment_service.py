@@ -4,7 +4,8 @@ Experiment service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional
+from sqlalchemy.engine import CursorResult
+from typing import List, Optional, cast
 from schemas.experiments import ExperimentCreate, ExperimentResponse
 import json
 import logging
@@ -36,7 +37,9 @@ def create_experiment(
     result = db.execute(text(query), params)
     db.commit()
 
-    experiment_id = result.lastrowid
+    # Cast to CursorResult to access lastrowid attribute
+    cursor_result = cast(CursorResult[Any], result)
+    experiment_id = cursor_result.lastrowid
     return get_experiment_by_id(db, experiment_id)
 
 
@@ -130,7 +133,9 @@ def delete_experiment(db: Session, experiment_id: int) -> bool:
         text("DELETE FROM experiments WHERE id = :id"), {"id": experiment_id}
     )
     db.commit()
-    return result.rowcount > 0
+    # Cast to CursorResult to access rowcount attribute
+    cursor_result = cast(CursorResult[Any], result)
+    return cursor_result.rowcount > 0
 
 
 def clone_experiment(

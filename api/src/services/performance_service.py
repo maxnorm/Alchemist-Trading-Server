@@ -5,7 +5,8 @@ Business logic for performance tracking
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional, Dict, Any
+from sqlalchemy.engine import CursorResult
+from typing import List, Optional, Dict, Any, cast
 from schemas.performance import (
     PortfolioPerformanceResponse,
     EquityCurveResponse,
@@ -71,10 +72,12 @@ def get_portfolio_performance(
         if row is None:
             return None
 
-        total_trades = int(row[0]) if row[0] else 0
-        winning_trades = int(row[1]) if row and row[1] else 0
-        losing_trades = int(row[2]) if row and row[2] else 0
-        total_pnl = float(row[3]) if row and row[3] else 0.0
+        # Type narrowing: row is not None here
+        row_data = cast(Any, row)
+        total_trades = int(row_data[0]) if row_data[0] else 0
+        winning_trades = int(row_data[1]) if row_data[1] else 0
+        losing_trades = int(row_data[2]) if row_data[2] else 0
+        total_pnl = float(row_data[3]) if row_data[3] else 0.0
 
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
 
@@ -226,35 +229,37 @@ def get_model_performance(
         result = db.execute(text(query), {"model_id": model_id})
         row = result.fetchone()
 
-        if row is None or not row[0]:
+        if row is None:
             return None
 
-        if row:
-            total_trades = int(row[0])
-            winning_trades = int(row[1]) if row[1] else 0
-            losing_trades = int(row[2]) if row[2] else 0
-            total_pnl = float(row[3]) if row[3] else 0.0
-            win_rate = (
-                (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
-            )
+        # Type narrowing: row is not None here
+        row_data = cast(Any, row)
+        if not row_data[0]:
+            return None
 
-            # Get model version
-            version_query = "SELECT version FROM models WHERE id = :model_id"
-            version_result = db.execute(text(version_query), {"model_id": model_id})
-            version_row = version_result.fetchone()
-            model_version = version_row[0] if version_row else f"model_{model_id}"
+        total_trades = int(row_data[0])
+        winning_trades = int(row_data[1]) if row_data[1] else 0
+        losing_trades = int(row_data[2]) if row_data[2] else 0
+        total_pnl = float(row_data[3]) if row_data[3] else 0.0
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0.0
 
-            return ModelPerformanceResponse(
-                model_version=model_version,
-                total_trades=total_trades,
-                winning_trades=winning_trades,
-                losing_trades=losing_trades,
-                win_rate=win_rate,
-                total_pnl=total_pnl,
-                sharpe_ratio=metrics.get("sharpe_ratio"),
-                max_drawdown=metrics.get("max_drawdown"),
-                max_drawdown_pct=metrics.get("max_drawdown_pct"),
-            )
+        # Get model version
+        version_query = "SELECT version FROM models WHERE id = :model_id"
+        version_result = db.execute(text(version_query), {"model_id": model_id})
+        version_row = version_result.fetchone()
+        model_version = version_row[0] if version_row else f"model_{model_id}"
+
+        return ModelPerformanceResponse(
+            model_version=model_version,
+            total_trades=total_trades,
+            winning_trades=winning_trades,
+            losing_trades=losing_trades,
+            win_rate=win_rate,
+            total_pnl=total_pnl,
+            sharpe_ratio=metrics.get("sharpe_ratio"),
+            max_drawdown=metrics.get("max_drawdown"),
+            max_drawdown_pct=metrics.get("max_drawdown_pct"),
+        )
     except Exception as e:
         logger.error(f"Failed to get model performance: {e}")
 
@@ -411,11 +416,12 @@ def get_model_statistics(
         WHERE model_id = :model_id AND period = :period
     """
 
-    stats = {}
+    stats: Dict[str, Any] = {}
     try:
         result = db.execute(text(query), {"model_id": model_id, "period": period})
         for row in result.fetchall():
-            stats[row[0]] = float(row[1])
+            row_data = cast(Any, row)
+            stats[row_data[0]] = float(row_data[1])
     except Exception as e:
         logger.warning(f"Failed to get model statistics: {e}")
 
@@ -432,15 +438,17 @@ def get_model_statistics(
     try:
         result = db.execute(text(query), {"model_id": model_id})
         row = result.fetchone()
-        if row:
+        if row is not None:
+            # Type narrowing: row is not None here
+            row_data = cast(Any, row)
             stats["avg_duration_seconds"] = (
-                float(row[0]) if row[0] is not None else None
+                float(row_data[0]) if row_data[0] is not None else None
             )
             stats["min_duration_seconds"] = (
-                float(row[1]) if row[1] is not None else None
+                float(row_data[1]) if row_data[1] is not None else None
             )
             stats["max_duration_seconds"] = (
-                float(row[2]) if row[2] is not None else None
+                float(row_data[2]) if row_data[2] is not None else None
             )
     except Exception as e:
         logger.warning(f"Failed to get duration stats: {e}")

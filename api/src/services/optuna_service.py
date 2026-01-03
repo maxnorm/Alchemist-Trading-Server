@@ -4,7 +4,8 @@ Optuna service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional, Dict, Any
+from sqlalchemy.engine import CursorResult
+from typing import List, Optional, Dict, Any, cast
 from schemas.hyperparameters import (
     OptunaSearchCreate,
     OptunaStudyResponse,
@@ -37,7 +38,7 @@ def create_optuna_study(
     result = db.execute(text(query), params)
     db.commit()
 
-    study_id = result.lastrowid
+    study_id = result.lastrowid  # type: ignore[attr-defined]
     return get_study_by_id(db, study_id)
 
 
@@ -122,7 +123,9 @@ def update_study_status(
     result = db.execute(text(query), params)
     db.commit()
 
-    if result.rowcount == 0:  # type: ignore[attr-defined]
+    # Cast to CursorResult to access rowcount attribute
+    cursor_result = cast(CursorResult[Any], result)
+    if cursor_result.rowcount == 0:
         return None
 
     return get_study_by_id(db, study_id)

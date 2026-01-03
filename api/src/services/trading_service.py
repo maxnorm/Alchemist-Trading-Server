@@ -4,7 +4,8 @@ Trading control service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import List, Optional
+from sqlalchemy.engine import CursorResult
+from typing import List, Optional, cast, Any
 from datetime import datetime
 from schemas.trading import (
     TradingStatusResponse,
@@ -159,7 +160,9 @@ def reset_circuit_breaker(db: Session) -> bool:
             )
         )
         db.commit()
-        return result.rowcount > 0  # type: ignore[attr-defined]
+        # Cast to CursorResult to access rowcount attribute
+        cursor_result = cast(CursorResult[Any], result)
+        return cursor_result.rowcount > 0
     except Exception as e:
         logger.error(f"Failed to reset circuit breaker: {e}")
         return False
