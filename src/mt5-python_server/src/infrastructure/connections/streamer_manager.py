@@ -1,0 +1,86 @@
+"""
+Streamer connection manager
+Manages tick streamer connections
+"""
+import json
+import socket
+import threading
+from typing import Dict, List, Callable, Optional
+
+from codes.socket_code import Socket
+from models.currency_pair import CurrencyPair
+from data_providers.price_provider import PriceDataProvider
+from mt5_connection.tick_streamer import MT5TickStreamer
+
+
+class StreamerManager:
+    """Manages tick streamer connections"""
+    
+    def __init__(
+        self,
+        database,
+        stop_char: str = '\n',
+        verbose: bool = False,
+        console_lock=None
+    ):
+        """
+        Initialize streamer manager
+        :param database: Database instance
+        :param stop_char: Character that marks end of message
+        :param verbose: Enable verbose logging
+        :param console_lock: Thread lock for console output
+        """
+        self.database = database
+        self.stop_char = stop_char
+        self.verbose = verbose
+        self.console_lock = console_lock
+        self.streamers: List[MT5TickStreamer] = []
+        self.currency_pairs: Dict[str, CurrencyPair] = {}
+        self.price_data_providers: List[PriceDataProvider] = []
+    
+    def authenticate_streamer(
+        self,
+        client: socket.socket,
+        infos: Dict
+    ) -> bool:
+        """
+        Authenticate and set up a streamer connection
+        :param client: Client socket
+        :param infos: Authentication info dictionary
+        :return: True if successful
+        """
+        if len(infos) != 3:
+            return False
+        
+        # Send successful auth response
+        data = {
+            "auth_status": Socket.SUCCESSFUL_AUTH.value
+        }
+        client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
+        
+        # Create currency pair
+        pair = CurrencyPair(infos['symbol'], infos['digits'])
+        self.currency_pairs[infos['symbol']] = pair
+        
+        # Create price data provider
+        price_provider = PriceDataProvider(pair)
+        self.price_data_providers.append(price_provider)
+        
+        # Create and start streamer
+        streamer = MT5TickStreamer(
+            client, pair, self.stop_char,
+            self.verbose, self.console_lock, self.database
+        )
+        
+        threading.Thread(target=streamer.receive_tick).start()
+        self.streamers.append(streamer)
+        
+        return True
+    
+    def get_price_data_providers(self) -> List[PriceDataProvider]:
+        """Get all price data providers"""
+        return self.price_data_providers.copy()
+    
+    def get_currency_pairs(self) -> Dict[str, CurrencyPair]:
+        """Get all currency pairs"""
+        return self.currency_pairs.copy()

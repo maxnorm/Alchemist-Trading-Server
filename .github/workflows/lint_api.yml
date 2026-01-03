@@ -1,0 +1,43 @@
+name: Lint API
+
+on:
+  pull_request:
+    branches: [master, dev]
+  push:
+    branches: [master, dev]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        working-directory: api
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install black flake8 mypy
+      
+      - name: Run code formatting check (Black)
+        working-directory: api
+        run: |
+          black --check src/ || exit 1
+      
+      - name: Run linter (flake8)
+        working-directory: api
+        run: |
+          flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 || exit 1
+      
+      - name: Run type checking (mypy)
+        working-directory: api
+        run: |
+          mypy src/ --ignore-missing-imports || exit 1

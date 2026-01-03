@@ -5,16 +5,154 @@ services:
         ports:
             - "3306:3306"
         environment:
-            - MARIADB_ROOT_PASSWORD='${DB_USERNAME}'
-            - MARIADB_DATABASE='${DB_PASSWORD}'
+            MYSQL_ROOT_PASSWORD: root
+            MYSQL_DATABASE: db_forex
         volumes:
-            - "./database/database/init:/docker-entrypoint-initdb.d"
-            - "./database/database/data/mariadb:/var/lib/mysql"
-    phpmyadmin:
-        container_name: local-phpmyadmin
-        image: phpmyadmin:5.2
-        environment:
-            - MYSQL_ROOT_PASSWORD=root
-            - PMA_HOST=mariadb
+            - "./database/scripts:/docker-entrypoint-initdb.d"
+            - "./database/mariadb.cnf:/etc/mysql/conf.d/custom.cnf:ro"
+            - "mariadb_data:/var/lib/mysql"
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+
+    server:
+        container_name: "server"
+        build:
+            context: .
+            dockerfile: Dockerfile
         ports:
-            - 8081:80
+            - "8080:8080"
+        depends_on:
+            mariadb:
+                condition: service_healthy
+        environment:
+            DB_HOST: mariadb
+            DB_PORT: 3306
+            DB_USER: forex_user
+            DB_PASSWORD: forex_password
+            DB_NAME: db_forex
+            LOG_DIR: /app/logs
+        volumes:
+            - "./logs:/app/logs"
+            - "./models:/app/models"
+        restart: unless-stopped
+
+    # Backup service - run manually with: docker compose run --rm backup
+    # Or schedule with external cron: 0 2 * * * cd /path/to/project && docker compose run --rm backup
+    backup:
+        container_name: "db_backup"
+        image: mariadb:10.9.5
+        depends_on:
+            mariadb:
+                condition: service_healthy
+        environment:
+            DB_HOST: mariadb
+            DB_PORT: 3306
+            DB_USER: forex_user
+            DB_PASSWORD: forex_password
+            DB_NAME: db_forex
+            DB_BACKUP_DIR: /backups
+            DB_BACKUP_RETENTION_DAYS: 7
+        volumes:
+            - "./database/backup.py:/app/backup.py:ro"
+            - "backup_data:/backups"
+            - "mariadb_data:/var/lib/mysql:ro"
+        command: >
+            sh -c "
+            apt-get update -qq && 
+            apt-get install -y -qq python3 python3-pip gzip && 
+            pip3 install -q mysql-connector-python && 
+            python3 /app/backup.py
+            "
+        profiles:
+            - backup
+
+    # MLflow tracking server for experiment tracking and model registry
+    mlflow:
+        container_name: "mlflow"
+        image: ghcr.io/mlflow/mlflow:v2.10.0
+        ports:
+            - "5000:5000"
+        environment:
+            MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow/mlflow.db
+            MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+        volumes:
+            - "mlflow_data:/mlflow"
+        command: >
+            mlflow server
+            --host 0.0.0.0
+            --port 5000
+            --backend-store-uri sqlite:///mlflow/mlflow.db
+            --default-artifact-root /mlflow/artifacts
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 60s
+        restart: unless-stopped
+
+    # FastAPI REST API and WebSocket service
+    api:
+        container_name: "api"
+        build:
+            context: ./api
+            dockerfile: Dockerfile
+        ports:
+            - "8000:8000"
+        depends_on:
+            mariadb:
+                condition: service_healthy
+            mlflow:
+                condition: service_healthy
+        environment:
+            DATABASE_URL: mysql+pymysql://forex_user:forex_password@mariadb:3306/db_forex
+            DB_HOST: mariadb
+            DB_PORT: 3306
+            DB_USER: forex_user
+            DB_PASSWORD: forex_password
+            DB_NAME: db_forex
+            MLFLOW_TRACKING_URI: http://mlflow:5000
+            API_HOST: 0.0.0.0
+            API_PORT: 8000
+            LOG_LEVEL: INFO
+            KILL_SWITCH_FILE: /app/logs/kill_switch.flag
+        volumes:
+            - "./logs:/app/logs"
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 60s
+
+    # React Dashboard
+    dashboard:
+        container_name: "dashboard"
+        build:
+            context: ./dashboard
+            dockerfile: Dockerfile
+        ports:
+            - "3000:80"
+        environment:
+            VITE_API_URL: http://localhost:8000
+            VITE_WS_URL: ws://localhost:8000
+        depends_on:
+            api:
+                condition: service_started
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+volumes:
+    mariadb_data:
+    backup_data:
+    mlflow_data:

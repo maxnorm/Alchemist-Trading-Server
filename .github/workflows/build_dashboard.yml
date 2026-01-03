@@ -1,0 +1,47 @@
+name: Build Dashboard
+
+on:
+  pull_request:
+    branches: [master, dev]
+  push:
+    branches: [master, dev]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: dashboard
+        run: npm ci
+      
+      - name: Run TypeScript compilation check
+        working-directory: dashboard
+        run: npx tsc --noEmit || exit 1
+      
+      - name: Build production bundle
+        working-directory: dashboard
+        run: npm run build || exit 1
+      
+      - name: Verify build artifacts
+        working-directory: dashboard
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "Build failed: dist directory not found"
+            exit 1
+          fi
+          if [ ! -f "dist/index.html" ]; then
+            echo "Build failed: index.html not found in dist"
+            exit 1
+          fi
+          echo "Build artifacts verified successfully"

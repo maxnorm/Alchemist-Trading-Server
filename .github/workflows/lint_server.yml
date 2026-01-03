@@ -1,0 +1,56 @@
+name: Lint Server
+
+on:
+  pull_request:
+    branches: [master, dev]
+  push:
+    branches: [master, dev]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        working-directory: src/mt5-python_server
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install black flake8 mypy bandit safety
+      
+      - name: Run code formatting check (Black)
+        run: |
+          black --check src/mt5-python_server/src || exit 1
+      
+      - name: Run linter (flake8)
+        run: |
+          flake8 src/mt5-python_server/src --max-line-length=120 --extend-ignore=E203,W503 || exit 1
+      
+      
+      - name: Run type checking (mypy)
+        run: |
+          mypy src/mt5-python_server/src --ignore-missing-imports || exit 1
+      
+      - name: Security scan (Bandit)
+        run: |
+          bandit -r src/mt5-python_server/src -f json -o bandit-report.json || exit 1
+      
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-report.json
+          
+      - name: Dependency vulnerability scan (Safety)
+        run: |
+          safety check --json || exit 1
