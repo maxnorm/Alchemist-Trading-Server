@@ -122,7 +122,7 @@ def update_study_status(
     result = db.execute(text(query), params)
     db.commit()
 
-    if result.rowcount == 0:
+    if result.rowcount == 0:  # type: ignore[attr-defined]
         return None
 
     return get_study_by_id(db, study_id)

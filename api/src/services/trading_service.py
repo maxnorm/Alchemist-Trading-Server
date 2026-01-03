@@ -159,7 +159,7 @@ def reset_circuit_breaker(db: Session) -> bool:
             )
         )
         db.commit()
-        return result.rowcount > 0
+        return result.rowcount > 0  # type: ignore[attr-defined]
     except Exception as e:
         logger.error(f"Failed to reset circuit breaker: {e}")
         return False

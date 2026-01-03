@@ -61,7 +61,7 @@ def get_all_models(
 
     if experiment_id:
         query += " AND experiment_id = :experiment_id"
-        params["experiment_id"] = experiment_id
+        params["experiment_id"] = int(experiment_id)
 
     query += " ORDER BY created_at DESC"
 
@@ -206,9 +206,9 @@ def promote_model(
     return get_model_by_id(db, model_id)
 
 
-def archive_model(db: Session, version: str) -> Optional[ModelResponse]:
+def archive_model(db: Session, model_id: int) -> Optional[ModelResponse]:
     """Archive a model"""
-    return promote_model(db, version, "archived")
+    return promote_model(db, model_id, "archived")
 
 
 def rollback_production(
@@ -300,7 +300,7 @@ def start_paper_session(
     )
     db.commit()
 
-    session_id = result.lastrowid
+    session_id = result.lastrowid  # type: ignore[attr-defined]
 
     # Broadcast session start via WebSocket
     if WS_AVAILABLE:

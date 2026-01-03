@@ -2,7 +2,7 @@
 Database service layer with SQLAlchemy connection pool
 """
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, Engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 import logging
@@ -12,7 +12,7 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 # Global engine and session factory
-_engine: Optional[object] = None
+_engine: Optional[Engine] = None
 _SessionLocal: Optional[sessionmaker] = None
 
 

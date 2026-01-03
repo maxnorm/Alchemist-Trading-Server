@@ -68,7 +68,10 @@ def get_portfolio_performance(
         result = db.execute(text(query), params)
         row = result.fetchone()
 
-        total_trades = int(row[0]) if row and row[0] else 0
+        if row is None:
+            return None
+
+        total_trades = int(row[0]) if row[0] else 0
         winning_trades = int(row[1]) if row and row[1] else 0
         losing_trades = int(row[2]) if row and row[2] else 0
         total_pnl = float(row[3]) if row and row[3] else 0.0
@@ -223,7 +226,10 @@ def get_model_performance(
         result = db.execute(text(query), {"model_id": model_id})
         row = result.fetchone()
 
-        if row and row[0]:
+        if row is None or not row[0]:
+            return None
+
+        if row:
             total_trades = int(row[0])
             winning_trades = int(row[1]) if row[1] else 0
             losing_trades = int(row[2]) if row[2] else 0
@@ -267,7 +273,7 @@ def get_model_equity_curve(
         FROM equity_curve
         WHERE model_id = :model_id
     """
-    params = {"model_id": model_id}
+    params: Dict[str, Any] = {"model_id": model_id}
 
     if start_date:
         query += " AND timestamp >= :start_date"
@@ -321,7 +327,7 @@ def get_model_trades(
         FROM model_trades
         WHERE model_id = :model_id
     """
-    params = {"model_id": model_id}
+    params: Dict[str, Any] = {"model_id": model_id}
 
     if start_date:
         count_query += " AND opened_at >= :start_date"
@@ -427,9 +433,9 @@ def get_model_statistics(
         result = db.execute(text(query), {"model_id": model_id})
         row = result.fetchone()
         if row:
-            stats["avg_duration_seconds"] = float(row[0]) if row[0] else None
-            stats["min_duration_seconds"] = int(row[1]) if row[1] else None
-            stats["max_duration_seconds"] = int(row[2]) if row[2] else None
+            stats["avg_duration_seconds"] = float(row[0]) if row[0] is not None else None
+            stats["min_duration_seconds"] = float(row[1]) if row[1] is not None else None
+            stats["max_duration_seconds"] = float(row[2]) if row[2] is not None else None
     except Exception as e:
         logger.warning(f"Failed to get duration stats: {e}")
 
