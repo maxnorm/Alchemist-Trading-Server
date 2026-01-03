@@ -2,9 +2,9 @@ name: Build API
 
 on:
   pull_request:
-    branches: [main, dev]
+    branches: [master, dev]
   push:
-    branches: [main, dev]
+    branches: [master, dev]
 
 jobs:
   build:
