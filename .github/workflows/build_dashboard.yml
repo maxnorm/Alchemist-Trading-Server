@@ -29,7 +29,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: src/dashboard
-        run: npm install
+        run: npm ci
       
       - name: Run TypeScript compilation check
         working-directory: src/dashboard
