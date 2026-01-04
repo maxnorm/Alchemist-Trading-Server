@@ -6,7 +6,7 @@ import { useWebSocketContext } from '@/contexts/WebSocketContext'
  * @param channel - The WebSocket channel to subscribe to
  * @returns The last message received on the channel
  */
-export function useWebSocket<T = any>(channel: string) {
+export function useWebSocket<T = unknown>(channel: string) {
   const { subscribe } = useWebSocketContext()
   const [lastMessage, setLastMessage] = useState<T | null>(null)
 

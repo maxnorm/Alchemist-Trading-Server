@@ -7,6 +7,8 @@ import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
 import type { MT5Account, ModelAssignment } from '@/types/mt5'
 import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
+import type { PaperSession, ValidationResult } from '@/types/model'
+import type { PerformanceBreakdown } from '@/types/performance'
 
 class ApiClient {
   private client: AxiosInstance
@@ -39,7 +41,8 @@ class ApiClient {
       (error: AxiosError) => {
         if (error.response) {
           // Server responded with error
-          const message = (error.response.data as any)?.detail || error.message
+          const errorData = error.response.data as { detail?: string } | undefined
+          const message = errorData?.detail || error.message
           return Promise.reject(new Error(message))
         } else if (error.request) {
           // Request made but no response
@@ -119,7 +122,7 @@ class ApiClient {
     return response.data
   }
 
-  async getOptunaBest(experimentId: number): Promise<{ params: Record<string, any>; value: number }> {
+  async getOptunaBest(experimentId: number): Promise<{ params: Record<string, unknown>; value: number }> {
     const response = await this.client.get(
       `${API_ENDPOINTS.experiments}/${experimentId}/optuna/best`
     )
@@ -160,12 +163,12 @@ class ApiClient {
     return response.data
   }
 
-  async getPaperSessions(modelId: number): Promise<any[]> {
+  async getPaperSessions(modelId: number): Promise<PaperSession[]> {
     const response = await this.client.get(`${API_ENDPOINTS.models}/${modelId}/paper-sessions`)
     return response.data.sessions || []
   }
 
-  async startPaperSession(modelId: number, startBalance: number = 10000): Promise<any> {
+  async startPaperSession(modelId: number, startBalance: number = 10000): Promise<PaperSession> {
     const response = await this.client.post(
       `${API_ENDPOINTS.models}/${modelId}/paper-sessions/start`,
       { start_balance: startBalance }
@@ -173,14 +176,14 @@ class ApiClient {
     return response.data
   }
 
-  async stopPaperSession(modelId: number, sessionId: number): Promise<any> {
+  async stopPaperSession(modelId: number, sessionId: number): Promise<PaperSession> {
     const response = await this.client.post(
       `${API_ENDPOINTS.models}/${modelId}/paper-sessions/${sessionId}/stop`
     )
     return response.data
   }
 
-  async getModelValidation(modelId: number): Promise<any> {
+  async getModelValidation(modelId: number): Promise<ValidationResult> {
     const response = await this.client.get(`${API_ENDPOINTS.models}/${modelId}/validation`)
     return response.data
   }
@@ -259,7 +262,7 @@ class ApiClient {
   }
 
   async getPortfolioEquityCurve(startDate?: string, endDate?: string): Promise<EquityPoint[]> {
-    const params: any = {}
+    const params: Record<string, string> = {}
     if (startDate) params.start_date = startDate
     if (endDate) params.end_date = endDate
     const response = await this.client.get<{ data: EquityPoint[] }>(
@@ -269,8 +272,8 @@ class ApiClient {
     return response.data.data
   }
 
-  async getPerformanceBreakdown(period: string = 'day'): Promise<any[]> {
-    const response = await this.client.get<any[]>(
+  async getPerformanceBreakdown(period: string = 'day'): Promise<PerformanceBreakdown[]> {
+    const response = await this.client.get<PerformanceBreakdown[]>(
       `${API_ENDPOINTS.performance}/portfolio/breakdown`,
       { params: { period } }
     )
@@ -300,7 +303,7 @@ class ApiClient {
   }
 
   async getModelEquityCurve(modelId: number, startDate?: string, endDate?: string): Promise<EquityPoint[]> {
-    const params: any = {}
+    const params: Record<string, string> = {}
     if (startDate) params.start_date = startDate
     if (endDate) params.end_date = endDate
     const response = await this.client.get<{ data: EquityPoint[] }>(
@@ -318,23 +321,23 @@ class ApiClient {
     return response.data
   }
 
-  async getModelStatistics(modelId: number, period: string = 'all_time'): Promise<any> {
-    const response = await this.client.get<any>(
+  async getModelStatistics(modelId: number, period: string = 'all_time'): Promise<Record<string, unknown>> {
+    const response = await this.client.get<Record<string, unknown>>(
       `${API_ENDPOINTS.performance}/models/${modelId}/statistics`,
       { params: { period } }
     )
     return response.data
   }
 
-  async getModelComparison(modelId: number): Promise<any> {
-    const response = await this.client.get<any>(
+  async getModelComparison(modelId: number): Promise<Record<string, unknown>> {
+    const response = await this.client.get<Record<string, unknown>>(
       `${API_ENDPOINTS.performance}/models/${modelId}/comparison`
     )
     return response.data
   }
 
-  async getRealtimeMetrics(): Promise<any> {
-    const response = await this.client.get<any>(
+  async getRealtimeMetrics(): Promise<Record<string, unknown>> {
+    const response = await this.client.get<Record<string, unknown>>(
       `${API_ENDPOINTS.performance}/metrics/realtime`
     )
     return response.data

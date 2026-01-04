@@ -8,7 +8,7 @@ import { usePeriodFilter } from '@/hooks/usePeriodFilter'
 import { usePerformanceMetrics } from '@/features/performance/hooks/usePerformanceMetrics'
 import { useEquityCurve } from '@/features/performance/hooks/useEquityCurve'
 import { usePerformanceBreakdown } from '@/features/performance/hooks/usePerformanceBreakdown'
-import type { PortfolioMetrics } from '@/types/performance'
+import type { PortfolioMetrics, PerformanceBreakdown } from '@/types/performance'
 
 export default function PortfolioPerformance() {
   const { period, setPeriod, periods } = usePeriodFilter('all_time')
@@ -239,7 +239,7 @@ export default function PortfolioPerformance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {breakdown.map((item: any, idx: number) => (
+                  {breakdown.map((item: PerformanceBreakdown, idx: number) => (
                     <tr key={idx} className="border-b">
                       <td className="p-2">{item.period}</td>
                       <td className={`text-right p-2 ${item.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>

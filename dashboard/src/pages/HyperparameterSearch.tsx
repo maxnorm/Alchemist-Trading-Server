@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useOptunaSearch } from '@/features/optuna/hooks/useOptunaSearch'
+import type { OptunaTrial } from '@/types/optuna'
 
 export default function HyperparameterSearch() {
   const {
@@ -108,7 +109,7 @@ export default function HyperparameterSearch() {
                 <p className="text-muted-foreground">No trials yet. Start a search to begin.</p>
               ) : (
                 <div className="space-y-2">
-                  {trials.slice(0, 10).map((trial: any) => (
+                  {trials.slice(0, 10).map((trial: OptunaTrial) => (
                     <div
                       key={trial.id}
                       className="rounded-md border p-3 text-sm"

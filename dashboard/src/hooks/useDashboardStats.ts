@@ -5,6 +5,7 @@ import { useTradingStore } from '@/stores/tradingStore'
 import type { ModelMetrics } from '@/types/performance'
 import type { Experiment } from '@/types/experiment'
 import type { Model } from '@/types/model'
+import type { MT5Account } from '@/types/mt5'
 
 interface ActivityItem {
   id: string
@@ -73,8 +74,8 @@ export function useDashboardStats() {
         const model = models.find((m: Model) => m.id === perf.model_id)
         return { ...perf, model }
       })
-      .filter((item: any) => item.model)
-      .sort((a: any, b: any) => (b.total_pnl || 0) - (a.total_pnl || 0))
+      .filter((item: { model?: Model }) => item.model)
+      .sort((a: { total_pnl?: number }, b: { total_pnl?: number }) => (b.total_pnl || 0) - (a.total_pnl || 0))
       .slice(0, 5)
   }, [modelPerformance, models])
 
@@ -154,7 +155,7 @@ export function useDashboardStats() {
       production: models?.filter((m: Model) => m.stage === 'production').length || 0,
     }
 
-    const activeAccounts = mt5Accounts?.filter((acc: any) => acc.is_active).length || 0
+    const activeAccounts = mt5Accounts?.filter((acc: MT5Account) => acc.is_active).length || 0
     const totalAccounts = mt5Accounts?.length || 0
 
     return {

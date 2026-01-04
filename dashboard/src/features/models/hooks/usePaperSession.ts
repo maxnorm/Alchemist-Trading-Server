@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import toast from 'react-hot-toast'
+import type { PaperSession } from '@/types/model'
 
 export function usePaperSession(modelId: number | null) {
   const queryClient = useQueryClient()
@@ -53,7 +54,7 @@ export function usePaperSession(modelId: number | null) {
     [stopSessionMutation]
   )
 
-  const runningSession = paperSessions?.find((s: any) => s.status === 'running')
+  const runningSession = paperSessions?.find((s: PaperSession) => s.status === 'running')
 
   return {
     paperSessions: paperSessions || [],

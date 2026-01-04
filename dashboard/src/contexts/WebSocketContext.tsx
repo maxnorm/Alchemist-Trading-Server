@@ -4,7 +4,7 @@ import { wsService } from '@/services/websocket'
 interface WebSocketContextValue {
   isConnected: boolean
   subscribe: <T>(channel: string, handler: (data: T) => void) => () => void
-  send: (channel: string, message: any) => void
+  send: (channel: string, message: unknown) => void
 }
 
 const WebSocketContext = createContext<WebSocketContextValue | undefined>(undefined)
@@ -33,10 +33,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const subscribe = useCallback(<T,>(channel: string, handler: (data: T) => void) => {
-    return wsService.subscribe(channel, handler as (data: any) => void)
+    return wsService.subscribe(channel, handler as (data: unknown) => void)
   }, [])
 
-  const send = useCallback((channel: string, message: any) => {
+  const send = useCallback((channel: string, message: unknown) => {
     wsService.send(channel, message)
   }, [])
 

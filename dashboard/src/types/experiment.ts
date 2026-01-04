@@ -9,7 +9,7 @@ export interface Experiment {
   features: string[]
   currency_pairs: string[]
   training_mode: TrainingMode
-  hyperparameters: Record<string, any>
+  hyperparameters: Record<string, unknown>
   status: ExperimentStatus
   mlflow_run_id?: string
   created_at: string
@@ -23,7 +23,7 @@ export interface CreateExperimentDto {
   features: string[]
   currency_pairs: string[]
   training_mode: TrainingMode
-  hyperparameters: Record<string, any>
+  hyperparameters: Record<string, unknown>
 }
 
 export interface ExperimentProgress {

@@ -10,7 +10,7 @@ export const WS_CHANNELS = {
   alerts: '/ws/alerts',
 } as const
 
-type MessageHandler = (data: any) => void
+type MessageHandler = (data: unknown) => void
 
 class WebSocketService {
   private ws: WebSocket | null = null
@@ -78,7 +78,7 @@ class WebSocketService {
     }, delay)
   }
 
-  private handleMessage(message: any): void {
+  private handleMessage(message: { channel?: string; data?: unknown }): void {
     const { channel, data } = message
     if (channel && this.subscribers.has(channel)) {
       const handlers = this.subscribers.get(channel)!
@@ -119,7 +119,7 @@ class WebSocketService {
     this.subscribers.delete(channel)
   }
 
-  send(channel: string, message: any): void {
+  send(channel: string, message: unknown): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ channel, data: message }))
     } else {

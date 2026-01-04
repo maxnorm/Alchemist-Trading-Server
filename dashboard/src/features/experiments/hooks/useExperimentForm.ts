@@ -2,7 +2,7 @@ import { useReducer, useCallback, useMemo } from 'react'
 import type { CreateExperimentDto } from '@/types/experiment'
 
 type ExperimentFormAction =
-  | { type: 'SET_FIELD'; field: keyof CreateExperimentDto; value: any }
+  | { type: 'SET_FIELD'; field: keyof CreateExperimentDto; value: unknown }
   | { type: 'TOGGLE_FEATURE'; name: string }
   | { type: 'TOGGLE_CURRENCY_PAIR'; pair: string }
   | { type: 'RESET' }
@@ -82,7 +82,7 @@ export function useExperimentForm() {
     dispatch({ type: 'DESELECT_ALL_PAIRS' })
   }, [])
 
-  const setField = useCallback((field: keyof CreateExperimentDto, value: any) => {
+  const setField = useCallback((field: keyof CreateExperimentDto, value: unknown) => {
     dispatch({ type: 'SET_FIELD', field, value })
   }, [])
 

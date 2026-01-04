@@ -45,3 +45,10 @@ export interface Trade {
   exit_time?: string
   status: 'OPEN' | 'CLOSED'
 }
+
+export interface PerformanceBreakdown {
+  period: string
+  pnl: number
+  trades: number
+  win_rate: number
+}
