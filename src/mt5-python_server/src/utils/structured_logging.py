@@ -255,7 +255,8 @@ class StructuredLogger:
         }
 
         # Handle exception info
-        # Type for exc_info: bool | tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None] | BaseException | None
+        # Type for exc_info: bool | tuple[type[BaseException], BaseException,
+        # TracebackType | None] | tuple[None, None, None] | BaseException | None
         exc_info_result: Optional[
             Union[
                 bool,
