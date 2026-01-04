@@ -130,12 +130,3 @@ class WebScraperMyfxbook:
         login_btn.click()
 
 
-if __name__ == "__main__":
-    myfxbook = WebScraperMyfxbook(
-        email="alchemistcapitalmanagement@gmail.com",
-        password=">B3)V:v62VFt0Rt=,",
-        url="https://www.myfxbook.com/",
-    )
-
-    data = myfxbook.download_economic_calendar()
-    print(data)

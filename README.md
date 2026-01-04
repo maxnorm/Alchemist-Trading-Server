@@ -204,8 +204,9 @@ pytest tests/ --cov=src/mt5-python_server/src --cov-report=html
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for detailed setup instructions.
 
 ## License
-Proprietary software of Alchemist Capital
 
-Unauthorized use or distribution is prohibited
+This project is licensed under the **MIT License**.
 
-© 2026, Alchemist Capital - All rights reserved
+See the [LICENSE](LICENSE) file for the full license text.
+
+© 2026, Alchemist Capital Management
