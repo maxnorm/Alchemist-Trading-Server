@@ -39,8 +39,9 @@ class BaseTradingEnv(gym.Env, ABC):
         self.window_size = window_size
 
         # Random state for reproducibility
-        self.np_random: Optional[np.random.Generator] = None
-        self._seed: Optional[int] = None
+        # Initialize np_random to match base class type (Generator, not Optional)
+        self.np_random, _ = seeding.np_random(seed)
+        self._seed: Optional[int] = seed
 
         # Define action space
         # Action encoding:
@@ -61,7 +62,7 @@ class BaseTradingEnv(gym.Env, ABC):
         self.position: Optional[Any] = None
         self.position_history: List[Any] = []
 
-        # Initialize seed if provided
+        # Seed other random generators if seed was provided
         if seed is not None:
             self.seed(seed)
 
@@ -169,10 +170,4 @@ class BaseTradingEnv(gym.Env, ABC):
 
     def get_random_state(self) -> np.random.Generator:
         """Get the numpy random generator for reproducible randomness"""
-        if self.np_random is None:
-            self.seed(None)  # Initialize with random seed
-        # After seed() call, np_random is guaranteed to be set
-        assert (
-            self.np_random is not None
-        ), "np_random should be initialized after seed()"
         return self.np_random
