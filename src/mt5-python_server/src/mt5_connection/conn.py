@@ -8,26 +8,29 @@ class Connection:
     """
     Class to connect to MT5 terminal via socket
     """
+
     # Default timeout for socket operations (30 seconds)
     # Can be overridden with MT5_SOCKET_TIMEOUT environment variable
-    DEFAULT_TIMEOUT = float(os.getenv('MT5_SOCKET_TIMEOUT', '30.0'))
-    
-    def __init__(self, socket, stop_char='\n', verbose=False, console_lock=None, timeout=None):
+    DEFAULT_TIMEOUT = float(os.getenv("MT5_SOCKET_TIMEOUT", "30.0"))
+
+    def __init__(
+        self, socket, stop_char="\n", verbose=False, console_lock=None, timeout=None
+    ):
         self.__socket = socket
         self.__stop_char = stop_char
         self.__verbose = verbose
         self.__console_lock = console_lock
         self.__timeout = timeout or self.DEFAULT_TIMEOUT
-        self.__created_at = __import__('time').time()
+        self.__created_at = __import__("time").time()
         self.__last_send_ts = None
         self.__last_recv_ts = None
-        
+
         # Set socket timeout to prevent indefinite blocking
         try:
             self.__socket.settimeout(self.__timeout)
         except Exception:
             pass  # Socket might already be configured
-        
+
         # Enable TCP keepalive to avoid silent idle disconnects
         try:
             self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
@@ -47,8 +50,19 @@ class Connection:
         """
         # #region agent log
         try:
-            import json as json_log, os, time as _t
-            payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H0","location":"conn.py:send_msg","message":"socket_state_before_send_msg","data":{}, "timestamp":int(_t.time()*1000)}
+            import json as json_log
+            import os
+            import time as _t
+
+            payload = {
+                "sessionId": "debug-session",
+                "runId": "run-debug",
+                "hypothesisId": "H0",
+                "location": "conn.py:send_msg",
+                "message": "socket_state_before_send_msg",
+                "data": {},
+                "timestamp": int(_t.time() * 1000),
+            }
             try:
                 payload["data"]["gettimeout"] = self.__socket.gettimeout()
             except Exception as e:
@@ -62,106 +76,215 @@ class Connection:
             except Exception as e:
                 payload["data"]["fileno_error"] = str(e)
             for dest in [
-                r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log',
-                os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+                r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log",
+                os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log"),
             ]:
                 try:
-                    with open(dest, 'a') as f:
-                        f.write(json_log.dumps(payload) + '\n')
-                except:  # pragma: no cover
+                    with open(dest, "a") as f:
+                        f.write(json_log.dumps(payload) + "\n")
+                except Exception:  # pragma: no cover
                     pass
-        except:  # pragma: no cover
+        except Exception:  # pragma: no cover
             pass
         # #endregion
         # #region agent log
         try:
-            import json as json_log, os, time as _t
-            payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H1","location":"conn.py:send_msg","message":"about_to_send_msg","data":{"preview":msg[:150]},"timestamp":int(_t.time()*1000)}
+            import json as json_log
+            import os
+            import time as _t
+
+            payload = {
+                "sessionId": "debug-session",
+                "runId": "run-debug",
+                "hypothesisId": "H1",
+                "location": "conn.py:send_msg",
+                "message": "about_to_send_msg",
+                "data": {"preview": msg[:150]},
+                "timestamp": int(_t.time() * 1000),
+            }
             try:
-                host_log = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
-                with open(host_log, 'a') as f:
-                    f.write(json_log.dumps(payload) + '\n')
-            except:  # pragma: no cover
+                host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
+                with open(host_log, "a") as f:
+                    f.write(json_log.dumps(payload) + "\n")
+            except Exception:  # pragma: no cover
                 pass
             try:
-                log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                with open(log_path, 'a') as f:
-                    f.write(json_log.dumps(payload) + '\n')
-            except:  # pragma: no cover
+                log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
+                with open(log_path, "a") as f:
+                    f.write(json_log.dumps(payload) + "\n")
+            except Exception:  # pragma: no cover
                 pass
-        except:  # pragma: no cover - best effort instrumentation
+        except Exception:  # pragma: no cover - best effort instrumentation
             pass
         # #endregion
-        self.__last_send_ts = __import__('time').time()
+        self.__last_send_ts = __import__("time").time()
         # #region agent log
         try:
-            import json, os
-            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"conn.py:28","message":"send_msg entry","data":{"msg_len":len(msg),"socket_fileno":self.__socket.fileno() if hasattr(self.__socket,'fileno') else None},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
+            import json
+            import os
+
+            log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
+            with open(log_path, "a") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "A",
+                            "location": "conn.py:28",
+                            "message": "send_msg entry",
+                            "data": {
+                                "msg_len": len(msg),
+                                "socket_fileno": (
+                                    self.__socket.fileno()
+                                    if hasattr(self.__socket, "fileno")
+                                    else None
+                                ),
+                            },
+                            "timestamp": int(__import__("time").time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
         # #endregion
         # #region agent log
         try:
-            import json, os
-            sock_state = {'closed':False,'timeout':None}
+            import json
+            import os
+
+            sock_state = {"closed": False, "timeout": None}
             try:
-                sock_state['timeout'] = self.__socket.gettimeout()
-            except: pass
+                sock_state["timeout"] = self.__socket.gettimeout()
+            except Exception:
+                pass
             try:
                 self.__socket.getpeername()
             except Exception as e:
-                sock_state['closed'] = True
-                sock_state['error'] = str(e)
-            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"conn.py:28","message":"socket state before send","data":sock_state,"timestamp":int(__import__('time').time()*1000)}) + '\n')
-        except: pass
+                sock_state["closed"] = True
+                sock_state["error"] = str(e)
+            log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
+            with open(log_path, "a") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "B",
+                            "location": "conn.py:28",
+                            "message": "socket state before send",
+                            "data": sock_state,
+                            "timestamp": int(__import__("time").time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
         # #endregion
         try:
-            self.__socket.send(bytes(msg + self.__stop_char, 'utf-8'))
-            self.__last_send_ts = __import__('time').time()
+            self.__socket.send(bytes(msg + self.__stop_char, "utf-8"))
+            self.__last_send_ts = __import__("time").time()
             # #region agent log
             try:
-                import json, os
-                log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                with open(log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"conn.py:28","message":"send_msg success","data":{"bytes_sent":len(msg + self.__stop_char)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-            except: pass
+                import json
+                import os
+
+                log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
+                with open(log_path, "a") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "A",
+                                "location": "conn.py:28",
+                                "message": "send_msg success",
+                                "data": {"bytes_sent": len(msg + self.__stop_char)},
+                                "timestamp": int(__import__("time").time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
             # #endregion
         except socket.timeout:
             # #region agent log
             try:
-                import json, os
-                log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                with open(log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"conn.py:28","message":"send_msg timeout","data":{},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-            except: pass
+                import json
+                import os
+
+                log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
+                with open(log_path, "a") as f:
+                    f.write(
+                        json.dumps(
+                            {
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "C",
+                                "location": "conn.py:28",
+                                "message": "send_msg timeout",
+                                "data": {},
+                                "timestamp": int(__import__("time").time() * 1000),
+                            }
+                        )
+                        + "\n"
+                    )
+            except Exception:
+                pass
             # #endregion
-            raise TimeoutError(f"Timeout sending message to MT5 terminal after {self.__timeout}s")
+            raise TimeoutError(
+                f"Timeout sending message to MT5 terminal after {self.__timeout}s"
+            )
         except Exception as e:
             # #region agent log
             try:
-                import json, os, time as _t
+                import json
+                import os
+                import time as _t
+
                 data = {
                     "error": str(e),
                     "error_type": type(e).__name__,
-                    "uptime_s": round(__import__('time').time() - self.__created_at, 3),
-                    "last_send_delta_s": round((__import__('time').time() - self.__last_send_ts), 3) if self.__last_send_ts else None,
-                    "last_recv_delta_s": round((__import__('time').time() - self.__last_recv_ts), 3) if self.__last_recv_ts else None,
+                    "uptime_s": round(__import__("time").time() - self.__created_at, 3),
+                    "last_send_delta_s": (
+                        round((__import__("time").time() - self.__last_send_ts), 3)
+                        if self.__last_send_ts
+                        else None
+                    ),
+                    "last_recv_delta_s": (
+                        round((__import__("time").time() - self.__last_recv_ts), 3)
+                        if self.__last_recv_ts
+                        else None
+                    ),
                 }
-                payload = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"conn.py:28","message":"send_msg exception","data":data,"timestamp":int(_t.time()*1000)}
+                payload = {
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "B",
+                    "location": "conn.py:28",
+                    "message": "send_msg exception",
+                    "data": data,
+                    "timestamp": int(_t.time() * 1000),
+                }
                 try:
-                    log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                    with open(log_path, 'a') as f:
-                        f.write(json.dumps(payload) + '\n')
-                except: pass
+                    log_path = os.path.join(
+                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                    )
+                    with open(log_path, "a") as f:
+                        f.write(json.dumps(payload) + "\n")
+                except Exception:
+                    pass
                 try:
-                    host_log = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
-                    with open(host_log, 'a') as f:
-                        f.write(json.dumps(payload) + '\n')
-                except: pass
-            except: pass
+                    host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
+                    with open(host_log, "a") as f:
+                        f.write(json.dumps(payload) + "\n")
+                except Exception:
+                    pass
+            except Exception:
+                pass
             # #endregion
             raise ConnectionError(f"Error sending message to MT5 terminal: {e}")
 
@@ -174,12 +297,11 @@ class Connection:
         :raises ConnectionError: If connection error occurs
         """
         response_timeout = timeout or self.__timeout
-        
+
         try:
             # Use asyncio.wait_for to add timeout to the async operation
             return await asyncio.wait_for(
-                self._receive_response(),
-                timeout=response_timeout
+                self._receive_response(), timeout=response_timeout
             )
         except asyncio.TimeoutError:
             raise TimeoutError(
@@ -199,92 +321,195 @@ class Connection:
         """
         # #region agent log
         try:
-            import json as json_log, os, time as _t
-            payload = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"conn.py:117","message":"_receive_response entry","data":{},"timestamp":int(_t.time()*1000)}
+            import json as json_log
+            import os
+            import time as _t
+
+            payload = {
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "E",
+                "location": "conn.py:117",
+                "message": "_receive_response entry",
+                "data": {},
+                "timestamp": int(_t.time() * 1000),
+            }
             try:
-                log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                with open(log_path, 'a') as f:
-                    f.write(json_log.dumps(payload) + '\n')
-            except: pass
+                log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
+                with open(log_path, "a") as f:
+                    f.write(json_log.dumps(payload) + "\n")
+            except Exception:
+                pass
             try:
-                host_log = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
-                with open(host_log, 'a') as f:
-                    f.write(json_log.dumps(payload) + '\n')
-            except: pass
-        except: pass
+                host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
+                with open(host_log, "a") as f:
+                    f.write(json_log.dumps(payload) + "\n")
+            except Exception:
+                pass
+        except Exception:
+            pass
         # #endregion
         # #region agent log
         try:
-            import json as json_log, time as _t
-            log_path = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
-            sock_state = {"fileno": self.__socket.fileno() if hasattr(self.__socket,"fileno") else None}
-            with open(log_path, 'a') as f:
-                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H2","location":"conn.py:_receive_response","message":"enter_receive_response","data":sock_state,"timestamp":int(_t.time()*1000)}) + '\n')
-        except:  # pragma: no cover
+            import json as json_log
+            import time as _t
+
+            log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
+            sock_state = {
+                "fileno": (
+                    self.__socket.fileno() if hasattr(self.__socket, "fileno") else None
+                )
+            }
+            with open(log_path, "a") as f:
+                f.write(
+                    json_log.dumps(
+                        {
+                            "sessionId": "debug-session",
+                            "runId": "run-debug",
+                            "hypothesisId": "H2",
+                            "location": "conn.py:_receive_response",
+                            "message": "enter_receive_response",
+                            "data": sock_state,
+                            "timestamp": int(_t.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:  # pragma: no cover
             pass
         # #endregion
-        cum_data = ''
+        cum_data = ""
         loop = asyncio.get_event_loop()
-        
+
         while True:
             # Run socket.recv in executor to make it non-blocking
             try:
                 # #region agent log
                 try:
-                    import json as json_log, os
-                    log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                    with open(log_path, 'a') as f:
-                        f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"conn.py:117","message":"_receive_response before recv","data":{},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-                except: pass
+                    import json as json_log
+                    import os
+
+                    log_path = os.path.join(
+                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                    )
+                    with open(log_path, "a") as f:
+                        f.write(
+                            json_log.dumps(
+                                {
+                                    "sessionId": "debug-session",
+                                    "runId": "run1",
+                                    "hypothesisId": "E",
+                                    "location": "conn.py:117",
+                                    "message": "_receive_response before recv",
+                                    "data": {},
+                                    "timestamp": int(__import__("time").time() * 1000),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
                 # #endregion
                 # Use run_in_executor to avoid blocking the event loop
-                raw_data = await loop.run_in_executor(
-                    None,
-                    self.__socket.recv,
-                    1024
-                )
-                
+                raw_data = await loop.run_in_executor(None, self.__socket.recv, 1024)
+
                 # #region agent log
                 try:
-                    import json as json_log, os
-                    log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                    with open(log_path, 'a') as f:
-                        f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"conn.py:117","message":"_receive_response after recv","data":{"raw_data_len":len(raw_data) if raw_data else 0},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-                except: pass
+                    import json as json_log
+                    import os
+
+                    log_path = os.path.join(
+                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                    )
+                    with open(log_path, "a") as f:
+                        f.write(
+                            json_log.dumps(
+                                {
+                                    "sessionId": "debug-session",
+                                    "runId": "run1",
+                                    "hypothesisId": "E",
+                                    "location": "conn.py:117",
+                                    "message": "_receive_response after recv",
+                                    "data": {
+                                        "raw_data_len": len(raw_data) if raw_data else 0
+                                    },
+                                    "timestamp": int(__import__("time").time() * 1000),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
                 # #endregion
-                
+
                 if not raw_data:
                     # #region agent log
                     try:
-                        import json as json_log, os, time as _t
-                        payload = {"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"conn.py:117","message":"_receive_response empty data","data":{},"timestamp":int(_t.time()*1000)}
+                        import json as json_log
+                        import os
+                        import time as _t
+
+                        payload = {
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "F",
+                            "location": "conn.py:117",
+                            "message": "_receive_response empty data",
+                            "data": {},
+                            "timestamp": int(_t.time() * 1000),
+                        }
                         try:
-                            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                            with open(log_path, 'a') as f:
-                                f.write(json_log.dumps(payload) + '\n')
-                        except: pass
+                            log_path = os.path.join(
+                                os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                            )
+                            with open(log_path, "a") as f:
+                                f.write(json_log.dumps(payload) + "\n")
+                        except Exception:
+                            pass
                         try:
-                            host_log = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
-                            with open(host_log, 'a') as f:
-                                f.write(json_log.dumps(payload) + '\n')
-                        except: pass
-                    except: pass
+                            host_log = (
+                                r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
+                            )
+                            with open(host_log, "a") as f:
+                                f.write(json_log.dumps(payload) + "\n")
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
                     # #endregion
                     # #region agent log (socket state on empty read)
                     try:
-                        import json as json_log, time as _t
-                        sock_state = {"fileno": self.__socket.fileno() if hasattr(self.__socket,"fileno") else None}
-                        payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H2","location":"conn.py:_receive_response","message":"empty_raw_data_connection_closed","data":sock_state,"timestamp":int(_t.time()*1000)}
+                        import json as json_log
+                        import time as _t
+
+                        sock_state = {
+                            "fileno": (
+                                self.__socket.fileno()
+                                if hasattr(self.__socket, "fileno")
+                                else None
+                            )
+                        }
+                        payload = {
+                            "sessionId": "debug-session",
+                            "runId": "run-debug",
+                            "hypothesisId": "H2",
+                            "location": "conn.py:_receive_response",
+                            "message": "empty_raw_data_connection_closed",
+                            "data": sock_state,
+                            "timestamp": int(_t.time() * 1000),
+                        }
                         for dest in [
-                            r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log',
-                            os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+                            r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log",
+                            os.path.join(
+                                os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                            ),
                         ]:
                             try:
-                                with open(dest, 'a') as f:
-                                    f.write(json_log.dumps(payload) + '\n')
-                            except:  # pragma: no cover
+                                with open(dest, "a") as f:
+                                    f.write(json_log.dumps(payload) + "\n")
+                            except Exception:  # pragma: no cover
                                 pass
-                    except:  # pragma: no cover
+                    except Exception:  # pragma: no cover
                         pass
                     # #endregion
                     # If we have partial data accumulated, try to parse before failing
@@ -295,128 +520,274 @@ class Connection:
                         except Exception:
                             pass
                     raise ConnectionError("Connection closed by MT5 terminal")
-                
+
                 data = raw_data.decode("utf-8")
                 cum_data += data
-                
+
                 if self.__stop_char not in cum_data:
                     # #region agent log
                     try:
-                        import json as json_log, time as _t
-                        payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H5","location":"conn.py:_receive_response","message":"stop_char_not_found_yet","data":{"cum_len":len(cum_data),"preview":cum_data[:120]},"timestamp":int(_t.time()*1000)}
+                        import json as json_log
+                        import time as _t
+
+                        payload = {
+                            "sessionId": "debug-session",
+                            "runId": "run-debug",
+                            "hypothesisId": "H5",
+                            "location": "conn.py:_receive_response",
+                            "message": "stop_char_not_found_yet",
+                            "data": {
+                                "cum_len": len(cum_data),
+                                "preview": cum_data[:120],
+                            },
+                            "timestamp": int(_t.time() * 1000),
+                        }
                         for dest in [
-                            r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log',
-                            os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
+                            r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log",
+                            os.path.join(
+                                os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                            ),
                         ]:
                             try:
-                                with open(dest, 'a') as f:
-                                    f.write(json_log.dumps(payload) + '\n')
-                            except:  # pragma: no cover
+                                with open(dest, "a") as f:
+                                    f.write(json_log.dumps(payload) + "\n")
+                            except Exception:  # pragma: no cover
                                 pass
-                    except:  # pragma: no cover
+                    except Exception:  # pragma: no cover
                         pass
                     # #endregion
                     continue
-                self.__last_recv_ts = __import__('time').time()
-                
+                self.__last_recv_ts = __import__("time").time()
+
                 if self.__stop_char in cum_data:
-                    response_str = cum_data[:cum_data.index(self.__stop_char)]
+                    response_str = cum_data[: cum_data.index(self.__stop_char)]
                     # #region agent log
                     try:
-                        import json as json_log, os
-                        log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                        with open(log_path, 'a') as f:
-                            f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"conn.py:117","message":"_receive_response complete","data":{"response_preview":response_str[:100]},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-                    except: pass
+                        import json as json_log
+                        import os
+
+                        log_path = os.path.join(
+                            os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                        )
+                        with open(log_path, "a") as f:
+                            f.write(
+                                json_log.dumps(
+                                    {
+                                        "sessionId": "debug-session",
+                                        "runId": "run1",
+                                        "hypothesisId": "E",
+                                        "location": "conn.py:117",
+                                        "message": "_receive_response complete",
+                                        "data": {
+                                            "response_preview": response_str[:100]
+                                        },
+                                        "timestamp": int(
+                                            __import__("time").time() * 1000
+                                        ),
+                                    }
+                                )
+                                + "\n"
+                            )
+                    except Exception:
+                        pass
                     # #endregion
                     # #region agent log
                     try:
-                        import json as json_log, os, time as _t
-                        payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H6","location":"conn.py:_receive_response","message":"stop_char_found","data":{"response_preview":response_str[:150]},"timestamp":int(_t.time()*1000)}
+                        import json as json_log
+                        import os
+                        import time as _t
+
+                        payload = {
+                            "sessionId": "debug-session",
+                            "runId": "run-debug",
+                            "hypothesisId": "H6",
+                            "location": "conn.py:_receive_response",
+                            "message": "stop_char_found",
+                            "data": {"response_preview": response_str[:150]},
+                            "timestamp": int(_t.time() * 1000),
+                        }
                         for dest in [
-                            os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log'),
-                            r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
+                            os.path.join(
+                                os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                            ),
+                            r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log",
                         ]:
                             try:
-                                with open(dest, 'a') as f:
-                                    f.write(json_log.dumps(payload) + '\n')
-                            except: pass
-                    except:  # pragma: no cover
+                                with open(dest, "a") as f:
+                                    f.write(json_log.dumps(payload) + "\n")
+                            except Exception:
+                                pass
+                    except Exception:  # pragma: no cover
                         pass
                     # #endregion
                     try:
                         parsed = json.loads(response_str)
                         # #region agent log
                         try:
-                            import json as json_log, os
-                            sock_state = {'closed':False,'timeout':None}
+                            import json as json_log
+                            import os
+
+                            sock_state = {"closed": False, "timeout": None}
                             try:
-                                sock_state['timeout'] = self.__socket.gettimeout()
-                            except: pass
+                                sock_state["timeout"] = self.__socket.gettimeout()
+                            except Exception:
+                                pass
                             try:
                                 self.__socket.getpeername()
                             except Exception as e:
-                                sock_state['closed'] = True
-                                sock_state['error'] = str(e)
-                            log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                            with open(log_path, 'a') as f:
-                                f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"conn.py:117","message":"_receive_response socket state after response","data":sock_state,"timestamp":int(__import__('time').time()*1000)}) + '\n')
-                        except: pass
+                                sock_state["closed"] = True
+                                sock_state["error"] = str(e)
+                            log_path = os.path.join(
+                                os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                            )
+                            with open(log_path, "a") as f:
+                                f.write(
+                                    json_log.dumps(
+                                        {
+                                            "sessionId": "debug-session",
+                                            "runId": "run1",
+                                            "hypothesisId": "G",
+                                            "location": "conn.py:117",
+                                            "message": "_receive_response socket state after response",
+                                            "data": sock_state,
+                                            "timestamp": int(
+                                                __import__("time").time() * 1000
+                                            ),
+                                        }
+                                    )
+                                    + "\n"
+                                )
+                        except Exception:
+                            pass
                         # #endregion
                         return parsed
                     except json.JSONDecodeError as e:
                         # #region agent log
                         try:
-                            import json as json_log, os, time as _t
-                            payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H3","location":"conn.py:_receive_response","message":"json_decode_error","data":{"error":str(e),"response_preview":response_str[:200]},"timestamp":int(_t.time()*1000)}
+                            import json as json_log
+                            import os
+                            import time as _t
+
+                            payload = {
+                                "sessionId": "debug-session",
+                                "runId": "run-debug",
+                                "hypothesisId": "H3",
+                                "location": "conn.py:_receive_response",
+                                "message": "json_decode_error",
+                                "data": {
+                                    "error": str(e),
+                                    "response_preview": response_str[:200],
+                                },
+                                "timestamp": int(_t.time() * 1000),
+                            }
                             try:
-                                host_log = r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
-                                with open(host_log, 'a') as f:
-                                    f.write(json_log.dumps(payload) + '\n')
-                            except: pass
+                                host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
+                                with open(host_log, "a") as f:
+                                    f.write(json_log.dumps(payload) + "\n")
+                            except Exception:
+                                pass
                             try:
-                                log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                                with open(log_path, 'a') as f:
-                                    f.write(json_log.dumps(payload) + '\n')
-                            except: pass
-                        except:  # pragma: no cover
+                                log_path = os.path.join(
+                                    os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                                )
+                                with open(log_path, "a") as f:
+                                    f.write(json_log.dumps(payload) + "\n")
+                            except Exception:
+                                pass
+                        except Exception:  # pragma: no cover
                             pass
                         # #endregion
-                        raise ValueError(f"Invalid JSON response from MT5 terminal: {e}")
+                        raise ValueError(
+                            f"Invalid JSON response from MT5 terminal: {e}"
+                        )
                 else:
                     # #region agent log
                     try:
-                        import json as json_log, os, time as _t
-                        payload = {"sessionId":"debug-session","runId":"run-debug","hypothesisId":"H5","location":"conn.py:_receive_response","message":"chunk_without_stop_char","data":{"chunk_len":len(data),"chunk_preview":data[:150],"cum_len":len(cum_data)},"timestamp":int(_t.time()*1000)}
+                        import json as json_log
+                        import os
+                        import time as _t
+
+                        payload = {
+                            "sessionId": "debug-session",
+                            "runId": "run-debug",
+                            "hypothesisId": "H5",
+                            "location": "conn.py:_receive_response",
+                            "message": "chunk_without_stop_char",
+                            "data": {
+                                "chunk_len": len(data),
+                                "chunk_preview": data[:150],
+                                "cum_len": len(cum_data),
+                            },
+                            "timestamp": int(_t.time() * 1000),
+                        }
                         for dest in [
-                            os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log'),
-                            r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log'
+                            os.path.join(
+                                os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                            ),
+                            r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log",
                         ]:
                             try:
-                                with open(dest, 'a') as f:
-                                    f.write(json_log.dumps(payload) + '\n')
-                            except: pass
-                    except:  # pragma: no cover
+                                with open(dest, "a") as f:
+                                    f.write(json_log.dumps(payload) + "\n")
+                            except Exception:
+                                pass
+                    except Exception:  # pragma: no cover
                         pass
                     # #endregion
             except socket.timeout:
                 # #region agent log
                 try:
-                    import json as json_log, os
-                    log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                    with open(log_path, 'a') as f:
-                        f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"conn.py:117","message":"_receive_response timeout","data":{},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-                except: pass
+                    import json as json_log
+                    import os
+
+                    log_path = os.path.join(
+                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                    )
+                    with open(log_path, "a") as f:
+                        f.write(
+                            json_log.dumps(
+                                {
+                                    "sessionId": "debug-session",
+                                    "runId": "run1",
+                                    "hypothesisId": "F",
+                                    "location": "conn.py:117",
+                                    "message": "_receive_response timeout",
+                                    "data": {},
+                                    "timestamp": int(__import__("time").time() * 1000),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
                 # #endregion
                 raise TimeoutError(f"Socket timeout after {self.__timeout}s")
             except OSError as e:
                 # #region agent log
                 try:
-                    import json as json_log, os
-                    log_path = os.path.join(os.getenv('LOG_DIR', '/app/logs'), 'debug.log')
-                    with open(log_path, 'a') as f:
-                        f.write(json_log.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"conn.py:117","message":"_receive_response OSError","data":{"error":str(e)},"timestamp":int(__import__('time').time()*1000)}) + '\n')
-                except: pass
+                    import json as json_log
+                    import os
+
+                    log_path = os.path.join(
+                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
+                    )
+                    with open(log_path, "a") as f:
+                        f.write(
+                            json_log.dumps(
+                                {
+                                    "sessionId": "debug-session",
+                                    "runId": "run1",
+                                    "hypothesisId": "F",
+                                    "location": "conn.py:117",
+                                    "message": "_receive_response OSError",
+                                    "data": {"error": str(e)},
+                                    "timestamp": int(__import__("time").time() * 1000),
+                                }
+                            )
+                            + "\n"
+                        )
+                except Exception:
+                    pass
                 # #endregion
                 if "timed out" in str(e).lower():
                     raise TimeoutError(f"Socket timeout after {self.__timeout}s")

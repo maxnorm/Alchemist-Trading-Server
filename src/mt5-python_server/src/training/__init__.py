@@ -1,1 +1,3 @@
-# Training module for AI agents
+"""
+Training module
+"""

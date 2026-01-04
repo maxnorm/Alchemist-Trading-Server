@@ -8,8 +8,8 @@ services:
             MYSQL_ROOT_PASSWORD: root
             MYSQL_DATABASE: db_forex
         volumes:
-            - "./database/scripts:/docker-entrypoint-initdb.d"
-            - "./database/mariadb.cnf:/etc/mysql/conf.d/custom.cnf:ro"
+            - "./src/database/scripts:/docker-entrypoint-initdb.d"
+            - "./src/database/mariadb.cnf:/etc/mysql/conf.d/custom.cnf:ro"
             - "mariadb_data:/var/lib/mysql"
         healthcheck:
             test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
@@ -57,7 +57,7 @@ services:
             DB_BACKUP_DIR: /backups
             DB_BACKUP_RETENTION_DAYS: 7
         volumes:
-            - "./database/backup.py:/app/backup.py:ro"
+            - "./src/database/backup.py:/app/backup.py:ro"
             - "backup_data:/backups"
             - "mariadb_data:/var/lib/mysql:ro"
         command: >
@@ -99,7 +99,7 @@ services:
     api:
         container_name: "api"
         build:
-            context: ./api
+            context: ./src/api
             dockerfile: Dockerfile
         ports:
             - "8000:8000"
@@ -134,7 +134,7 @@ services:
     dashboard:
         container_name: "dashboard"
         build:
-            context: ./dashboard
+            context: ./src/dashboard
             dockerfile: Dockerfile
         ports:
             - "3000:80"

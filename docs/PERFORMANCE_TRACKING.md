@@ -30,7 +30,7 @@ Phase 6 implements comprehensive live performance tracking for trading models, e
 
 ### Database Schema
 
-All performance tracking tables are defined in `database/scripts/06_performance_tracking.sql`:
+All performance tracking tables are defined in `src/database/scripts/06_performance_tracking.sql`:
 
 - `live_trading_sessions` - Tracks active trading sessions per model
 - `model_trades` - Individual trade records
@@ -71,14 +71,14 @@ Performance updates are broadcast via WebSocket on the `/ws/performance` channel
 
 ### Frontend Components
 
-1. **PortfolioPerformance Page** (`dashboard/src/pages/PortfolioPerformance.tsx`)
+1. **PortfolioPerformance Page** (`src/dashboard/src/pages/PortfolioPerformance.tsx`)
    - Portfolio equity curve chart
    - Key metrics cards (Total P&L, Sharpe Ratio, Max Drawdown, Win Rate, etc.)
    - Model contributions table
    - P&L breakdown by period
    - Currency pair and model allocation
 
-2. **ModelPerformance Page** (`dashboard/src/pages/ModelPerformance.tsx`)
+2. **ModelPerformance Page** (`src/dashboard/src/pages/ModelPerformance.tsx`)
    - Model equity curve chart with drawdown overlay
    - Performance summary section
    - Risk metrics section
@@ -87,7 +87,7 @@ Performance updates are broadcast via WebSocket on the `/ws/performance` channel
    - Recent trades table with pagination
    - Paper vs Live comparison
 
-3. **EquityCurveChart Component** (`dashboard/src/components/charts/EquityCurveChart.tsx`)
+3. **EquityCurveChart Component** (`src/dashboard/src/components/charts/EquityCurveChart.tsx`)
    - Uses Lightweight Charts for visualization
    - Supports equity and drawdown overlay
    - Responsive design
@@ -187,7 +187,7 @@ calculator.update_metrics_in_db(model_id, session_id, 'all_time', metrics)
 ### Running Database Migration
 
 ```bash
-mysql -u forex_user -p db_forex < database/scripts/06_performance_tracking.sql
+mysql -u forex_user -p db_forex < src/database/scripts/06_performance_tracking.sql
 ```
 
 ### Accessing Performance Data

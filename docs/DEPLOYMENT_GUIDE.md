@@ -83,17 +83,17 @@ MYFXBOOK_PASSWORD=your_password
 
 ### Running Migrations
 
-Migrations are in `database/scripts/` and should be run in order:
+Migrations are in `src/database/scripts/` and should be run in order:
 
 ```bash
 # Connect to database
 mysql -u forex_user -p db_forex
 
 # Run migrations
-source database/scripts/06_features.sql
-source database/scripts/07_experiments.sql
-source database/scripts/08_performance_tracking.sql
-source database/scripts/09_models.sql
+source src/database/scripts/06_features.sql
+source src/database/scripts/07_experiments.sql
+source src/database/scripts/08_performance_tracking.sql
+source src/database/scripts/09_models.sql
 ```
 
 Or use the migration script:

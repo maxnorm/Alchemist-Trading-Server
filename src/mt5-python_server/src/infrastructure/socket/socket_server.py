@@ -1,14 +1,14 @@
 """
 Socket server for handling socket connections
 """
+
 import socket
-import threading
 from typing import Tuple, Optional
 
 
 class SocketServer:
     """Handles socket server operations"""
-    
+
     def __init__(self, host: str, port: int, verbose: bool = False):
         """
         Initialize socket server
@@ -21,13 +21,13 @@ class SocketServer:
         self.verbose = verbose
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.is_running = False
-    
+
     def bind(self):
         """Bind socket to host and port"""
         self.socket.bind((self.host, self.port))
         if self.verbose:
             print(f"Server socket bound to {self.host}:{self.port}")
-    
+
     def listen(self, backlog: int = 5):
         """
         Start listening for connections
@@ -37,7 +37,7 @@ class SocketServer:
         self.is_running = True
         if self.verbose:
             print("Server now listening for MT5 EA")
-    
+
     def accept(self) -> Optional[Tuple[socket.socket, Tuple[str, int]]]:
         """
         Accept a new connection
@@ -45,7 +45,7 @@ class SocketServer:
         """
         if not self.is_running:
             return None
-        
+
         try:
             client_conn, client_address = self.socket.accept()
             return client_conn, client_address
@@ -53,7 +53,7 @@ class SocketServer:
             if self.verbose:
                 print(f"Error accepting connection: {e}")
             return None
-    
+
     def close(self):
         """Close the socket"""
         self.is_running = False

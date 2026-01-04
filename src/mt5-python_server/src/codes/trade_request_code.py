@@ -2,6 +2,7 @@
 Enum for the return code for trade request
 Based on MQL5 documentation: https://www.mql5.com/en/docs/constants/errorswarnings/enum_trade_return_codes
 """
+
 from enum import IntEnum
 
 
@@ -10,11 +11,12 @@ class TradeRequest(IntEnum):
     Enum for the return code for trade request
     Complete list of MT5 trade server return codes
     """
+
     # Success codes
     PLACED = 10008  # Order placed
     EXECUTED = 10009  # Request completed
     DONE_PARTIAL = 10010  # Only part of the request was completed
-    
+
     # Error codes
     REQUOTE = 10004  # Requote
     REJECT = 10006  # Request rejected
@@ -42,19 +44,27 @@ class TradeRequest(IntEnum):
     CONNECTION = 10031  # No connection with the trade server
     ONLY_REAL = 10032  # Operation is allowed only for live accounts
     LIMIT_ORDERS = 10033  # The number of pending orders has reached the limit
-    LIMIT_VOLUME = 10034  # The volume of orders and positions for the symbol has reached the limit
+    LIMIT_VOLUME = (
+        10034  # The volume of orders and positions for the symbol has reached the limit
+    )
     INVALID_ORDER = 10035  # Incorrect or prohibited order type
-    POSITION_CLOSED = 10036  # Position with the specified POSITION_IDENTIFIER has already been closed
+    POSITION_CLOSED = (
+        10036  # Position with the specified POSITION_IDENTIFIER has already been closed
+    )
     INVALID_CLOSE_VOLUME = 10038  # A close volume exceeds the current position volume
     CLOSE_ORDER_EXIST = 10039  # A close order already exists for a specified position
     LIMIT_POSITIONS = 10040  # The number of open positions simultaneously present on an account can be limited
-    REJECT_CANCEL = 10041  # The pending order activation request is rejected, the order is canceled
+    REJECT_CANCEL = (
+        10041  # The pending order activation request is rejected, the order is canceled
+    )
     LONG_ONLY = 10042  # The request is rejected, because the "Only long positions are allowed" rule is set
     SHORT_ONLY = 10043  # The request is rejected, because the "Only short positions are allowed" rule is set
     CLOSE_ONLY = 10044  # The request is rejected, because the "Only position closing is allowed" rule is set
     FIFO_CLOSE = 10045  # The request is rejected, because "Position closing is allowed only by FIFO rule" flag is set
-    HEDGE_PROHIBITED = 10046  # The request is rejected, because the "Opposite positions on a single symbol are disabled" rule is set
-    
+    HEDGE_PROHIBITED = (
+        10046  # Request rejected: opposite positions on single symbol disabled
+    )
+
     def get_description(self) -> str:
         """
         Get human-readable description for the retcode
@@ -95,16 +105,34 @@ class TradeRequest(IntEnum):
             TradeRequest.POSITION_CLOSED: "Position with the specified POSITION_IDENTIFIER has already been closed",
             TradeRequest.INVALID_CLOSE_VOLUME: "A close volume exceeds the current position volume",
             TradeRequest.CLOSE_ORDER_EXIST: "A close order already exists for a specified position",
-            TradeRequest.LIMIT_POSITIONS: "The number of open positions simultaneously present on an account can be limited",
+            TradeRequest.LIMIT_POSITIONS: (
+                "The number of open positions simultaneously present on "
+                "an account can be limited"
+            ),
             TradeRequest.REJECT_CANCEL: "The pending order activation request is rejected, the order is canceled",
-            TradeRequest.LONG_ONLY: "The request is rejected, because the 'Only long positions are allowed' rule is set",
-            TradeRequest.SHORT_ONLY: "The request is rejected, because the 'Only short positions are allowed' rule is set",
-            TradeRequest.CLOSE_ONLY: "The request is rejected, because the 'Only position closing is allowed' rule is set",
-            TradeRequest.FIFO_CLOSE: "The request is rejected, because 'Position closing is allowed only by FIFO rule' flag is set",
-            TradeRequest.HEDGE_PROHIBITED: "The request is rejected, because the 'Opposite positions on a single symbol are disabled' rule is set",
+            TradeRequest.LONG_ONLY: (
+                "The request is rejected, because the 'Only long positions "
+                "are allowed' rule is set"
+            ),
+            TradeRequest.SHORT_ONLY: (
+                "The request is rejected, because the 'Only short positions "
+                "are allowed' rule is set"
+            ),
+            TradeRequest.CLOSE_ONLY: (
+                "The request is rejected, because the 'Only position closing "
+                "is allowed' rule is set"
+            ),
+            TradeRequest.FIFO_CLOSE: (
+                "The request is rejected, because 'Position closing is allowed "
+                "only by FIFO rule' flag is set"
+            ),
+            TradeRequest.HEDGE_PROHIBITED: (
+                "The request is rejected, because the 'Opposite positions on "
+                "a single symbol are disabled' rule is set"
+            ),
         }
         return descriptions.get(self, f"Unknown retcode: {self.value}")
-    
+
     @classmethod
     def from_code(cls, code: int):
         """
@@ -116,6 +144,3 @@ class TradeRequest(IntEnum):
             return cls(code)
         except ValueError:
             return None
-
-
-

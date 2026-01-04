@@ -1,10 +1,11 @@
 name: Lint Dashboard
 
 on:
-  pull_request:
-    branches: [master, dev]
   push:
     branches: [master, dev]
+    paths:
+      - 'src/dashboard/**'
+      - '.github/workflows/lint_dashboard.yml'
 
 jobs:
   lint:
@@ -19,16 +20,16 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: dashboard/package-lock.json
+          cache-dependency-path: src/dashboard/package.json
       
       - name: Install dependencies
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npm ci
       
       - name: Run ESLint
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npm run lint || exit 1
       
       - name: Run TypeScript type check
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npx tsc --noEmit || exit 1

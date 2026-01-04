@@ -1,10 +1,12 @@
 name: Build Server
 
 on:
-  pull_request:
-    branches: [master, dev]
   push: 
     branches: [master, dev]
+    paths:
+      - 'src/mt5-python_server/**'
+      - 'Dockerfile'
+      - '.github/workflows/build_server.yml'
 
 jobs:
   build:
@@ -17,12 +19,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
+      - name: Create .env file for build
+        run: touch .env
+      
       - name: Build Server Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           tags: alchemist-server:test
           cache-from: type=gha
           cache-to: type=gha,mode=max

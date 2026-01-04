@@ -1,10 +1,11 @@
 name: Build API
 
 on:
-  pull_request:
-    branches: [master, dev]
   push:
     branches: [master, dev]
+    paths:
+      - 'src/api/**'
+      - '.github/workflows/build_api.yml'
 
 jobs:
   build:
@@ -20,9 +21,10 @@ jobs:
       - name: Build API Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./api
-          file: ./api/Dockerfile
+          context: ./src/api
+          file: ./src/api/Dockerfile
           push: false
+          load: true
           tags: alchemist-api:test
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,6 +1,12 @@
-# The Alchemist - AI Forex Experimentation & Trading Platform
+![The Alchemist](assets/gh-social-card.png)
 
-The Alchemist is an **AI Forex Experimentation & Trading Platform** that enables iterative development of profitable DRL (Deep Reinforcement Learning) trading models. The platform provides a complete workflow from **data collection → feature engineering → model training → backtesting → paper trading → live deployment**.
+# AI Forex Experimentation & Trading Platform
+
+The Alchemist is an **AI Forex Experimentation & Trading Platform** that enables iterative development of profitable DRL (Deep Reinforcement Learning) trading models. The platform provides a complete workflow from:
+
+```
+data collection → feature engineering → model training → backtesting → paper trading → live deployment
+```
 
 ## Platform Overview
 
@@ -99,9 +105,9 @@ The Alchemist provides:
    python scripts/run-migrations.py
    
    # Option 2: Run scripts manually
-   mysql -u root -p db_forex < database/scripts/01_create.sql
-   mysql -u root -p db_forex < database/scripts/02_procedures.sql
-   mysql -u root -p db_forex < database/scripts/06_safety_infrastructure.sql
+   mysql -u root -p db_forex < src/database/scripts/01_create.sql
+   mysql -u root -p db_forex < src/database/scripts/02_procedures.sql
+   mysql -u root -p db_forex < src/database/scripts/06_safety_infrastructure.sql
    ```
 
 3. **Start the Docker environment**:

@@ -1,6 +1,7 @@
 """
 Enum for the type of order
 """
+
 from enum import IntEnum
 
 
@@ -8,6 +9,7 @@ class OrderType(IntEnum):
     """
     Enum for the type of order send to the terminal
     """
+
     BUY = 0
     SELL = 1
     BUY_LIMIT = 2
@@ -16,6 +18,3 @@ class OrderType(IntEnum):
     SELL_STOP = 5
     BUY_STOP_LIMIT = 6
     SELL_STOP_LIMIT = 7
-
-
-

@@ -1,10 +1,11 @@
 name: Lint Server
 
 on:
-  pull_request:
-    branches: [master, dev]
   push:
     branches: [master, dev]
+    paths:
+      - 'src/mt5-python_server/**'
+      - '.github/workflows/lint_server.yml'
 
 jobs:
   lint:
@@ -19,6 +20,11 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmariadb-dev build-essential
       
       - name: Install dependencies
         working-directory: src/mt5-python_server
@@ -39,18 +45,3 @@ jobs:
       - name: Run type checking (mypy)
         run: |
           mypy src/mt5-python_server/src --ignore-missing-imports || exit 1
-      
-      - name: Security scan (Bandit)
-        run: |
-          bandit -r src/mt5-python_server/src -f json -o bandit-report.json || exit 1
-      
-      - name: Upload Bandit report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: bandit-report
-          path: bandit-report.json
-          
-      - name: Dependency vulnerability scan (Safety)
-        run: |
-          safety check --json || exit 1

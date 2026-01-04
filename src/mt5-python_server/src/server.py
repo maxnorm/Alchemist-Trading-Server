@@ -1,6 +1,7 @@
 """
 Class Server for connection to MetaTrader5
 """
+
 import os
 import datetime
 import json
@@ -22,13 +23,13 @@ from data_providers.registry import DataProviderRegistry
 from features.catalog import FeatureCatalog
 from environments.live_env import LiveTradingEnv
 
+
 class Server:
     """
     Class for the server
 
     The server and data are base in the GMT+3 timezone
     """
-
 
     def __init__(self, verbose=False, database=None, scraper=None):
         self.__verbose = verbose
@@ -41,100 +42,109 @@ class Server:
         self.__indicator_providers = []
         self.__environments = {}
 
-        self.__stop_char = '\n'
+        self.__stop_char = "\n"
 
         self.__console_lock = threading.Lock()
-        
+
         # Use provided database or create new one
         self.__db = database if database is not None else Database()
-        
+
         # Initialize data provider registry and feature catalog
         self.__provider_registry = DataProviderRegistry()
         self.__feature_catalog = FeatureCatalog(self.__db)
-        
+
         # Initialize experiment components (Phase 3)
         try:
-            from experiments import ExperimentBuilder, ExperimentRunner, OptunaHyperparameterTuner
+            from experiments import (
+                ExperimentBuilder,
+                ExperimentRunner,
+                OptunaHyperparameterTuner,
+            )
             from infrastructure.factories.agent_factory import AgentFactory
             from infrastructure.factories.environment_factory import EnvironmentFactory
             from mlops.experiment_tracker import get_experiment_tracker
-            
+
             # Initialize factories
             self.__agent_factory = AgentFactory()
             self.__environment_factory = EnvironmentFactory()
-            
+
             # Initialize experiment tracker (MLflow)
             self.__experiment_tracker = get_experiment_tracker(allow_dummy=True)
-            
+
             # Initialize experiment components
             self.__experiment_builder = ExperimentBuilder(
-                database=self.__db,
-                feature_catalog=self.__feature_catalog
+                database=self.__db, feature_catalog=self.__feature_catalog
             )
-            
+
             # Helper functions for experiment runner
             def get_account():
                 # Return first account or create a default one
                 if self.__accounts:
                     return self.__accounts[0]
                 return None
-            
+
             def get_risk_manager():
-                from infrastructure.factories.risk_manager_factory import RiskManagerFactory
+                from infrastructure.factories.risk_manager_factory import (
+                    RiskManagerFactory,
+                )
                 from domain.config.risk_config import RiskConfig
+
                 risk_config = RiskConfig.default()
                 return RiskManagerFactory.create_risk_manager(risk_config)
-            
+
             self.__experiment_runner = ExperimentRunner(
                 database=self.__db,
                 experiment_tracker=self.__experiment_tracker,
                 agent_factory=self.__agent_factory,
                 environment_factory=self.__environment_factory,
                 get_account_func=get_account,
-                get_risk_manager_func=get_risk_manager
+                get_risk_manager_func=get_risk_manager,
             )
-            
+
             self.__optuna_tuner = OptunaHyperparameterTuner(
-                database=self.__db,
-                experiment_runner=self.__experiment_runner
+                database=self.__db, experiment_runner=self.__experiment_runner
             )
-            
+
             if self.__verbose:
                 with self.__console_lock:
-                    print_with_datetime("Initialized Experiment Management components (Phase 3)")
+                    print_with_datetime(
+                        "Initialized Experiment Management components (Phase 3)"
+                    )
         except Exception as e:
             # Experiment components are optional - log warning but don't fail
             with self.__console_lock:
-                print_with_datetime(f"Warning: Failed to initialize experiment components: {e}")
+                print_with_datetime(
+                    f"Warning: Failed to initialize experiment components: {e}"
+                )
             self.__experiment_builder = None
             self.__experiment_runner = None
             self.__optuna_tuner = None
-        
+
         # Initialize feature discovery (will be populated as providers register)
         if self.__verbose:
             with self.__console_lock:
-                print_with_datetime("Initialized Data Provider Registry and Feature Catalog")
-        
+                print_with_datetime(
+                    "Initialized Data Provider Registry and Feature Catalog"
+                )
+
         # Use provided scraper or create new one
         if scraper is not None:
             self.__myfxbook = scraper
         else:
             self.__myfxbook = WebScraperMyfxbook(
-                email=os.getenv('MYFXBOOK_EMAIL'),
-                password=os.getenv('MYFXBOOK_PASSWORD'),
-                url=os.getenv('URL_MYFXBOOK')
+                email=os.getenv("MYFXBOOK_EMAIL"),
+                password=os.getenv("MYFXBOOK_PASSWORD"),
+                url=os.getenv("URL_MYFXBOOK"),
             )
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-        server_ip = os.getenv('SERVER_IP')
-        server_port = int(os.getenv('SERVER_PORT'))
+        server_ip = os.getenv("SERVER_IP")
+        server_port = int(os.getenv("SERVER_PORT"))
 
         self.__socket.bind((server_ip, server_port))
 
         if self.__verbose:
-            print_with_datetime(
-                f"Server socket bind to {server_ip}:{server_port}"
-            )
+            print_with_datetime(f"Server socket bind to {server_ip}:{server_port}")
 
         self.start()
 
@@ -154,7 +164,7 @@ class Server:
             client_conn, client_address = self.__socket.accept()
 
             with self.__console_lock:
-                print_with_datetime(f'Connected to {client_address}')
+                print_with_datetime(f"Connected to {client_address}")
 
             self.__auth_socket(client_conn)
 
@@ -175,7 +185,9 @@ class Server:
                             print_with_datetime("Economic Calendar was download")
                 except Exception as e:
                     with self.__console_lock:
-                        print_with_datetime(f"Error while downloading economic calendar: {e}")
+                        print_with_datetime(
+                            f"Error while downloading economic calendar: {e}"
+                        )
 
             time.sleep(60)
 
@@ -184,7 +196,7 @@ class Server:
         Receive auth code from the newly connected socket
         and create a new instance of TickStreamer or MT5Terminal
         """
-        cum_data = ''
+        cum_data = ""
         while True:
             data = client.recv(1024).decode("utf-8")
 
@@ -192,21 +204,23 @@ class Server:
 
             if self.__stop_char in cum_data:
 
-                infos = cum_data[:cum_data.index(self.__stop_char)]
+                infos = cum_data[: cum_data.index(self.__stop_char)]
                 infos = json.loads(infos)
 
                 if self.__verbose:
                     with self.__console_lock:
                         print_with_datetime(f"Received authentification infos: {infos}")
 
-                auth_code = infos['auth_code']
+                auth_code = infos["auth_code"]
 
                 if auth_code == Socket.STREAMER.value:
                     self.__auth_streamer(client, infos)
                 elif auth_code == Socket.TERMINAL.value:
                     self.__auth_terminal(client, infos)
                 else:
-                    self.__invalid_auth(client, f'Invalid authentification code [{auth_code}]')
+                    self.__invalid_auth(
+                        client, f"Invalid authentification code [{auth_code}]"
+                    )
                 break
 
     def __auth_streamer(self, client, infos):
@@ -226,34 +240,36 @@ class Server:
             }
         """
         if len(infos) == 3:
-            data = {
-                "auth_status": Socket.SUCCESSFUL_AUTH.value
-            }
+            data = {"auth_status": Socket.SUCCESSFUL_AUTH.value}
 
-            client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
+            client.send(bytes(json.dumps(data) + "\n", "utf-8"))
 
-            pair = CurrencyPair(infos['symbol'], infos['digits'])
-            self.__all_currency_pairs[infos['symbol']] = pair
+            pair = CurrencyPair(infos["symbol"], infos["digits"])
+            self.__all_currency_pairs[infos["symbol"]] = pair
 
             price_provider = PriceDataProvider(pair)
             self.__price_data_providers.append(price_provider)
-            
+
             # Register price provider with registry
             provider_name = f"price_{infos['symbol']}"
             self.__provider_registry.register_provider(provider_name, price_provider)
-            
+
             # Create and register indicator provider
             indicator_provider = IndicatorProvider(pair, window_size=100)
             self.__indicator_providers.append(indicator_provider)
             indicator_name = f"indicator_{infos['symbol']}"
-            self.__provider_registry.register_provider(indicator_name, indicator_provider)
-            
+            self.__provider_registry.register_provider(
+                indicator_name, indicator_provider
+            )
+
             # Sync catalog with newly registered providers
             try:
                 self.__feature_catalog.sync_with_registry(self.__provider_registry)
                 if self.__verbose:
                     with self.__console_lock:
-                        feature_count = len(self.__provider_registry.discover_features())
+                        feature_count = len(
+                            self.__provider_registry.discover_features()
+                        )
                         print_with_datetime(
                             f"Registered providers for {infos['symbol']}. "
                             f"Total features discovered: {feature_count}"
@@ -262,12 +278,19 @@ class Server:
                 with self.__console_lock:
                     print_with_datetime(f"Warning: Failed to sync feature catalog: {e}")
 
-            streamer = MT5TickStreamer(client, pair, self.__stop_char, self.__verbose, self.__console_lock, self.__db)
+            streamer = MT5TickStreamer(
+                client,
+                pair,
+                self.__stop_char,
+                self.__verbose,
+                self.__console_lock,
+                self.__db,
+            )
 
             threading.Thread(target=streamer.receive_tick).start()
             self.__streamers.append(streamer)
         else:
-            self.__invalid_auth(client, 'Invalid message format.')
+            self.__invalid_auth(client, "Invalid message format.")
 
     def __auth_terminal(self, client, infos):
         """
@@ -290,39 +313,37 @@ class Server:
             terminal = MT5Terminal(client)
 
             data = {
-                'auth_status': Socket.SUCCESSFUL_AUTH.value,
-                'terminal_id': terminal.id
+                "auth_status": Socket.SUCCESSFUL_AUTH.value,
+                "terminal_id": terminal.id,
             }
 
-            client.send(bytes(json.dumps(data) + '\n',
-                              'utf-8'))
+            client.send(bytes(json.dumps(data) + "\n", "utf-8"))
 
             for account in self.__accounts:
-                if account.login == infos['login']:
+                if account.login == infos["login"]:
                     account.set_terminal(terminal)
                     return
-                
 
-            account = Account(infos['login'], terminal)
+            account = Account(infos["login"], terminal)
             self.__accounts.append(account)
-            
-            if infos['login'] not in self.__environments:
+
+            if infos["login"] not in self.__environments:
 
                 # Create environment with all registered providers (price + indicators)
                 all_providers = self.__price_data_providers + self.__indicator_providers
                 env = LiveTradingEnv(
-                    account=account,
-                    data_providers=all_providers,
-                    window_size=50
+                    account=account, data_providers=all_providers, window_size=50
                 )
-                self.__environments[infos['login']] = env
-                
+                self.__environments[infos["login"]] = env
+
                 if self.__verbose:
                     with self.__console_lock:
-                        print_with_datetime(f"Created trading environment for account {infos['login']}")
+                        print_with_datetime(
+                            f"Created trading environment for account {infos['login']}"
+                        )
 
         else:
-            self.__invalid_auth(client, 'Invalid message format. Missing account login')
+            self.__invalid_auth(client, "Invalid message format. Missing account login")
 
     def __invalid_auth(self, client, msg):
         """
@@ -334,42 +355,40 @@ class Server:
                 "message": Error message provided
             }
         """
-        data = {
-            'auth_status': Socket.FAILED_AUTH.value,
-            'message': msg
-        }
-        client.send(bytes(json.dumps(data) + '\n', 'utf-8'))
+        data = {"auth_status": Socket.FAILED_AUTH.value, "message": msg}
+        client.send(bytes(json.dumps(data) + "\n", "utf-8"))
 
         with self.__console_lock:
-            print_with_datetime(f'Error from {client.getpeername()}: {msg} .'
-                                f'Closing connection.')
+            print_with_datetime(
+                f"Error from {client.getpeername()}: {msg} ." f"Closing connection."
+            )
         client.close()
 
     @property
     def provider_registry(self):
         """Get the data provider registry (for API access)"""
         return self.__provider_registry
-    
+
     @property
     def feature_catalog(self):
         """Get the feature catalog (for API access)"""
         return self.__feature_catalog
-    
+
     @property
     def experiment_builder(self):
         """Get the experiment builder (for API access)"""
         return self.__experiment_builder
-    
+
     @property
     def experiment_runner(self):
         """Get the experiment runner (for API access)"""
         return self.__experiment_runner
-    
+
     @property
     def optuna_tuner(self):
         """Get the Optuna tuner (for API access)"""
         return self.__optuna_tuner
 
     def __del__(self):
-        if hasattr(self, '_Server__socket') and self.__socket:
+        if hasattr(self, "_Server__socket") and self.__socket:
             self.__socket.close()

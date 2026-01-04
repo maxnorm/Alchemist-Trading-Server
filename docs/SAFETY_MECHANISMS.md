@@ -329,7 +329,7 @@ The TradingController automatically:
 To set up the database tables, run the migration script:
 
 ```bash
-mysql -u root -p db_forex < database/scripts/06_safety_infrastructure.sql
+mysql -u root -p db_forex < src/database/scripts/06_safety_infrastructure.sql
 ```
 
 Or use the migration runner (if available):
