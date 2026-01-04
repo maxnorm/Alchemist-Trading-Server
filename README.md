@@ -210,3 +210,7 @@ This project is licensed under the **MIT License**.
 See the [LICENSE](LICENSE) file for the full license text.
 
 © 2026, Alchemist Capital Management
+
+### Disclaimer
+
+**USE AT YOUR OWN RISK** - This software is provided "as is" without warranty. Trading Forex, crypto, and any other financial instruments carries high risk and may result in loss of capital. This platform is for educational and research purposes only and does not constitute financial advice. You are solely responsible for all trading decisions and must ensure compliance with applicable laws in your jurisdiction. See the [LICENSE](LICENSE) file for the complete disclaimer.
