@@ -359,19 +359,30 @@ class ExperimentRunner:
                                     )
 
                             # Register model
-                            model_registry = ModelRegistry(self.db)
-                            model = model_registry.register_model(
-                                experiment_id=experiment_id,
-                                mlflow_run_id=mlflow_run_id or experiment.mlflow_run_id,
-                                features=experiment.features,
-                                hyperparameters=experiment.hyperparameters,
-                                mlflow_model_uri=mlflow_model_uri,
-                                metrics=metrics,
-                            )
+                            run_id = mlflow_run_id or experiment.mlflow_run_id
+                            if run_id:
+                                model_registry = ModelRegistry(self.db)
+                                model = model_registry.register_model(
+                                    experiment_id=experiment_id,
+                                    mlflow_run_id=run_id,
+                                    features=experiment.features,
+                                    hyperparameters=experiment.hyperparameters,
+                                    mlflow_model_uri=mlflow_model_uri,
+                                    metrics=metrics,
+                                )
 
-                            logger.info(
-                                f"Registered model {model.id} (v{model.version}) for experiment {experiment_id}"
-                            )
+                                if model is not None:
+                                    logger.info(
+                                        f"Registered model {model.id} (v{model.version}) for experiment {experiment_id}"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Failed to register model for experiment {experiment_id}: model is None"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"Cannot register model for experiment {experiment_id}: no MLflow run ID"
+                                )
                     except Exception as e:
                         logger.error(
                             f"Failed to register model for experiment {experiment_id}: {e}",

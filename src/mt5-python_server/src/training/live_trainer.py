@@ -395,7 +395,7 @@ class LiveTrainer:
                     "pair_index": pair_index,  # Track which pair this position is for
                 }
         elif action_type == ActionType.CLOSE:  # Close
-            if has_position:
+            if has_position and self.simulated_position is not None:
                 entry_price = self.simulated_position["entry_price"]
                 lot_size = self.simulated_position["lot_size"]
                 is_long = self.simulated_position["is_long"]

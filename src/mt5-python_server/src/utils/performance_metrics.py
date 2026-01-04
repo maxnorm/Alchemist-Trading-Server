@@ -69,12 +69,12 @@ class PerformanceMetrics:
         self.balance_history.append(current_balance)
 
         # Update peak balance and drawdown
-        if current_balance > self.peak_balance:
+        if self.peak_balance is not None and current_balance > self.peak_balance:
             self.peak_balance = current_balance
             self.max_balance = current_balance
 
         # Calculate current drawdown
-        if self.peak_balance > 0:
+        if self.peak_balance is not None and self.peak_balance > 0:
             current_drawdown = (self.peak_balance - current_balance) / self.peak_balance
             if current_drawdown > self.max_drawdown:
                 self.max_drawdown = current_drawdown

@@ -255,23 +255,32 @@ class StructuredLogger:
         }
 
         # Handle exception info
+        # Type for exc_info: bool | tuple[type[BaseException], BaseException, TracebackType | None] | tuple[None, None, None] | BaseException | None
         exc_info_result: Optional[
             Union[
                 bool,
                 BaseException,
-                Tuple[
-                    Optional[Type[BaseException]],
-                    Optional[BaseException],
-                    Optional[TracebackType],
-                ],
+                Tuple[Type[BaseException], BaseException, Optional[TracebackType]],
+                Tuple[None, None, None],
             ]
         ] = None
         if exc_info is True:
-            exc_info_result = sys.exc_info()
+            exc_info_tuple = sys.exc_info()
+            # Ensure tuple format matches expected type
+            if exc_info_tuple[0] is not None and exc_info_tuple[1] is not None:
+                exc_info_result = (exc_info_tuple[0], exc_info_tuple[1], exc_info_tuple[2])
+            else:
+                exc_info_result = (None, None, None)
         elif exc_info is False:
             exc_info_result = None
-        elif exc_info is not None:
+        elif isinstance(exc_info, BaseException):
             exc_info_result = exc_info
+        elif isinstance(exc_info, tuple) and len(exc_info) == 3:
+            # Ensure tuple format matches expected type
+            if exc_info[0] is not None and exc_info[1] is not None:
+                exc_info_result = (exc_info[0], exc_info[1], exc_info[2])
+            else:
+                exc_info_result = (None, None, None)
 
         self.logger.log(level, message, extra=extra, exc_info=exc_info_result)
 

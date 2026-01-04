@@ -509,6 +509,6 @@ class PaperTradingSessionManager:
             "total_trades": session.total_trades,
             "winning_trades": session.winning_trades,
             "pnl": session.pnl,
-            "sharpe_ratio": session.sharpe_ratio,
-            "max_drawdown": session.max_drawdown,
+            "sharpe_ratio": session.sharpe_ratio if session.sharpe_ratio is not None else 0.0,
+            "max_drawdown": session.max_drawdown if session.max_drawdown is not None else 0.0,
         }

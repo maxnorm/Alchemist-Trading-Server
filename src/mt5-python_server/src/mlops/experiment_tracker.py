@@ -71,9 +71,10 @@ class ExperimentTracker:
                 "MLflow is not installed. Install with: pip install mlflow>=2.10.0"
             )
 
-        self.tracking_uri = tracking_uri or os.getenv(
+        tracking_uri_value = tracking_uri or os.getenv(
             "MLFLOW_TRACKING_URI", "http://localhost:5000"
         )
+        self.tracking_uri: str = tracking_uri_value if tracking_uri_value is not None else "http://localhost:5000"
         self.experiment_name = experiment_name
 
         # Configure MLflow
@@ -241,7 +242,7 @@ class ExperimentTracker:
                 except (ValueError, TypeError) as e:
                     self.logger.warning(f"Could not log metric {key}: {e}")
 
-    def log_metric(self, key: str, value: float, step: int = None) -> None:
+    def log_metric(self, key: str, value: float, step: Optional[int] = None) -> None:
         """Log a single metric"""
         self.log_metrics({key: value}, step=step)
 
@@ -291,7 +292,7 @@ class ExperimentTracker:
 
         return model_uri
 
-    def log_artifact(self, local_path: str, artifact_path: str = None) -> None:
+    def log_artifact(self, local_path: str, artifact_path: Optional[str] = None) -> None:
         """
         Log a file or directory as an artifact.
 
@@ -404,7 +405,7 @@ class ExperimentTracker:
         self,
         filter_string: str = "",
         max_results: int = 100,
-        order_by: List[str] = None,
+        order_by: Optional[List[str]] = None,
     ) -> List:
         """
         Search for runs matching criteria.
@@ -539,7 +540,7 @@ class DummyExperimentTracker:
     def log_metrics(self, metrics: Dict, step: Optional[int] = None) -> None:
         pass
 
-    def log_metric(self, key: str, value: float, step: int = None) -> None:
+    def log_metric(self, key: str, value: float, step: Optional[int] = None) -> None:
         pass
 
     def log_model(self, *args, **kwargs) -> str:

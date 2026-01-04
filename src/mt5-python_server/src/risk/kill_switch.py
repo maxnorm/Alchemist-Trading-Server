@@ -407,8 +407,8 @@ class KillSwitch:
     def __init__(
         self,
         broker_adapter: Any = None,
-        on_kill_callback: Callable[[str], None] = None,
-        audit_log_path: str = None,
+        on_kill_callback: Optional[Callable[[str], None]] = None,
+        audit_log_path: Optional[str] = None,
         database: Any = None,
     ):
         """

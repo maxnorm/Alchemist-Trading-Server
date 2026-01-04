@@ -402,7 +402,7 @@ class ModelPromoter:
         self,
         model_id: Optional[int] = None,
         version: Optional[int] = None,
-        approver: str = None,
+        approver: Optional[str] = None,
         approver_id: Optional[int] = None,
         validation: Optional[ValidationResult] = None,
         totp_token: Optional[str] = None,
