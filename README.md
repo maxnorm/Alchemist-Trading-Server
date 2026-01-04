@@ -1,4 +1,6 @@
-# The Alchemist - AI Forex Experimentation & Trading Platform
+![The Alchemist](assets/gh-social-card.png)
+
+# AI Forex Experimentation & Trading Platform
 
 The Alchemist is an **AI Forex Experimentation & Trading Platform** that enables iterative development of profitable DRL (Deep Reinforcement Learning) trading models. The platform provides a complete workflow from:
 

@@ -172,5 +172,7 @@ class BaseTradingEnv(gym.Env, ABC):
         if self.np_random is None:
             self.seed(None)  # Initialize with random seed
         # After seed() call, np_random is guaranteed to be set
-        assert self.np_random is not None, "np_random should be initialized after seed()"
+        assert (
+            self.np_random is not None
+        ), "np_random should be initialized after seed()"
         return self.np_random

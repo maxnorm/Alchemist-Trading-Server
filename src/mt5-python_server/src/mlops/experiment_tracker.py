@@ -74,7 +74,11 @@ class ExperimentTracker:
         tracking_uri_value = tracking_uri or os.getenv(
             "MLFLOW_TRACKING_URI", "http://localhost:5000"
         )
-        self.tracking_uri: str = tracking_uri_value if tracking_uri_value is not None else "http://localhost:5000"
+        self.tracking_uri: str = (
+            tracking_uri_value
+            if tracking_uri_value is not None
+            else "http://localhost:5000"
+        )
         self.experiment_name = experiment_name
 
         # Configure MLflow
@@ -292,7 +296,9 @@ class ExperimentTracker:
 
         return model_uri
 
-    def log_artifact(self, local_path: str, artifact_path: Optional[str] = None) -> None:
+    def log_artifact(
+        self, local_path: str, artifact_path: Optional[str] = None
+    ) -> None:
         """
         Log a file or directory as an artifact.
 

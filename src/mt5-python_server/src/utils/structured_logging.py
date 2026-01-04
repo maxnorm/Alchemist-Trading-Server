@@ -268,7 +268,11 @@ class StructuredLogger:
             exc_info_tuple = sys.exc_info()
             # Ensure tuple format matches expected type
             if exc_info_tuple[0] is not None and exc_info_tuple[1] is not None:
-                exc_info_result = (exc_info_tuple[0], exc_info_tuple[1], exc_info_tuple[2])
+                exc_info_result = (
+                    exc_info_tuple[0],
+                    exc_info_tuple[1],
+                    exc_info_tuple[2],
+                )
             else:
                 exc_info_result = (None, None, None)
         elif exc_info is False:
