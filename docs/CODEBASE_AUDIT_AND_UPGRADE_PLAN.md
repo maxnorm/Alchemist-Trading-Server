@@ -143,8 +143,8 @@
 ### 1.3 Entry Points
 
 - **Server**: `src/mt5-python_server/src/server.py` - Main socket server
-- **API**: `api/src/main.py` - FastAPI application
-- **Dashboard**: `dashboard/src/main.tsx` - React app
+- **API**: `src/api/src/main.py` - FastAPI application
+- **Dashboard**: `src/dashboard/src/main.tsx` - React app
 - **Training**: `src/mt5-python_server/src/training/train_agent.py`
 - **Backtest**: `scripts/run-backtest.py`
 

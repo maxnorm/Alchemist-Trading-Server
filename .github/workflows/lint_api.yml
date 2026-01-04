@@ -26,23 +26,23 @@ jobs:
           sudo apt-get install -y libmariadb-dev mariadb-client
       
       - name: Install dependencies
-        working-directory: api
+        working-directory: src/api
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install black flake8 mypy
       
       - name: Run code formatting check (Black)
-        working-directory: api
+        working-directory: src/api
         run: |
           black --check src/ || exit 1
       
       - name: Run linter (flake8)
-        working-directory: api
+        working-directory: src/api
         run: |
           flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 || exit 1
       
       - name: Run type checking (mypy)
-        working-directory: api
+        working-directory: src/api
         run: |
           mypy src/ --ignore-missing-imports || exit 1

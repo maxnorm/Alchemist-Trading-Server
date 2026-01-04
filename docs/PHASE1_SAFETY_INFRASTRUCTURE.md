@@ -345,7 +345,7 @@ The migration runner will:
 ### Option 2: Run SQL Scripts Manually
 
 ```bash
-mysql -u root -p db_forex < database/scripts/06_safety_infrastructure.sql
+mysql -u root -p db_forex < src/database/scripts/06_safety_infrastructure.sql
 ```
 
 ## Configuration

@@ -58,7 +58,7 @@ class ApiClient {
   // Features
   async getFeatures(filters?: FeatureFilters): Promise<Feature[]> {
     const response = await this.client.get<Feature[]>(API_ENDPOINTS.features, { params: filters })
-    return response.data
+    return Array.isArray(response.data) ? response.data : []
   }
 
   async getFeature(id: number): Promise<Feature> {
@@ -69,7 +69,7 @@ class ApiClient {
   // Experiments
   async getExperiments(): Promise<Experiment[]> {
     const response = await this.client.get<Experiment[]>(API_ENDPOINTS.experiments)
-    return response.data
+    return Array.isArray(response.data) ? response.data : []
   }
 
   async getExperiment(id: number): Promise<Experiment> {
@@ -119,7 +119,7 @@ class ApiClient {
     const response = await this.client.get<OptunaTrial[]>(
       `${API_ENDPOINTS.experiments}/${experimentId}/optuna/trials`
     )
-    return response.data
+    return Array.isArray(response.data) ? response.data : []
   }
 
   async getOptunaBest(experimentId: number): Promise<{ params: Record<string, unknown>; value: number }> {
@@ -131,8 +131,15 @@ class ApiClient {
 
   // Models
   async getModels(): Promise<Model[]> {
-    const response = await this.client.get<{ models: Model[]; total: number }>(API_ENDPOINTS.models)
-    return response.data.models || response.data
+    const response = await this.client.get<{ models: Model[]; total: number } | Model[]>(API_ENDPOINTS.models)
+    // Handle both response formats: { models: [], total: number } or Model[]
+    if (Array.isArray(response.data)) {
+      return response.data
+    }
+    if (response.data && typeof response.data === 'object' && 'models' in response.data) {
+      return Array.isArray(response.data.models) ? response.data.models : []
+    }
+    return []
   }
 
   async getModel(id: number): Promise<Model> {
@@ -222,7 +229,7 @@ class ApiClient {
   // MT5 Accounts
   async getMT5Accounts(): Promise<MT5Account[]> {
     const response = await this.client.get<MT5Account[]>(API_ENDPOINTS.mt5Accounts)
-    return response.data
+    return Array.isArray(response.data) ? response.data : []
   }
 
   async getMT5Account(id: number): Promise<MT5Account> {
@@ -269,7 +276,7 @@ class ApiClient {
       `${API_ENDPOINTS.performance}/portfolio/equity-curve`,
       { params }
     )
-    return response.data.data
+    return Array.isArray(response.data?.data) ? response.data.data : []
   }
 
   async getPerformanceBreakdown(period: string = 'day'): Promise<PerformanceBreakdown[]> {
@@ -277,7 +284,7 @@ class ApiClient {
       `${API_ENDPOINTS.performance}/portfolio/breakdown`,
       { params: { period } }
     )
-    return response.data
+    return Array.isArray(response.data) ? response.data : []
   }
 
   async getAllocation(): Promise<{ by_pair: Record<string, number>; by_model: Record<string, number> }> {
@@ -291,7 +298,7 @@ class ApiClient {
     const response = await this.client.get<ModelMetrics[]>(
       `${API_ENDPOINTS.performance}/models`
     )
-    return response.data
+    return Array.isArray(response.data) ? response.data : []
   }
 
   async getModelMetrics(modelId: number, period: string = 'all_time'): Promise<ModelMetrics> {
@@ -310,7 +317,7 @@ class ApiClient {
       `${API_ENDPOINTS.performance}/models/${modelId}/equity-curve`,
       { params }
     )
-    return response.data.data
+    return Array.isArray(response.data?.data) ? response.data.data : []
   }
 
   async getModelTrades(modelId: number, limit: number = 100, offset: number = 0): Promise<{ trades: Trade[]; total: number }> {
@@ -355,7 +362,7 @@ class ApiClient {
     const response = await this.client.get<{ pairs: string[]; total: number }>(
       `${API_ENDPOINTS.trading}/currency-pairs`
     )
-    return response.data.pairs
+    return Array.isArray(response.data?.pairs) ? response.data.pairs : []
   }
 }
 

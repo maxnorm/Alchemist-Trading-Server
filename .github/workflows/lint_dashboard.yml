@@ -19,16 +19,16 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: dashboard/package.json
+          cache-dependency-path: src/dashboard/package.json
       
       - name: Install dependencies
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npm install
       
       - name: Run ESLint
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npm run lint || exit 1
       
       - name: Run TypeScript type check
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npx tsc --noEmit || exit 1

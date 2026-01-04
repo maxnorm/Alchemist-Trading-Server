@@ -19,22 +19,22 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: dashboard/package.json
+          cache-dependency-path: src/dashboard/package.json
       
       - name: Install dependencies
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npm install
       
       - name: Run TypeScript compilation check
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npx tsc --noEmit || exit 1
       
       - name: Build production bundle
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: npm run build || exit 1
       
       - name: Verify build artifacts
-        working-directory: dashboard
+        working-directory: src/dashboard
         run: |
           if [ ! -d "dist" ]; then
             echo "Build failed: dist directory not found"

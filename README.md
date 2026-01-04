@@ -105,9 +105,9 @@ The Alchemist provides:
    python scripts/run-migrations.py
    
    # Option 2: Run scripts manually
-   mysql -u root -p db_forex < database/scripts/01_create.sql
-   mysql -u root -p db_forex < database/scripts/02_procedures.sql
-   mysql -u root -p db_forex < database/scripts/06_safety_infrastructure.sql
+   mysql -u root -p db_forex < src/database/scripts/01_create.sql
+   mysql -u root -p db_forex < src/database/scripts/02_procedures.sql
+   mysql -u root -p db_forex < src/database/scripts/06_safety_infrastructure.sql
    ```
 
 3. **Start the Docker environment**:

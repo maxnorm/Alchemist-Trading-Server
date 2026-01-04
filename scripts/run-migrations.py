@@ -57,7 +57,7 @@ def table_exists(conn, table_name: str) -> bool:
 
 def get_migration_scripts() -> List[Tuple[int, Path]]:
     """Get all migration scripts in order"""
-    scripts_dir = project_root / 'database' / 'scripts'
+    scripts_dir = project_root / 'src' / 'database' / 'scripts'
     migrations = []
     
     for script_file in sorted(scripts_dir.glob('*.sql')):

@@ -139,8 +139,8 @@ def test_integration_flow():
 
 ```bash
 # Run all migrations
-mysql -u user -p database < database/scripts/06_features.sql
-mysql -u user -p database < database/scripts/07_experiments.sql
+mysql -u user -p database < src/database/scripts/06_features.sql
+mysql -u user -p database < src/database/scripts/07_experiments.sql
 # ... etc
 ```
 
@@ -191,10 +191,10 @@ mypy src/
 
 ### Adding New Endpoint
 
-1. Create router in `api/src/routers/`
-2. Create schema in `api/src/schemas/`
-3. Create service in `api/src/services/`
-4. Add to main app in `api/src/main.py`
+1. Create router in `src/api/src/routers/`
+2. Create schema in `src/api/src/schemas/`
+3. Create service in `src/api/src/services/`
+4. Add to main app in `src/api/src/main.py`
 5. Write tests in `tests/api/`
 
 ### Example Endpoint

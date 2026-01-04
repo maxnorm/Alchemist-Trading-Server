@@ -402,46 +402,47 @@ Build an **AI Forex Experimentation Platform** that enables:
 │       ├── training.yml
 │       └── deploy.yml
 │
-├── api/                              # FastAPI Service
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── src/
-│       ├── main.py
-│       ├── config.py
-│       ├── dependencies.py
-│       ├── routers/
-│       │   ├── auth.py
-│       │   ├── trading.py
-│       │   ├── experiments.py        # Experiment management
-│       │   ├── features.py           # Feature catalog
-│       │   ├── hyperparameters.py    # Optuna endpoints
-│       │   └── models.py
-│       ├── schemas/
-│       ├── services/
-│       └── websocket/
-│
-├── dashboard/                        # React SPA
-│   ├── package.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── src/
-│       ├── App.tsx
-│       ├── main.tsx
-│       ├── components/
-│       ├── pages/
-│       │   ├── Dashboard.tsx
-│       │   ├── ExperimentBuilder.tsx  # Feature selection + config
-│       │   ├── TrainingMonitor.tsx    # Training progress
-│       │   ├── HyperparameterSearch.tsx # Optuna UI
-│       │   ├── ModelRegistry.tsx
-│       │   ├── LiveTrading.tsx
-│       │   └── Settings.tsx
-│       ├── hooks/
-│       ├── services/
-│       ├── stores/
-│       └── types/
-│
-├── src/mt5-python_server/
+├── src/
+│   ├── api/                              # FastAPI Service
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   └── src/
+│   │       ├── main.py
+│   │       ├── config.py
+│   │       ├── dependencies.py
+│   │       ├── routers/
+│   │       │   ├── auth.py
+│   │       │   ├── trading.py
+│   │       │   ├── experiments.py        # Experiment management
+│   │       │   ├── features.py           # Feature catalog
+│   │       │   ├── hyperparameters.py    # Optuna endpoints
+│   │       │   └── models.py
+│   │       ├── schemas/
+│   │       ├── services/
+│   │       └── websocket/
+│   │
+│   ├── dashboard/                        # React SPA
+│   │   ├── package.json
+│   │   ├── vite.config.ts
+│   │   ├── tailwind.config.js
+│   │   └── src/
+│   │       ├── App.tsx
+│   │       ├── main.tsx
+│   │       ├── components/
+│   │       ├── pages/
+│   │       │   ├── Dashboard.tsx
+│   │       │   ├── ExperimentBuilder.tsx  # Feature selection + config
+│   │       │   ├── TrainingMonitor.tsx    # Training progress
+│   │       │   ├── HyperparameterSearch.tsx # Optuna UI
+│   │       │   ├── ModelRegistry.tsx
+│   │       │   ├── LiveTrading.tsx
+│   │       │   └── Settings.tsx
+│   │       ├── hooks/
+│   │       ├── services/
+│   │       ├── stores/
+│   │       └── types/
+│   │
+│   └── mt5-python_server/
 │   └── src/
 │       ├── server.py
 │       ├── trading_controller.py
@@ -2267,7 +2268,7 @@ services:
   
   # FastAPI Service
   api:
-    build: ./api
+    build: ./src/api
     ports: ["8000:8000"]
     depends_on:
       - mariadb
@@ -2283,7 +2284,7 @@ services:
   
   # React Dashboard
   dashboard:
-    build: ./dashboard
+    build: ./src/dashboard
     ports: ["3000:80"]
     environment:
       VITE_API_URL: http://localhost:8000
@@ -3219,7 +3220,7 @@ fi
   - Model checkpoints
   - Configuration files
 
-**Backup Script** (`database/backup.py` - enhanced):
+**Backup Script** (`src/database/backup.py` - enhanced):
 
 ```python
 import os
