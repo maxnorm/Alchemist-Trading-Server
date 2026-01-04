@@ -38,7 +38,7 @@ class DataVersioner:
         versioner.run_pipeline()
     """
 
-    def __init__(self, repo_root: str = None):
+    def __init__(self, repo_root: Optional[str] = None):
         """
         Initialize data versioner.
 
@@ -118,7 +118,7 @@ class DataVersioner:
 
         return dvc_file
 
-    def push(self, remote: str = None) -> None:
+    def push(self, remote: Optional[str] = None) -> None:
         """
         Push tracked data to remote storage.
 
@@ -135,7 +135,7 @@ class DataVersioner:
         self._run_command(cmd)
         self.logger.info("DVC push completed")
 
-    def pull(self, remote: str = None) -> None:
+    def pull(self, remote: Optional[str] = None) -> None:
         """
         Pull tracked data from remote storage.
 
@@ -153,7 +153,7 @@ class DataVersioner:
         self.logger.info("DVC pull completed")
 
     def add_and_push(
-        self, file_path: str, message: str = None, commit_to_git: bool = True
+        self, file_path: str, message: Optional[str] = None, commit_to_git: bool = True
     ) -> str:
         """
         Add file to DVC and push to remote.
@@ -216,7 +216,7 @@ class DataVersioner:
 
         return None
 
-    def checkout(self, version: str = None) -> None:
+    def checkout(self, version: Optional[str] = None) -> None:
         """
         Checkout a specific version or latest data.
 
@@ -310,7 +310,9 @@ class DataVersioner:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
-    def create_metadata(self, file_path: str, additional_info: Dict = None) -> Dict:
+    def create_metadata(
+        self, file_path: str, additional_info: Optional[Dict[Any, Any]] = None
+    ) -> Dict:
         """
         Create metadata for a data file.
 

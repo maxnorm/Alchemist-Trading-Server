@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 import threading
 import logging
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from environments.base_trading_env import BaseTradingEnv
 from utils.feature_engineering import FeatureEngineer
 from utils.performance_metrics import PerformanceMetrics
@@ -19,7 +19,7 @@ class LiveTradingEnv(BaseTradingEnv):
         account,
         data_providers,
         window_size: int = 50,
-        feature_engineer: FeatureEngineer = None,
+        feature_engineer: Optional[FeatureEngineer] = None,
     ):
         """
         Initialize the live trading environment
@@ -51,7 +51,7 @@ class LiveTradingEnv(BaseTradingEnv):
         self.data_providers = data_providers
         self.n_pairs = n_pairs
         self.features_per_pair = features_per_pair
-        self.state_buffer = []
+        self.state_buffer: List[Any] = []
         self._state_lock = threading.Lock()
 
         # Initialize feature engineer

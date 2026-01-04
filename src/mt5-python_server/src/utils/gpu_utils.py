@@ -5,7 +5,7 @@ Configures TensorFlow for optimal GPU usage
 
 import logging
 import tensorflow as tf
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 
 class GPUConfig:
@@ -77,29 +77,31 @@ class GPUConfig:
             self.logger.error(f"Error configuring GPU: {e}")
             raise
 
-    def get_gpu_info(self) -> dict:
+    def get_gpu_info(self) -> Dict[str, Any]:
         """
         Get information about available GPUs
 
         :return: Dictionary with GPU information
         """
-        gpu_info = {
+        gpu_names: List[str] = []
+        memory_info: List[Dict[str, float]] = []
+        gpu_info: Dict[str, Any] = {
             "gpus_available": len(self.gpus_available),
-            "gpu_names": [],
-            "memory_info": [],
+            "gpu_names": gpu_names,
+            "memory_info": memory_info,
         }
 
         for gpu in self.gpus_available:
             try:
                 details = tf.config.experimental.get_device_details(gpu)
-                gpu_info["gpu_names"].append(details.get("device_name", "Unknown"))
+                gpu_names.append(details.get("device_name", "Unknown"))
 
                 # Get memory info if available
-                memory_info = tf.config.experimental.get_memory_info(gpu.name)
-                gpu_info["memory_info"].append(
+                mem_info = tf.config.experimental.get_memory_info(gpu.name)
+                memory_info.append(
                     {
-                        "current": memory_info["current"] / (1024**3),  # GB
-                        "peak": memory_info["peak"] / (1024**3),  # GB
+                        "current": mem_info["current"] / (1024**3),  # GB
+                        "peak": mem_info["peak"] / (1024**3),  # GB
                     }
                 )
             except Exception as e:

@@ -5,6 +5,7 @@ Calculates risk-adjusted performance metrics for trading agents
 
 import numpy as np
 from collections import deque
+from typing import Deque, List, Optional
 
 
 class PerformanceMetrics:
@@ -25,17 +26,17 @@ class PerformanceMetrics:
         :param window_size: Rolling window for calculations (default: 252 = 1 year of trading days)
         """
         self.window_size = window_size
-        self.returns_history = deque(maxlen=window_size)
-        self.balance_history = deque(maxlen=window_size)
-        self.initial_balance = None
-        self.max_balance = None
+        self.returns_history: Deque[float] = deque(maxlen=window_size)
+        self.balance_history: Deque[float] = deque(maxlen=window_size)
+        self.initial_balance: Optional[float] = None
+        self.max_balance: Optional[float] = None
         self.max_drawdown = 0.0
-        self.peak_balance = None
+        self.peak_balance: Optional[float] = None
 
         # For profit factor calculation
         self.gross_profit = 0.0
         self.gross_loss = 0.0
-        self.trade_returns = []  # Store individual trade returns
+        self.trade_returns: List[float] = []  # Store individual trade returns
 
     def update(self, current_balance: float, previous_balance: float):
         """
@@ -156,7 +157,7 @@ class PerformanceMetrics:
         if self.max_drawdown == 0:
             return float("inf") if annual_return > 0 else 0.0
 
-        return annual_return / self.max_drawdown
+        return float(annual_return / self.max_drawdown)
 
     def volatility(self, annualized: bool = True) -> float:
         """
@@ -174,7 +175,7 @@ class PerformanceMetrics:
             # Annualize volatility (assuming daily returns)
             vol *= np.sqrt(252)
 
-        return vol
+        return float(vol)
 
     def current_drawdown(self) -> float:
         """
@@ -194,7 +195,7 @@ class PerformanceMetrics:
         """Get mean return"""
         if len(self.returns_history) == 0:
             return 0.0
-        return np.mean(self.returns_history)
+        return float(np.mean(self.returns_history))
 
     def total_return(self) -> float:
         """Get total return since initialization"""

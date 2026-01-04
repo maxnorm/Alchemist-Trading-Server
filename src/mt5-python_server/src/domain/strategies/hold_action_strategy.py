@@ -4,7 +4,7 @@ No-op strategy for holding position
 """
 
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 
 from domain.action_type import ActionType
 from domain.execution_context import ExecutionContext
@@ -14,7 +14,7 @@ from domain.strategies.action_strategy import ActionStrategy
 class HoldActionStrategy(ActionStrategy):
     """Strategy for HOLD action (no operation)"""
 
-    def __init__(self, logger: logging.Logger = None):
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
 
     @property

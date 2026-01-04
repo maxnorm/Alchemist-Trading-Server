@@ -1,4 +1,5 @@
 import asyncio
+from typing import Dict, Any
 
 from mt5_connection.terminal import MT5Terminal
 from utils.time_utils import print_with_datetime
@@ -14,7 +15,7 @@ class Account:
     def __init__(self, login, terminal: MT5Terminal):
         self.login = login
         self.trade_executor = TradeExecutor(terminal)
-        self.current_trade = {}
+        self.current_trade: Dict[str, Any] = {}
 
         # Initialize account info
         self.info = self._fetch_account_info()

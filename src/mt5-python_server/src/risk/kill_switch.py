@@ -91,7 +91,7 @@ class KillSwitchTrigger(Protocol):
 class BaseTrigger(ABC):
     """Base class for trigger implementations"""
 
-    def __init__(self, on_trigger: Callable[[str, str], None] = None):
+    def __init__(self, on_trigger: Optional[Callable[[str, str], None]] = None):
         """
         Args:
             on_trigger: Callback when trigger fires (reason, trigger_type)
@@ -134,7 +134,7 @@ class BaseTrigger(ABC):
         while self._monitoring:
             try:
                 triggered, reason = self.check()
-                if triggered and self.on_trigger:
+                if triggered and self.on_trigger is not None:
                     self.on_trigger(reason, self.name)
             except Exception as e:
                 self.logger.error(f"Error in {self.name} trigger: {e}")
@@ -156,7 +156,9 @@ class FileTrigger(BaseTrigger):
     """
 
     def __init__(
-        self, on_trigger: Callable[[str, str], None] = None, kill_file_path: str = None
+        self,
+        on_trigger: Optional[Callable[[str, str], None]] = None,
+        kill_file_path: Optional[str] = None,
     ):
         super().__init__(on_trigger)
 
@@ -201,7 +203,7 @@ class EnvironmentTrigger(BaseTrigger):
 
     def __init__(
         self,
-        on_trigger: Callable[[str, str], None] = None,
+        on_trigger: Optional[Callable[[str, str], None]] = None,
         env_var: str = "TRADING_KILL",
     ):
         super().__init__(on_trigger)
@@ -234,7 +236,7 @@ class NetworkTrigger(BaseTrigger):
 
     def __init__(
         self,
-        on_trigger: Callable[[str, str], None] = None,
+        on_trigger: Optional[Callable[[str, str], None]] = None,
         port: int = 9999,
         host: str = "0.0.0.0",
     ):
@@ -328,7 +330,7 @@ class SignalTrigger(BaseTrigger):
     On Windows: Uses a named event (not implemented in this version)
     """
 
-    def __init__(self, on_trigger: Callable[[str, str], None] = None):
+    def __init__(self, on_trigger: Optional[Callable[[str, str], None]] = None):
         super().__init__(on_trigger)
         self._triggered = False
         self._trigger_reason = ""
@@ -367,7 +369,7 @@ class SignalTrigger(BaseTrigger):
         self._triggered = True
         self._trigger_reason = "SIGUSR1 signal received"
         self.logger.warning("SIGUSR1 signal received - triggering kill switch")
-        if self.on_trigger:
+        if self.on_trigger is not None:
             self.on_trigger(self._trigger_reason, self.name)
 
     def reset(self) -> None:
@@ -525,7 +527,7 @@ class KillSwitch:
             self._log_to_database(self._current_event)
 
             # Call callback
-            if self.on_kill_callback:
+            if self.on_kill_callback is not None:
                 try:
                     self.on_kill_callback(reason)
                 except Exception as e:
@@ -669,7 +671,7 @@ class KillSwitch:
             return
 
         try:
-            conn = self.database._Database__get_connection()
+            conn = self.database.get_connection()
             cursor = conn.cursor()
 
             query = """
@@ -710,7 +712,7 @@ class KillSwitch:
             return
 
         try:
-            conn = self.database._Database__get_connection()
+            conn = self.database.get_connection()
             cursor = conn.cursor()
 
             # Find the most recent event with matching trigger_source and reason

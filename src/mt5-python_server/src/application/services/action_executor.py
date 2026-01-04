@@ -20,7 +20,7 @@ class ActionExecutor:
     Service for executing trading actions using strategy pattern
     """
 
-    def __init__(self, logger: logging.Logger = None):
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
         self._strategies = {
             ActionType.HOLD: HoldActionStrategy(self.logger),
@@ -63,6 +63,10 @@ class ActionExecutor:
                 if environment.data_providers
                 else None
             )
+            if pair is None:
+                raise ValueError(
+                    "Cannot create ExecutionContext without a currency pair"
+                )
             context = ExecutionContext(
                 account=account,
                 pair=pair,

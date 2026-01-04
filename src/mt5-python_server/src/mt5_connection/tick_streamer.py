@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import queue
+from typing import Optional
 
 from database import Database
 from utils.time_utils import print_with_datetime, parse_mt5_timestamp, get_utc_time
@@ -326,7 +327,7 @@ class MT5TickStreamer:
             elif len(self.__tick_buffer) >= self.__batch_size:
                 self.__flush_buffer_internal()
 
-    def is_feed_live(self, max_age_seconds: float = None) -> bool:
+    def is_feed_live(self, max_age_seconds: Optional[float] = None) -> bool:
         """
         Return True when ticks have been received recently.
         Uses the last tick timestamp and a configurable staleness threshold.

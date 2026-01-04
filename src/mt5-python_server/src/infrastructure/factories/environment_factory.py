@@ -14,7 +14,7 @@ from domain.constants import TradingConstants
 class EnvironmentFactory:
     """Factory for creating trading environments"""
 
-    def __init__(self, default_window_size: int = None):
+    def __init__(self, default_window_size: Optional[int] = None):
         """
         Initialize environment factory
         :param default_window_size: Default window size for environments

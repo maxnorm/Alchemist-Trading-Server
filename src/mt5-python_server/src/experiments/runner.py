@@ -450,7 +450,8 @@ class ExperimentRunner:
         providers = []
         for symbol in currency_pairs:
             # Create a basic provider - in real implementation, get from registry
-            pair = CurrencyPair(symbol=symbol)
+            # Default to 5 digits for most forex pairs
+            pair = CurrencyPair(symbol=symbol, digits=5)
             provider = PriceDataProvider(currency_pair=pair)
             providers.append(provider)
 

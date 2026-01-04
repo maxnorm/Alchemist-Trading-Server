@@ -103,7 +103,7 @@ class HistoricalTradingEnv(BaseTradingEnv):
         window_size: int = 50,
         initial_balance: float = 10000.0,
         transaction_cost: float = 0.0001,
-        slippage_model: SlippageModel = None,
+        slippage_model: Optional[SlippageModel] = None,
         position_size_pct: float = 0.1,
         max_positions: int = 1,
         seed: Optional[int] = None,
@@ -160,7 +160,8 @@ class HistoricalTradingEnv(BaseTradingEnv):
         # State tracking
         self.balance = initial_balance
         self.equity_history: List[float] = []
-        self.position: Optional[Position] = None
+        # Override position type from base class to be more specific
+        self.position: Optional[Position] = None  # type: ignore[assignment]
         self.trade_history: List[Trade] = []
         self.current_step = window_size
 
@@ -260,6 +261,8 @@ class HistoricalTradingEnv(BaseTradingEnv):
         """
         if self.current_step < self.window_size:
             # Not enough data yet
+            if self.observation_space.shape is None:
+                raise ValueError("Observation space must have a shape")
             return np.zeros(self.observation_space.shape, dtype=np.float32)
 
         start_idx = self.current_step - self.window_size

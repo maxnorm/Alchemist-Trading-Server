@@ -121,7 +121,7 @@ class PaperTradingEnv(BaseTradingEnv):
         window_size: int = 50,
         initial_balance: float = 10000.0,
         transaction_cost: float = 0.0001,
-        slippage_model: SlippageModel = None,
+        slippage_model: Optional[SlippageModel] = None,
         position_size_pct: float = 0.1,
         simulate_latency: bool = True,
         latency_ms: int = 50,
@@ -167,7 +167,9 @@ class PaperTradingEnv(BaseTradingEnv):
 
         # Price history for state building
         self.price_history: Dict[str, deque] = {
-            p.currency_pair.symbol: deque(maxlen=max_history) for p in data_providers
+            p.currency_pair.symbol: deque(maxlen=max_history)  # type: ignore[attr-defined]
+            for p in data_providers
+            if hasattr(p, "currency_pair") and hasattr(p.currency_pair, "symbol")
         }
 
         # Statistics
@@ -256,11 +258,16 @@ class PaperTradingEnv(BaseTradingEnv):
     def get_state(self) -> np.ndarray:
         """Get current state from live data providers"""
         if not self.data_providers:
+            if self.observation_space.shape is None:
+                raise ValueError("Observation space must have a shape")
             return np.zeros(self.observation_space.shape, dtype=np.float32)
 
         # Collect data from all providers
         for provider in self.data_providers:
-            symbol = provider.currency_pair.symbol
+            symbol = getattr(provider, "currency_pair", None)
+            if symbol is None or not hasattr(symbol, "symbol"):
+                continue
+            symbol = symbol.symbol
 
             # Get current data
             try:
@@ -280,13 +287,18 @@ class PaperTradingEnv(BaseTradingEnv):
         # Build state from history
         # Use the first provider's history as the main timeline
         if self.data_providers:
-            main_symbol = self.data_providers[0].currency_pair.symbol
+            main_provider = self.data_providers[0]
+            if not hasattr(main_provider, "currency_pair"):
+                raise ValueError("DataProvider must have currency_pair attribute")
+            main_symbol = main_provider.currency_pair.symbol
             history = list(self.price_history[main_symbol])
         else:
             history = []
 
         if len(history) < self.window_size:
             # Not enough data yet
+            if self.observation_space.shape is None:
+                raise ValueError("Observation space must have a shape")
             return np.zeros(self.observation_space.shape, dtype=np.float32)
 
         # Take last window_size entries
@@ -302,9 +314,19 @@ class PaperTradingEnv(BaseTradingEnv):
             ]
 
             # Pad to match expected feature size
+            if (
+                self.observation_space.shape is None
+                or len(self.observation_space.shape) < 2
+            ):
+                raise ValueError("Observation space must have a 2D shape")
             while len(row_features) < self.observation_space.shape[1]:
                 row_features.append(0.0)
 
+            if (
+                self.observation_space.shape is None
+                or len(self.observation_space.shape) < 2
+            ):
+                raise ValueError("Observation space must have a 2D shape")
             features.append(row_features[: self.observation_space.shape[1]])
 
         return np.array(features, dtype=np.float32)
@@ -420,7 +442,11 @@ class PaperTradingEnv(BaseTradingEnv):
         for symbol, position in self.simulated_positions.items():
             # Find provider for this symbol
             provider = next(
-                (p for p in self.data_providers if p.currency_pair.symbol == symbol),
+                (
+                    p
+                    for p in self.data_providers
+                    if hasattr(p, "currency_pair") and p.currency_pair.symbol == symbol
+                ),
                 None,
             )
 
@@ -531,7 +557,11 @@ class PaperTradingEnv(BaseTradingEnv):
         for symbol in list(self.simulated_positions.keys()):
             # Find provider
             provider = next(
-                (p for p in self.data_providers if p.currency_pair.symbol == symbol),
+                (
+                    p
+                    for p in self.data_providers
+                    if hasattr(p, "currency_pair") and p.currency_pair.symbol == symbol
+                ),
                 None,
             )
 

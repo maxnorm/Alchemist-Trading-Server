@@ -7,7 +7,7 @@ Integrates Optuna with experiments for automated hyperparameter optimization.
 import json
 import logging
 import optuna
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
@@ -162,6 +162,9 @@ class OptunaHyperparameterTuner:
                 )
 
                 # Run experiment
+                if trial_experiment.id is None:
+                    self._update_trial(trial_id, state="fail", value=None)
+                    raise optuna.TrialPruned()
                 success = self.experiment_runner.start_experiment(trial_experiment.id)
                 if not success:
                     self._update_trial(trial_id, state="fail", value=None)
@@ -294,7 +297,7 @@ class OptunaHyperparameterTuner:
             )
 
             rows = cursor.fetchall()
-            trials = []
+            trials: List[Dict[str, Any]] = []
 
             for row in rows:
                 (
@@ -376,7 +379,7 @@ class OptunaHyperparameterTuner:
             "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128, 256]),
             # Hidden layers: [[64,64], [128,64], [256,128], [512,256]]
             "hidden_layers": trial.suggest_categorical(
-                "hidden_layers", [[64, 64], [128, 64], [256, 128], [512, 256]]
+                "hidden_layers", [[64, 64], [128, 64], [256, 128], [512, 256]]  # type: ignore[list-item]
             ),
             # Window size: [20, 50, 100]
             "window_size": trial.suggest_categorical("window_size", [20, 50, 100]),
@@ -419,7 +422,7 @@ class OptunaHyperparameterTuner:
         # TODO: Get feature catalog from server/context
         feature_catalog = None  # This should be passed in or retrieved
 
-        builder = ExperimentBuilder(self.db, feature_catalog)
+        builder = ExperimentBuilder(self.db, feature_catalog)  # type: ignore[arg-type]
 
         # Clone experiment with new hyperparameters
         return builder.create_experiment(
@@ -535,8 +538,8 @@ class OptunaHyperparameterTuner:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-            updates = []
-            params = []
+            updates: List[str] = []
+            params: List[Union[str, int, float, datetime]] = []
 
             if state is not None:
                 updates.append("state = ?")
@@ -556,8 +559,8 @@ class OptunaHyperparameterTuner:
 
             if updates:
                 updates.append("completed_at = ?")
-                params.append(datetime.now())
-                params.append(trial_id)
+                params.append(datetime.now())  # type: ignore[arg-type]
+                params.append(trial_id)  # type: ignore[arg-type]
 
                 cursor.execute(
                     f"UPDATE optuna_trials SET {', '.join(updates)} WHERE id = %s",
@@ -591,8 +594,8 @@ class OptunaHyperparameterTuner:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-            updates = []
-            params = []
+            updates: List[str] = []
+            params: List[Union[str, int, float, datetime]] = []
 
             if best_trial_number is not None:
                 updates.append("best_trial_number = ?")
@@ -615,7 +618,7 @@ class OptunaHyperparameterTuner:
                 params.append(status)
                 if status in ["completed", "failed", "stopped"]:
                     updates.append("completed_at = ?")
-                    params.append(datetime.now())
+                    params.append(datetime.now())  # type: ignore[arg-type]
 
             if updates:
                 params.append(study_id)

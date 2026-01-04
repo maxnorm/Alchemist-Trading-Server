@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Dict, Any
 from models.account import Account
 from codes.order_type import OrderType
 
@@ -21,7 +22,7 @@ class RLTradingAgent:
         self.action_size = 4
 
         # Q-table for storing state-action values
-        self.q_table = {}
+        self.q_table: Dict[Any, Any] = {}
 
     def get_state(self, pair):
         """Convert current market data into a state representation"""

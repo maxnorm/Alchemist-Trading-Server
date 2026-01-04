@@ -4,7 +4,7 @@ Closes an open position
 """
 
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 
 from domain.action_type import ActionType
 from domain.execution_context import ExecutionContext
@@ -15,7 +15,7 @@ from utils.market_utils import check_if_market_open
 class CloseActionStrategy(ActionStrategy):
     """Strategy for CLOSE action (close open position)"""
 
-    def __init__(self, logger: logging.Logger = None):
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
 
     @property

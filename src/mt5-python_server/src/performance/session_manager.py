@@ -34,7 +34,7 @@ class SessionManager:
         :return: Session ID
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -67,7 +67,7 @@ class SessionManager:
         :param end_balance: Ending balance
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -97,7 +97,7 @@ class SessionManager:
         :param session_id: Session ID
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -124,7 +124,7 @@ class SessionManager:
         :param session_id: Session ID
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -152,7 +152,7 @@ class SessionManager:
         :param current_balance: Current balance
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             # Get current high water mark
@@ -193,7 +193,7 @@ class SessionManager:
         :return: List of session dictionaries
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
 
             if model_id:
@@ -230,7 +230,7 @@ class SessionManager:
         :return: Session dictionary or None
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
 
             cursor.execute(

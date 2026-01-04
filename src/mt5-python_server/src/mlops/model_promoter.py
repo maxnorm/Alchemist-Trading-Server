@@ -26,7 +26,7 @@ try:
     MODEL_REGISTRY_AVAILABLE = True
 except ImportError:
     MODEL_REGISTRY_AVAILABLE = False
-    DBModelStage = None
+    DBModelStage = None  # type: ignore[assignment, misc]
 
 
 class ModelStage(Enum):
@@ -118,9 +118,9 @@ class ModelPromoter:
 
     def __init__(
         self,
-        tracking_uri: str = None,
+        tracking_uri: Optional[str] = None,
         model_name: str = "trading-dqn",
-        criteria: PromotionCriteria = None,
+        criteria: Optional[PromotionCriteria] = None,
         model_registry: Optional["ModelRegistry"] = None,
     ):
         """
@@ -149,7 +149,7 @@ class ModelPromoter:
         self.client = MlflowClient(self.tracking_uri)
         self.logger = logging.getLogger(__name__)
 
-    def get_latest_versions(self, stages: List[str] = None) -> List:
+    def get_latest_versions(self, stages: Optional[List[str]] = None) -> List:
         """
         Get latest model versions, optionally filtered by stage.
 
@@ -212,7 +212,7 @@ class ModelPromoter:
             # Update database if registry available
             if self.model_registry:
                 model = self.model_registry.get_model_by_version(str(version))
-                if model:
+                if model and model.id is not None:
                     self.model_registry.update_model_stage(
                         model.id,
                         DBModelStage.STAGING,
@@ -457,9 +457,12 @@ class ModelPromoter:
                     DBModelStage.PRODUCTION
                 )
                 for current_prod in current_prod_models:
-                    self.model_registry.update_model_stage(
-                        current_prod.id, DBModelStage.ARCHIVED, promoted_by=approver_id
-                    )
+                    if current_prod.id is not None:
+                        self.model_registry.update_model_stage(
+                            current_prod.id,
+                            DBModelStage.ARCHIVED,
+                            promoted_by=approver_id,
+                        )
                     self.logger.info(
                         f"Archived previous production model {current_prod.id} (v{current_prod.version})"
                     )
@@ -529,7 +532,7 @@ class ModelPromoter:
             return False
 
     def rollback_production(
-        self, reason: str, operator: str, to_version: int = None
+        self, reason: str, operator: str, to_version: Optional[int] = None
     ) -> Optional[int]:
         """
         Rollback production to a previous model.
@@ -601,7 +604,7 @@ class ModelPromoter:
             self.logger.error(f"Rollback failed: {e}")
             return None
 
-    def archive_model(self, version: int, reason: str = None) -> bool:
+    def archive_model(self, version: int, reason: Optional[str] = None) -> bool:
         """
         Archive a model version.
 

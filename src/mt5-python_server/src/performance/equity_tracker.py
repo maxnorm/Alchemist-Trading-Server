@@ -6,7 +6,7 @@ Tracks periodic equity snapshots for performance analysis
 import logging
 import threading
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from database import Database
 
 
@@ -31,7 +31,7 @@ class EquityTracker:
         self.snapshot_interval_minutes = snapshot_interval_minutes
         self.db = db or Database()
         self.logger = logger or logging.getLogger(__name__)
-        self._tracking_sessions = {}  # session_id -> tracking info
+        self._tracking_sessions: Dict[str, Any] = {}  # session_id -> tracking info
         self._tracking_lock = threading.Lock()
 
     def record_snapshot(
@@ -53,7 +53,7 @@ class EquityTracker:
         try:
             # Calculate drawdown percentage
             # Get high water mark from session
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -117,11 +117,11 @@ class EquityTracker:
         :return: List of equity curve points
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
 
             query = "SELECT * FROM equity_curve WHERE 1=1"
-            params = []
+            params: List[Any] = []
 
             if model_id is not None:
                 query += " AND model_id = ?"
@@ -161,7 +161,7 @@ class EquityTracker:
         :param session_id: Trading session ID
         """
         with self._tracking_lock:
-            self._tracking_sessions[session_id] = {
+            self._tracking_sessions[str(session_id)] = {
                 "model_id": model_id,
                 "session_id": session_id,
                 "last_snapshot": datetime.utcnow(),
@@ -175,8 +175,9 @@ class EquityTracker:
         :param session_id: Trading session ID
         """
         with self._tracking_lock:
-            if session_id in self._tracking_sessions:
-                del self._tracking_sessions[session_id]
+            session_key = str(session_id)
+            if session_key in self._tracking_sessions:
+                del self._tracking_sessions[session_key]
 
         self.logger.info(f"Stopped equity tracking for session {session_id}")
 
@@ -187,10 +188,11 @@ class EquityTracker:
         :return: True if snapshot should be recorded
         """
         with self._tracking_lock:
-            if session_id not in self._tracking_sessions:
+            session_key = str(session_id)
+            if session_key not in self._tracking_sessions:
                 return False
 
-            tracking_info = self._tracking_sessions[session_id]
+            tracking_info = self._tracking_sessions[session_key]
             last_snapshot = tracking_info["last_snapshot"]
             interval = timedelta(minutes=self.snapshot_interval_minutes)
 

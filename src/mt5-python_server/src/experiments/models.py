@@ -8,7 +8,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -259,8 +259,8 @@ class ExperimentRepository:
             cursor = conn.cursor()
 
             # Build update query dynamically
-            updates = ["status = ?"]
-            params = [status.value]
+            updates: List[str] = ["status = ?"]
+            params: List[Union[str, int, datetime]] = [status.value]
 
             if mlflow_run_id is not None:
                 updates.append("mlflow_run_id = ?")

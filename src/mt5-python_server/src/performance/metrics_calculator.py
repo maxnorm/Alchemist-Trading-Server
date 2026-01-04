@@ -377,7 +377,7 @@ class PerformanceMetricsCalculator:
         :param metrics: Dictionary of metric name -> value
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             for metric_type, value in metrics.items():

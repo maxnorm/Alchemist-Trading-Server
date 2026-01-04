@@ -7,6 +7,7 @@ import os
 import numpy as np
 from datetime import datetime
 import json
+from typing import List, Optional
 
 from agents.dqn_agent import DQNAgent
 from environments.live_env import LiveTradingEnv
@@ -42,9 +43,9 @@ class AgentTrainer:
         os.makedirs(save_dir, exist_ok=True)
 
         # Training metrics
-        self.episode_rewards = []
-        self.episode_losses = []
-        self.episode_profits = []
+        self.episode_rewards: List[float] = []
+        self.episode_losses: List[float] = []
+        self.episode_profits: List[float] = []
 
     def _build_action_mask(self) -> np.ndarray:
         """
@@ -179,6 +180,12 @@ class AgentTrainer:
         previous_balance = self.account.balance
         has_position = len(self.account.current_trade) > 0
 
+        # Variables for reward calculation
+        entry_price: Optional[float] = None
+        exit_price: Optional[float] = None
+        lot_size: Optional[float] = None
+        is_long: Optional[bool] = None
+
         try:
             if action_type == ActionType.BUY:  # Buy
                 # Allow multiple positions - RiskManager checks max_open_positions
@@ -193,6 +200,7 @@ class AgentTrainer:
                     from codes.order_type import OrderType
 
                     self.account.send_order(OrderType.BUY, pair, lot_size, None, sl, tp)
+                    is_long = True
 
             elif action_type == ActionType.SELL:  # Sell
                 # Allow multiple positions - RiskManager checks max_open_positions
@@ -209,11 +217,19 @@ class AgentTrainer:
                     self.account.send_order(
                         OrderType.SELL, pair, lot_size, None, sl, tp
                     )
+                    is_long = False
 
-            elif action_type == ActionType.CLOSE:  # Close position
-                if has_position:
+            elif action_type == ActionType.CLOSE:  # Close
+                if has_position and self.account.current_trade:
                     for ticket in list(self.account.current_trade.keys()):
                         self.account.close_order(ticket)
+                    # Get trade info for reward calculation
+                    trade = list(self.account.current_trade.values())[0]
+                    entry_price = trade.open_price
+                    exit_price = pair.bid if pair else None
+                    lot_size = trade.lotsize
+                    # OrderType.BUY = 0, OrderType.SELL = 1
+                    is_long = trade.ordertype.value == 0  # 0 = BUY
 
         except Exception as e:
             symbol = pair.symbol if pair else "UNKNOWN"
@@ -223,41 +239,6 @@ class AgentTrainer:
 
         # Calculate reward with detailed transaction cost model
         current_balance = self.account.balance
-
-        # Get trade information for detailed cost calculation
-        entry_price = None
-        exit_price = None
-        lot_size = None
-        is_long = None
-
-        if action_type == ActionType.BUY:  # Buy
-            entry_price = pair.ask if pair else None
-            lot_size = (
-                self.risk_manager.calculate_position_size(
-                    self.account, pair, entry_price
-                )
-                if pair and entry_price
-                else None
-            )
-            is_long = True
-        elif action_type == ActionType.SELL:  # Sell
-            entry_price = pair.bid if pair else None
-            lot_size = (
-                self.risk_manager.calculate_position_size(
-                    self.account, pair, entry_price
-                )
-                if pair and entry_price
-                else None
-            )
-            is_long = False
-        elif action_type == ActionType.CLOSE:  # Close
-            if has_position and self.account.current_trade:
-                trade = list(self.account.current_trade.values())[0]
-                entry_price = trade.open_price
-                exit_price = pair.bid if pair else None
-                lot_size = trade.lotsize
-                # OrderType.BUY = 0, OrderType.SELL = 1
-                is_long = trade.ordertype.value == 0  # 0 = BUY
 
         # Get current volatility from environment metrics
         volatility = None

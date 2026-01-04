@@ -127,7 +127,7 @@ class VolumeBasedSlippage(SlippageModel):
         price: float,
         quantity: float = 1.0,
         is_buy: bool = True,
-        volume: float = None,
+        volume: Optional[float] = None,
         **kwargs,
     ) -> float:
         """
@@ -165,7 +165,9 @@ class RandomSlippage(SlippageModel):
     Useful for Monte Carlo simulations.
     """
 
-    def __init__(self, min_pct: float = 0.0, max_pct: float = 0.0002, seed: int = None):
+    def __init__(
+        self, min_pct: float = 0.0, max_pct: float = 0.0002, seed: Optional[int] = None
+    ):
         """
         Initialize random slippage model.
 
@@ -219,8 +221,8 @@ class SpreadSlippage(SlippageModel):
         price: float,
         quantity: float = 1.0,
         is_buy: bool = True,
-        bid: float = None,
-        ask: float = None,
+        bid: Optional[float] = None,
+        ask: Optional[float] = None,
         **kwargs,
     ) -> float:
         """
@@ -276,7 +278,7 @@ class VolatilitySlippage(SlippageModel):
         price: float,
         quantity: float = 1.0,
         is_buy: bool = True,
-        volatility: float = None,
+        volatility: Optional[float] = None,
         **kwargs,
     ) -> float:
         """Apply volatility-based slippage"""

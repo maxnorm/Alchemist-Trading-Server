@@ -11,7 +11,8 @@ Includes safety mechanisms:
 import os
 import time
 import numpy as np
-from typing import Optional, TYPE_CHECKING, Any
+from typing import Optional, TYPE_CHECKING, Any, Dict
+from datetime import datetime
 from agents.dqn_agent import DQNAgent
 from environments.live_env import LiveTradingEnv
 from utils.risk_management import RiskManager
@@ -99,9 +100,9 @@ class TradingController:
         self.is_running = False
         self.decision_interval = 60  # Make decision every 60 seconds
         self._last_ready_state = None
-        self._last_daily_reset = None
-        self._last_hourly_reset = None
-        self._last_reconciliation = None
+        self._last_daily_reset: Optional[datetime] = None
+        self._last_hourly_reset: Optional[datetime] = None
+        self._last_reconciliation: Optional[datetime] = None
         self.reconciliation_interval = 300  # Reconcile every 5 minutes
 
         # Initialize structured logger
@@ -423,7 +424,7 @@ class TradingController:
 
     def get_safety_status(self) -> dict:
         """Get status of all safety components"""
-        status = {
+        status: Dict[str, Any] = {
             "trading_enabled": self.trading_enabled,
             "is_running": self.is_running,
         }
@@ -560,8 +561,6 @@ class TradingController:
 
     def _reconcile_positions(self) -> None:
         """Periodically reconcile OMS positions with broker"""
-        from datetime import datetime
-
         if not self.oms or not self.account:
             return
 

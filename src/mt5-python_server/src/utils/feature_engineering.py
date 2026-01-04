@@ -5,7 +5,7 @@ Normalizes and prepares features for machine learning models
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 
@@ -18,8 +18,8 @@ class FeatureEngineer:
         :param normalization_method: 'standard', 'minmax', or 'robust'
         """
         self.normalization_method = normalization_method
-        self.scalers = {}
-        self.feature_names = []
+        self.scalers: Dict[str, Any] = {}
+        self.feature_names: List[str] = []
         self.is_fitted = False
 
     def fit(self, features: Dict[str, np.ndarray]):

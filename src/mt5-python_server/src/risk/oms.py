@@ -255,10 +255,10 @@ class OrderManagementSystem:
     def __init__(
         self,
         database: Any = None,
-        persistence_path: str = None,
-        on_order_update: Callable[[Order], None] = None,
-        on_position_update: Callable[[Position], None] = None,
-        on_alert: Callable[[str, Dict[str, Any]], None] = None,
+        persistence_path: Optional[str] = None,
+        on_order_update: Optional[Callable[[Order], None]] = None,
+        on_position_update: Optional[Callable[[Position], None]] = None,
+        on_alert: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         alert_threshold_pct: float = 0.10,
     ):
         """
@@ -377,7 +377,7 @@ class OrderManagementSystem:
             self._persist_order_to_db(order)
             self._persist()
 
-            if self.on_order_update:
+            if self.on_order_update is not None:
                 self.on_order_update(order)
 
             self.logger.info(
@@ -400,7 +400,7 @@ class OrderManagementSystem:
             Updated order or None if not found
         """
         with self._lock:
-            order_id = fill_data.get("order_id")
+            order_id: Optional[str] = fill_data.get("order_id")
             if not order_id:
                 # Try to find by broker_order_id
                 broker_id = fill_data.get("broker_order_id")
@@ -408,6 +408,10 @@ class OrderManagementSystem:
                     if o.broker_order_id == broker_id:
                         order_id = o.order_id
                         break
+
+            if not order_id:
+                self.logger.warning(f"Order ID not found for fill: {fill_data}")
+                return None
 
             order = self.orders.get(order_id)
             if not order:
@@ -451,7 +455,7 @@ class OrderManagementSystem:
             self._persist_order_to_db(order)
             self._persist()
 
-            if self.on_order_update:
+            if self.on_order_update is not None:
                 self.on_order_update(order)
 
             self.logger.info(
@@ -486,7 +490,7 @@ class OrderManagementSystem:
             self._persist_order_to_db(order)
             self._persist()
 
-            if self.on_order_update:
+            if self.on_order_update is not None:
                 self.on_order_update(order)
 
             self.logger.warning(f"Order rejected: {order_id} - {reason}")
@@ -519,7 +523,7 @@ class OrderManagementSystem:
             self._persist_order_to_db(order)
             self._persist()
 
-            if self.on_order_update:
+            if self.on_order_update is not None:
                 self.on_order_update(order)
 
             self.logger.info(f"Cancel requested: {order_id}")
@@ -636,7 +640,7 @@ class OrderManagementSystem:
                     critical_discrepancies.append(discrepancy)
 
         # Trigger alerts for critical discrepancies
-        if critical_discrepancies and self.on_alert:
+        if critical_discrepancies and self.on_alert is not None:
             for discrepancy in critical_discrepancies:
                 alert_data = {
                     "type": "position_mismatch",
@@ -739,7 +743,7 @@ class OrderManagementSystem:
         if abs(position.quantity) < 0.0001:
             position.quantity = 0.0
 
-        if self.on_position_update:
+        if self.on_position_update is not None:
             self.on_position_update(position)
 
     def _persist(self) -> None:
@@ -786,7 +790,7 @@ class OrderManagementSystem:
 
         try:
             # Get connection from pool
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             # Convert state enum to database value
@@ -875,7 +879,7 @@ class OrderManagementSystem:
             return
 
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             # Load all non-terminal orders

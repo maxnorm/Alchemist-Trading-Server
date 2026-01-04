@@ -100,12 +100,11 @@ echo ""
 
 # Step 3: MyPy type checking
 echo -e "${YELLOW}📋 Step 3/5: Running MyPy type checker...${NC}"
-# Run MyPy but don't fail on errors (type checking is informational)
-$PYTHON_CMD -m mypy src/ --ignore-missing-imports --no-strict-optional --allow-untyped-defs --allow-untyped-calls 2>&1 || true
-if [ $? -eq 0 ]; then
+if $PYTHON_CMD -m mypy src/ --ignore-missing-imports --no-strict-optional --allow-untyped-defs --allow-untyped-calls; then
     echo -e "${GREEN}✅ MyPy: No type errors found${NC}"
 else
-    echo -e "${YELLOW}⚠️  MyPy: Some type warnings found (non-blocking)${NC}"
+    echo -e "${RED}❌ MyPy: Type errors found${NC}"
+    exit 1
 fi
 echo ""
 
@@ -131,4 +130,4 @@ fi
 echo ""
 
 echo -e "${GREEN}🎉 Core linting checks passed!${NC}"
-echo -e "${YELLOW}ℹ️  Note: MyPy type warnings and Safety dependency issues are informational${NC}"
+echo -e "${YELLOW}ℹ️  Note: Safety dependency issues are informational${NC}"

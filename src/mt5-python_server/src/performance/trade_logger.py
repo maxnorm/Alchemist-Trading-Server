@@ -5,7 +5,7 @@ Logs trade entries and exits for performance tracking
 
 import logging
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from database import Database
 
 
@@ -52,7 +52,7 @@ class TradeLogger:
         :return: Trade ID
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -107,7 +107,7 @@ class TradeLogger:
         :param duration_seconds: Trade duration in seconds
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor()
 
             cursor.execute(
@@ -153,7 +153,7 @@ class TradeLogger:
         :return: List of open trade dictionaries
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
 
             query = "SELECT * FROM model_trades WHERE status = 'open'"
@@ -199,11 +199,11 @@ class TradeLogger:
         :return: List of trade dictionaries
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
 
             query = "SELECT * FROM model_trades WHERE 1=1"
-            params = []
+            params: List[Any] = []
 
             if model_id:
                 query += " AND model_id = ?"
@@ -241,7 +241,7 @@ class TradeLogger:
         :return: Trade dictionary or None
         """
         try:
-            conn = self.db._Database__get_connection()
+            conn = self.db.get_connection()
             cursor = conn.cursor(dictionary=True)
 
             cursor.execute(

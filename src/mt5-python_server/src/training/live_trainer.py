@@ -5,7 +5,7 @@ Trains the agent on real-time market data as it arrives
 
 import os
 import threading
-from typing import Optional
+from typing import Optional, Dict, Any
 import numpy as np
 
 from agents.dqn_agent import DQNAgent
@@ -87,7 +87,9 @@ class LiveTrainer:
         self.is_running = False
         self.training_thread = None
         self.simulated_balance = self.account.balance if self.account else 0.0
-        self.simulated_position = None  # For train-only mode mark-to-market
+        self.simulated_position: Optional[Dict[str, Any]] = (
+            None  # For train-only mode mark-to-market
+        )
 
         # Initialize components
         self.action_executor = ActionExecutor(self.logger)

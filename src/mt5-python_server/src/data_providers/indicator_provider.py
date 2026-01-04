@@ -35,11 +35,11 @@ class IndicatorProvider(DataProvider):
         self.currency_pair = currency_pair
         self.symbol = currency_pair.symbol
         self.window_size = window_size
-        self.price_history = []
+        self.price_history: List[float] = []
         self._price_lock = threading.Lock()
-        self.subscribers = []
+        self.subscribers: List[Any] = []
         self._subscriber_lock = threading.Lock()
-        self.last_update_time = None
+        self.last_update_time: Optional[float] = None
 
         # Subscribe to currency pair updates
         self.currency_pair.subscribe(self._on_price_update)

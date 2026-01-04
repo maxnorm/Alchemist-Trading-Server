@@ -44,29 +44,32 @@ def normalize_to_utc(
     utc_tz = get_server_timezone()
 
     # Handle string input
+    parsed_dt: datetime
     if isinstance(dt, str):
         # Try to parse common formats
         try:
             # MT5 format: "YYYY.MM.DD HH:MM:SS"
             if "." in dt and len(dt) == 19:
-                dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S")
+                parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S")
             # Standard format: "YYYY-MM-DD HH:MM:SS"
             elif "-" in dt and len(dt) == 19:
-                dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+                parsed_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
             else:
                 raise ValueError(f"Unsupported datetime string format: {dt}")
         except ValueError as e:
             raise ValueError(f"Failed to parse datetime string '{dt}': {e}")
+    else:
+        parsed_dt = dt
 
     # Handle naive datetime
-    if dt.tzinfo is None:
+    if parsed_dt.tzinfo is None:
         if source_timezone is None:
             # Default to UTC for naive datetimes
             source_timezone = pytz.UTC
-        dt = source_timezone.localize(dt)
+        parsed_dt = source_timezone.localize(parsed_dt)
 
     # Convert to UTC (no DST issues)
-    return dt.astimezone(utc_tz)
+    return parsed_dt.astimezone(utc_tz)
 
 
 def normalize_to_est(
@@ -82,25 +85,28 @@ def normalize_to_est(
     est_tz = get_est_timezone()
 
     # Handle string input
+    parsed_dt: datetime
     if isinstance(dt, str):
         try:
             if "." in dt and len(dt) == 19:
-                dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S")
+                parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S")
             elif "-" in dt and len(dt) == 19:
-                dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
+                parsed_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
             else:
                 raise ValueError(f"Unsupported datetime string format: {dt}")
         except ValueError as e:
             raise ValueError(f"Failed to parse datetime string '{dt}': {e}")
+    else:
+        parsed_dt = dt
 
     # Handle naive datetime
-    if dt.tzinfo is None:
+    if parsed_dt.tzinfo is None:
         if source_timezone is None:
             source_timezone = pytz.UTC
-        dt = source_timezone.localize(dt)
+        parsed_dt = source_timezone.localize(parsed_dt)
 
     # Convert to EST/EDT
-    return dt.astimezone(est_tz)
+    return parsed_dt.astimezone(est_tz)
 
 
 def parse_mt5_timestamp(
@@ -144,6 +150,7 @@ def parse_scraped_timestamp(
     :return: timezone-aware datetime in UTC
     """
     # Default to UTC if not specified
+    source_tz: pytz.BaseTzInfo
     if source_timezone is None:
         source_tz = pytz.UTC
     elif isinstance(source_timezone, str):
@@ -250,6 +257,7 @@ def format_datetime(date: str, source_timezone: Optional[str] = None) -> str:
     date_object = date_object.replace(year=datetime.now().year)
 
     # Determine source timezone
+    source_tz: pytz.BaseTzInfo
     if source_timezone is None:
         source_tz = pytz.UTC  # Default to UTC for scraped data
     else:

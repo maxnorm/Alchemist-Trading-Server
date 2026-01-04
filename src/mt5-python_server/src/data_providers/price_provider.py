@@ -1,7 +1,7 @@
 import threading
 import time
 import logging
-from typing import Optional, List
+from typing import Optional, List, Any
 from models.currency_pair import CurrencyPair
 from data_providers.base_provider import DataProvider, Feature
 
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class PriceDataProvider(DataProvider):
     def __init__(self, currency_pair: CurrencyPair):
         self.currency_pair = currency_pair
-        self.subscribers = []
+        self.subscribers: List[Any] = []
         self._subscriber_lock = threading.Lock()
         self.last_update_time = None
 

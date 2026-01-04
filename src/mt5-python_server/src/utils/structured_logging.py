@@ -11,7 +11,8 @@ import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Type, Tuple
+from types import TracebackType
 
 
 class JSONFormatter(logging.Formatter):
@@ -35,7 +36,7 @@ class JSONFormatter(logging.Formatter):
         :return: JSON string
         """
         # Base log structure
-        log_data = {
+        log_data: Dict[str, Any] = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "level": record.levelname,
             "component": record.name,
@@ -218,7 +219,17 @@ class StructuredLogger:
         event_type: Optional[str] = None,
         metrics: Optional[Dict[str, Any]] = None,
         correlation_id: Optional[str] = None,
-        exc_info: Optional[Union[bool, Exception]] = None,
+        exc_info: Optional[
+            Union[
+                bool,
+                BaseException,
+                Tuple[
+                    Optional[Type[BaseException]],
+                    Optional[BaseException],
+                    Optional[TracebackType],
+                ],
+            ]
+        ] = None,
         **kwargs,
     ):
         """
@@ -244,12 +255,25 @@ class StructuredLogger:
         }
 
         # Handle exception info
+        exc_info_result: Optional[
+            Union[
+                bool,
+                BaseException,
+                Tuple[
+                    Optional[Type[BaseException]],
+                    Optional[BaseException],
+                    Optional[TracebackType],
+                ],
+            ]
+        ] = None
         if exc_info is True:
-            exc_info = sys.exc_info()
+            exc_info_result = sys.exc_info()
         elif exc_info is False:
-            exc_info = None
+            exc_info_result = None
+        elif exc_info is not None:
+            exc_info_result = exc_info
 
-        self.logger.log(level, message, extra=extra, exc_info=exc_info)
+        self.logger.log(level, message, extra=extra, exc_info=exc_info_result)
 
     def debug(self, message: str, **kwargs):
         """Log debug message"""
@@ -306,9 +330,9 @@ class StructuredLogger:
             "action": action,
         }
         if account_login is not None:
-            custom_fields["account_login"] = account_login
+            custom_fields["account_login"] = str(account_login)
         if order_id is not None:
-            custom_fields["order_id"] = order_id
+            custom_fields["order_id"] = str(order_id)
 
         self.info(
             f"Trade {action} on {symbol}",
@@ -366,7 +390,7 @@ class StructuredLogger:
         :param exc_info: Exception info to include
         :param kwargs: Additional fields
         """
-        custom_fields = {}
+        custom_fields: Dict[str, Any] = {}
         if symbol:
             custom_fields["symbol"] = symbol
         if account_login is not None:

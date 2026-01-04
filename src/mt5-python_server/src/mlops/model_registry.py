@@ -130,7 +130,7 @@ class ModelRegistry:
         mlflow_model_uri: Optional[str] = None,
         metrics: Optional[Dict[str, Any]] = None,
         version: Optional[str] = None,
-    ) -> Model:
+    ) -> Optional[Model]:
         """
         Register a new model after training completes.
 
@@ -195,7 +195,10 @@ class ModelRegistry:
             # Auto-promote to staging
             self.update_model_stage(model_id, ModelStage.STAGING, promoted_by=None)
 
-            return self.get_model(model_id)
+            model = self.get_model(model_id)
+            if model is None:
+                raise ValueError(f"Model {model_id} not found after registration")
+            return model
 
         except Exception as e:
             logger.error(f"Error registering model: {e}", exc_info=True)

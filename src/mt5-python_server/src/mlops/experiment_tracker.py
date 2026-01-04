@@ -54,7 +54,7 @@ class ExperimentTracker:
 
     def __init__(
         self,
-        tracking_uri: str = None,
+        tracking_uri: Optional[str] = None,
         experiment_name: str = "trading-dqn",
         create_experiment: bool = True,
     ):
@@ -88,8 +88,8 @@ class ExperimentTracker:
         mlflow.set_experiment(experiment_name)
 
         self.client = MlflowClient(self.tracking_uri)
-        self.run = None
-        self._run_id = None
+        self.run: Optional[Any] = None
+        self._run_id: Optional[str] = None
 
         self.logger = logging.getLogger(__name__)
 
@@ -105,9 +105,9 @@ class ExperimentTracker:
 
     def start_run(
         self,
-        run_name: str = None,
-        tags: Dict[str, str] = None,
-        description: str = None,
+        run_name: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+        description: Optional[str] = None,
         experiment_id: Optional[int] = None,
     ) -> str:
         """
@@ -150,7 +150,7 @@ class ExperimentTracker:
 
         self.logger.info(f"Started MLflow run: {run_name} (ID: {self._run_id})")
 
-        return self._run_id
+        return self._run_id if self._run_id is not None else ""
 
     def _log_system_info(self) -> None:
         """Log system information for reproducibility"""
@@ -221,7 +221,9 @@ class ExperimentTracker:
         """Log a single parameter"""
         self.log_params({key: value})
 
-    def log_metrics(self, metrics: Dict[str, float], step: int = None) -> None:
+    def log_metrics(
+        self, metrics: Dict[str, float], step: Optional[int] = None
+    ) -> None:
         """
         Log metrics at a given step.
 
@@ -247,7 +249,7 @@ class ExperimentTracker:
         self,
         model,
         artifact_path: str = "model",
-        registered_model_name: str = None,
+        registered_model_name: Optional[str] = None,
         signature=None,
         input_example=None,
     ) -> str:
@@ -322,9 +324,9 @@ class ExperimentTracker:
         self,
         version: str,
         path: str,
-        data_hash: str = None,
-        row_count: int = None,
-        date_range: Dict[str, str] = None,
+        data_hash: Optional[str] = None,
+        row_count: Optional[int] = None,
+        date_range: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Log dataset information for reproducibility.
@@ -443,7 +445,7 @@ class ExperimentTracker:
         runs = self.search_runs(order_by=[f"metrics.{metric} {order}"], max_results=1)
 
         if len(runs) > 0:
-            return runs.iloc[0]
+            return runs[0]  # Use list indexing instead of .iloc
         return None
 
     @staticmethod
@@ -534,7 +536,7 @@ class DummyExperimentTracker:
     def log_param(self, key: str, value: Any) -> None:
         pass
 
-    def log_metrics(self, metrics: Dict, step: int = None) -> None:
+    def log_metrics(self, metrics: Dict, step: Optional[int] = None) -> None:
         pass
 
     def log_metric(self, key: str, value: float, step: int = None) -> None:
@@ -566,7 +568,7 @@ class DummyExperimentTracker:
 
 
 def get_experiment_tracker(
-    tracking_uri: str = None,
+    tracking_uri: Optional[str] = None,
     experiment_name: str = "trading-dqn",
     allow_dummy: bool = True,
 ) -> Union[ExperimentTracker, DummyExperimentTracker]:

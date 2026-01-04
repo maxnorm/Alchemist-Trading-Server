@@ -100,7 +100,7 @@ class CircuitBreaker:
 
     def __init__(
         self,
-        config: CircuitBreakerConfig = None,
+        config: Optional[CircuitBreakerConfig] = None,
         database: Any = None,
         price_history_provider: Any = None,
     ):
@@ -188,12 +188,13 @@ class CircuitBreaker:
 
             for can_trade, reason in checks:
                 if not can_trade:
-                    self._trip(reason)
+                    if reason is not None:
+                        self._trip(reason)
                     return False, reason
 
             return True, None
 
-    def record_trade(self, pnl: float, balance: float = None) -> None:
+    def record_trade(self, pnl: float, balance: Optional[float] = None) -> None:
         """
         Record a completed trade.
 
@@ -230,7 +231,7 @@ class CircuitBreaker:
 
             self._cleanup_old_data()
 
-    def record_error(self, error: Exception = None) -> None:
+    def record_error(self, error: Optional[Exception] = None) -> None:
         """
         Record an error occurrence.
 
@@ -265,7 +266,9 @@ class CircuitBreaker:
                 self._metrics.avg_latency_ms = total / len(self._latency_history)
 
     def record_volatility(
-        self, volatility: float = None, price_history: List[float] = None
+        self,
+        volatility: Optional[float] = None,
+        price_history: Optional[List[float]] = None,
     ) -> None:
         """
         Record current volatility.
@@ -657,7 +660,7 @@ class CircuitBreaker:
             return
 
         try:
-            conn = self.database._Database__get_connection()
+            conn = self.database.get_connection()
             cursor = conn.cursor()
 
             query = """
@@ -701,7 +704,7 @@ class CircuitBreaker:
             return
 
         try:
-            conn = self.database._Database__get_connection()
+            conn = self.database.get_connection()
             cursor = conn.cursor()
 
             query = """

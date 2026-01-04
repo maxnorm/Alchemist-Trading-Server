@@ -7,7 +7,7 @@ import numpy as np
 import os
 import json
 from collections import deque
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, Dict, List, Any, Union
 from tensorflow import keras
 from tensorflow.keras import layers
 
@@ -87,11 +87,12 @@ class DQNAgent:
         self.architecture_config = architecture_config or {}
 
         # Batch prediction queue
-        self.prediction_queue = []
+        self.prediction_queue: List[Any] = []
         self.batch_size_pred = 32
         self.batch_timeout = 0.01  # 10ms
 
         # Experience replay buffer
+        self.memory: Union[SumTree, deque[Any]]
         if self.use_per:
             self.memory = SumTree(memory_size)
         else:
@@ -184,12 +185,17 @@ class DQNAgent:
         if self.use_per:
             # Use maximum priority for new experiences
             priority = self.max_priority**self.per_alpha
-            self.memory.add(priority, (state, action, reward, next_state, done))
+            if isinstance(self.memory, SumTree):
+                self.memory.add(priority, (state, action, reward, next_state, done))
         else:
-            self.memory.append((state, action, reward, next_state, done))
+            if isinstance(self.memory, deque):
+                self.memory.append((state, action, reward, next_state, done))
 
     def act(
-        self, state: np.ndarray, training: bool = True, action_mask: np.ndarray = None
+        self,
+        state: np.ndarray,
+        training: bool = True,
+        action_mask: Optional[np.ndarray] = None,
     ) -> int:
         """
         Choose action using epsilon-greedy policy with optional action masking
@@ -291,7 +297,10 @@ class DQNAgent:
         # Sample batch from memory
         if self.use_per:
             # Prioritized sampling
-            batch_idx, batch, priorities = self.memory.sample(self.batch_size)
+            if isinstance(self.memory, SumTree):
+                batch_idx, batch, priorities = self.memory.sample(self.batch_size)
+            else:
+                raise TypeError("Expected SumTree for PER")
             states = np.array([exp[0] for exp in batch])
             actions = np.array([exp[1] for exp in batch])
             rewards = np.array([exp[2] for exp in batch])
@@ -307,10 +316,15 @@ class DQNAgent:
             # Uniform sampling
             import random
 
-            batch_indices = random.sample(
-                range(len(self.memory)), min(self.batch_size, len(self.memory))
-            )
-            batch = [self.memory[i] for i in batch_indices]
+            if isinstance(self.memory, deque):
+                batch_indices = random.sample(
+                    range(len(self.memory)), min(self.batch_size, len(self.memory))
+                )
+                batch = [self.memory[i] for i in batch_indices]
+            else:
+                # SumTree doesn't support indexing, use sample instead
+                _, batch, _ = self.memory.sample(min(self.batch_size, len(self.memory)))
+                batch_indices = []  # Not used for uniform sampling
             states = np.array([exp[0] for exp in batch])
             actions = np.array([exp[1] for exp in batch])
             rewards = np.array([exp[2] for exp in batch])
@@ -377,9 +391,10 @@ class DQNAgent:
             td_errors = np.abs(target_q_values - current_q_values)
 
             # Update priorities
-            for i, idx in enumerate(batch_idx):
-                priority = (td_errors[i][actions[i]] + 1e-6) ** self.per_alpha
-                self.memory.update(idx, priority)
+            if isinstance(self.memory, SumTree):
+                for i, idx in enumerate(batch_idx):
+                    priority = (td_errors[i][actions[i]] + 1e-6) ** self.per_alpha
+                    self.memory.update(idx, priority)
                 self.max_priority = max(self.max_priority, priority)
 
         # Update target network periodically
@@ -562,7 +577,7 @@ class DQNAgent:
         return [q_values[i] for i in range(len(states))]
 
     def act_batch(
-        self, states: list, training: bool = True, action_masks: list = None
+        self, states: list, training: bool = True, action_masks: Optional[list] = None
     ) -> list:
         """
         Choose actions for a batch of states with optional action masking

@@ -39,8 +39,8 @@ class BaseTradingEnv(gym.Env, ABC):
         self.window_size = window_size
 
         # Random state for reproducibility
-        self.np_random = None
-        self._seed = None
+        self.np_random: Optional[np.random.Generator] = None
+        self._seed: Optional[int] = None
 
         # Define action space
         # Action encoding:
@@ -58,8 +58,8 @@ class BaseTradingEnv(gym.Env, ABC):
         )
 
         self.current_step = 0
-        self.position = None
-        self.position_history = []
+        self.position: Optional[Any] = None
+        self.position_history: List[Any] = []
 
         # Initialize seed if provided
         if seed is not None:

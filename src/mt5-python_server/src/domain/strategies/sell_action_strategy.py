@@ -4,7 +4,7 @@ Opens a short position
 """
 
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 
 from codes.order_type import OrderType
 from domain.action_type import ActionType
@@ -16,7 +16,7 @@ from utils.market_utils import check_if_market_open
 class SellActionStrategy(ActionStrategy):
     """Strategy for SELL action (open short position)"""
 
-    def __init__(self, logger: logging.Logger = None):
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
 
     @property

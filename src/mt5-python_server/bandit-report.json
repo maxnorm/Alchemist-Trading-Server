@@ -1,6 +1,6 @@
 {
   "errors": [],
-  "generated_at": "2026-01-03T22:42:01Z",
+  "generated_at": "2026-01-04T00:45:44Z",
   "metrics": {
     "_totals": {
       "CONFIDENCE.HIGH": 109,
@@ -11,7 +11,7 @@
       "SEVERITY.LOW": 107,
       "SEVERITY.MEDIUM": 6,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 20582,
+      "loc": 20694,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -50,7 +50,7 @@
       "SEVERITY.LOW": 1,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 460,
+      "loc": 474,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -63,7 +63,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 75,
+      "loc": 76,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -206,7 +206,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 178,
+      "loc": 182,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -830,7 +830,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 384,
+      "loc": 386,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -856,7 +856,7 @@
       "SEVERITY.LOW": 3,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 489,
+      "loc": 519,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -869,7 +869,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 289,
+      "loc": 291,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -921,7 +921,7 @@
       "SEVERITY.LOW": 2,
       "SEVERITY.MEDIUM": 2,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 496,
+      "loc": 499,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1103,7 +1103,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 90,
+      "loc": 101,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1181,7 +1181,7 @@
       "SEVERITY.LOW": 5,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 270,
+      "loc": 272,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1194,7 +1194,7 @@
       "SEVERITY.LOW": 4,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 461,
+      "loc": 463,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1207,7 +1207,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 535,
+      "loc": 538,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1220,7 +1220,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 521,
+      "loc": 524,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1233,7 +1233,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 1,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 424,
+      "loc": 429,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1272,7 +1272,7 @@
       "SEVERITY.LOW": 2,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 162,
+      "loc": 163,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1350,7 +1350,7 @@
       "SEVERITY.LOW": 2,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 554,
+      "loc": 555,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1376,7 +1376,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 169,
+      "loc": 171,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1441,7 +1441,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 561,
+      "loc": 564,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1454,7 +1454,7 @@
       "SEVERITY.LOW": 1,
       "SEVERITY.MEDIUM": 1,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 592,
+      "loc": 594,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1467,7 +1467,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 805,
+      "loc": 808,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1519,7 +1519,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 512,
+      "loc": 514,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1532,7 +1532,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 245,
+      "loc": 226,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1584,7 +1584,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 120,
+      "loc": 122,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1623,7 +1623,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 251,
+      "loc": 252,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1649,7 +1649,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 362,
+      "loc": 386,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1675,7 +1675,7 @@
       "SEVERITY.LOW": 0,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 180,
+      "loc": 188,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -1734,9 +1734,9 @@
   },
   "results": [
     {
-      "code": "309 \n310             batch_indices = random.sample(\n311                 range(len(self.memory)), min(self.batch_size, len(self.memory))\n312             )\n313             batch = [self.memory[i] for i in batch_indices]\n",
-      "col_offset": 28,
-      "end_col_offset": 13,
+      "code": "319             if isinstance(self.memory, deque):\n320                 batch_indices = random.sample(\n321                     range(len(self.memory)), min(self.batch_size, len(self.memory))\n322                 )\n323                 batch = [self.memory[i] for i in batch_indices]\n",
+      "col_offset": 32,
+      "end_col_offset": 17,
       "filename": "src/agents\\dqn_agent.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
@@ -1745,11 +1745,11 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Standard pseudo-random generators are not suitable for security/cryptographic purposes.",
-      "line_number": 310,
+      "line_number": 320,
       "line_range": [
-        310,
-        311,
-        312
+        320,
+        321,
+        322
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_calls.html#b311-random",
       "test_id": "B311",
@@ -2302,7 +2302,7 @@
       "test_name": "blacklist"
     },
     {
-      "code": "276                     )\n277             except Exception:\n278                 pass\n279 \n",
+      "code": "283                     )\n284             except Exception:\n285                 pass\n286 \n",
       "col_offset": 12,
       "end_col_offset": 20,
       "filename": "src/environments\\paper_env.py",
@@ -2313,17 +2313,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 277,
+      "line_number": 284,
       "line_range": [
-        277,
-        278
+        284,
+        285
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
       "test_name": "try_except_pass"
     },
     {
-      "code": "431                         position.update_price(data[\"bid\"], data[\"ask\"])\n432                 except Exception:\n433                     pass\n434 \n",
+      "code": "457                         position.update_price(data[\"bid\"], data[\"ask\"])\n458                 except Exception:\n459                     pass\n460 \n",
       "col_offset": 16,
       "end_col_offset": 24,
       "filename": "src/environments\\paper_env.py",
@@ -2334,17 +2334,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 432,
+      "line_number": 458,
       "line_range": [
-        432,
-        433
+        458,
+        459
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
       "test_name": "try_except_pass"
     },
     {
-      "code": "543                         closed += 1\n544                 except Exception:\n545                     pass\n546 \n",
+      "code": "573                         closed += 1\n574                 except Exception:\n575                     pass\n576 \n",
       "col_offset": 16,
       "end_col_offset": 24,
       "filename": "src/environments\\paper_env.py",
@@ -2355,10 +2355,10 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 544,
+      "line_number": 574,
       "line_range": [
-        544,
-        545
+        574,
+        575
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
@@ -2385,7 +2385,7 @@
       "test_name": "hardcoded_sql_expressions"
     },
     {
-      "code": "185                 value = (\n186                     random.uniform(0.5, 2.0)\n187                     if direction == \"maximize\"\n",
+      "code": "188                 value = (\n189                     random.uniform(0.5, 2.0)\n190                     if direction == \"maximize\"\n",
       "col_offset": 20,
       "end_col_offset": 44,
       "filename": "src/experiments\\optuna_tuner.py",
@@ -2396,16 +2396,16 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Standard pseudo-random generators are not suitable for security/cryptographic purposes.",
-      "line_number": 186,
+      "line_number": 189,
       "line_range": [
-        186
+        189
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_calls.html#b311-random",
       "test_id": "B311",
       "test_name": "blacklist"
     },
     {
-      "code": "187                     if direction == \"maximize\"\n188                     else random.uniform(-2.0, -0.5)\n189                 )\n",
+      "code": "190                     if direction == \"maximize\"\n191                     else random.uniform(-2.0, -0.5)\n192                 )\n",
       "col_offset": 25,
       "end_col_offset": 51,
       "filename": "src/experiments\\optuna_tuner.py",
@@ -2416,16 +2416,16 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Standard pseudo-random generators are not suitable for security/cryptographic purposes.",
-      "line_number": 188,
+      "line_number": 191,
       "line_range": [
-        188
+        191
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_calls.html#b311-random",
       "test_id": "B311",
       "test_name": "blacklist"
     },
     {
-      "code": "562                 cursor.execute(\n563                     f\"UPDATE optuna_trials SET {', '.join(updates)} WHERE id = %s\",\n564                     params,\n",
+      "code": "565                 cursor.execute(\n566                     f\"UPDATE optuna_trials SET {', '.join(updates)} WHERE id = %s\",\n567                     params,\n",
       "col_offset": 20,
       "end_col_offset": 82,
       "filename": "src/experiments\\optuna_tuner.py",
@@ -2436,16 +2436,16 @@
       },
       "issue_severity": "MEDIUM",
       "issue_text": "Possible SQL injection vector through string-based query construction.",
-      "line_number": 563,
+      "line_number": 566,
       "line_range": [
-        563
+        566
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b608_hardcoded_sql_expressions.html",
       "test_id": "B608",
       "test_name": "hardcoded_sql_expressions"
     },
     {
-      "code": "622                 cursor.execute(\n623                     f\"UPDATE optuna_studies SET {', '.join(updates)} WHERE id = %s\",\n624                     params,\n",
+      "code": "625                 cursor.execute(\n626                     f\"UPDATE optuna_studies SET {', '.join(updates)} WHERE id = %s\",\n627                     params,\n",
       "col_offset": 20,
       "end_col_offset": 83,
       "filename": "src/experiments\\optuna_tuner.py",
@@ -2456,9 +2456,9 @@
       },
       "issue_severity": "MEDIUM",
       "issue_text": "Possible SQL injection vector through string-based query construction.",
-      "line_number": 623,
+      "line_number": 626,
       "line_range": [
-        623
+        626
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b608_hardcoded_sql_expressions.html",
       "test_id": "B608",
@@ -2773,7 +2773,7 @@
       "test_name": "try_except_pass"
     },
     {
-      "code": "459         \"\"\"\n460         hasher = hashlib.md5()\n461         with open(file_path, \"rb\") as f:\n",
+      "code": "461         \"\"\"\n462         hasher = hashlib.md5()\n463         with open(file_path, \"rb\") as f:\n",
       "col_offset": 17,
       "end_col_offset": 30,
       "filename": "src/mlops\\experiment_tracker.py",
@@ -2784,16 +2784,16 @@
       },
       "issue_severity": "HIGH",
       "issue_text": "Use of weak MD5 hash for security. Consider usedforsecurity=False",
-      "line_number": 460,
+      "line_number": 462,
       "line_range": [
-        460
+        462
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b324_hashlib.html",
       "test_id": "B324",
       "test_name": "hashlib"
     },
     {
-      "code": "225             cursor.execute(\n226                 f\"UPDATE paper_trading_sessions SET {', '.join(updates)} WHERE id = %s\",\n227                 params,\n",
+      "code": "227             cursor.execute(\n228                 f\"UPDATE paper_trading_sessions SET {', '.join(updates)} WHERE id = %s\",\n229                 params,\n",
       "col_offset": 16,
       "end_col_offset": 87,
       "filename": "src/mlops\\paper_session_manager.py",
@@ -2804,16 +2804,16 @@
       },
       "issue_severity": "MEDIUM",
       "issue_text": "Possible SQL injection vector through string-based query construction.",
-      "line_number": 226,
+      "line_number": 228,
       "line_range": [
-        226
+        228
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b608_hardcoded_sql_expressions.html",
       "test_id": "B608",
       "test_name": "hardcoded_sql_expressions"
     },
     {
-      "code": "64                 )\n65         except Exception:\n66             pass\n67         # #endregion\n",
+      "code": "65                 )\n66         except Exception:\n67             pass\n68         # #endregion\n",
       "col_offset": 8,
       "end_col_offset": 16,
       "filename": "src/models\\account.py",
@@ -2824,17 +2824,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 65,
+      "line_number": 66,
       "line_range": [
-        65,
-        66
+        66,
+        67
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
       "test_name": "try_except_pass"
     },
     {
-      "code": "91                 )\n92         except Exception:\n93             pass\n94         # #endregion\n",
+      "code": "92                 )\n93         except Exception:\n94             pass\n95         # #endregion\n",
       "col_offset": 8,
       "end_col_offset": 16,
       "filename": "src/models\\account.py",
@@ -2845,10 +2845,10 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 92,
+      "line_number": 93,
       "line_range": [
-        92,
-        93
+        93,
+        94
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
@@ -4031,7 +4031,7 @@
       "test_name": "try_except_pass"
     },
     {
-      "code": "658                 self.__db_write_queue.join(timeout=5.0)\n659             except Exception:\n660                 pass\n661 \n",
+      "code": "659                 self.__db_write_queue.join(timeout=5.0)\n660             except Exception:\n661                 pass\n662 \n",
       "col_offset": 12,
       "end_col_offset": 20,
       "filename": "src/mt5_connection\\tick_streamer.py",
@@ -4042,17 +4042,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 659,
+      "line_number": 660,
       "line_range": [
-        659,
-        660
+        660,
+        661
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
       "test_name": "try_except_pass"
     },
     {
-      "code": "681                 self.__socket.close()\n682             except Exception:\n683                 pass\n",
+      "code": "682                 self.__socket.close()\n683             except Exception:\n684                 pass\n",
       "col_offset": 12,
       "end_col_offset": 20,
       "filename": "src/mt5_connection\\tick_streamer.py",
@@ -4063,17 +4063,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 682,
+      "line_number": 683,
       "line_range": [
-        682,
-        683
+        683,
+        684
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",
       "test_name": "try_except_pass"
     },
     {
-      "code": "238         port: int = 9999,\n239         host: str = \"0.0.0.0\",\n240     ):\n241         super().__init__(on_trigger)\n242         self.port = port\n243         self.host = host\n",
+      "code": "240         port: int = 9999,\n241         host: str = \"0.0.0.0\",\n242     ):\n243         super().__init__(on_trigger)\n244         self.port = port\n245         self.host = host\n",
       "col_offset": 20,
       "end_col_offset": 29,
       "filename": "src/risk\\kill_switch.py",
@@ -4084,19 +4084,19 @@
       },
       "issue_severity": "MEDIUM",
       "issue_text": "Possible binding to all interfaces.",
-      "line_number": 239,
+      "line_number": 241,
       "line_range": [
-        236,
-        237,
         238,
-        239
+        239,
+        240,
+        241
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b104_hardcoded_bind_all_interfaces.html",
       "test_id": "B104",
       "test_name": "hardcoded_bind_all_interfaces"
     },
     {
-      "code": "282                 self._socket.close()\n283             except Exception:\n284                 pass\n285             self._socket = None\n",
+      "code": "284                 self._socket.close()\n285             except Exception:\n286                 pass\n287             self._socket = None\n",
       "col_offset": 12,
       "end_col_offset": 20,
       "filename": "src/risk\\kill_switch.py",
@@ -4107,10 +4107,10 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Try, Except, Pass detected.",
-      "line_number": 283,
+      "line_number": 285,
       "line_range": [
-        283,
-        284
+        285,
+        286
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
       "test_id": "B110",

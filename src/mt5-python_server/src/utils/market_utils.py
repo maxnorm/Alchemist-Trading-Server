@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Optional, Any
 from datetime import timedelta
 from utils.time_utils import get_utc_time, get_est_timezone
 import pytz
@@ -104,7 +104,7 @@ def get_next_market_open_time():
 
 
 def get_market_feed_status(
-    data_providers: Iterable = None, max_feed_age_seconds: float = 180.0
+    data_providers: Optional[Iterable[Any]] = None, max_feed_age_seconds: float = 180.0
 ) -> dict:
     """
     Combined status helper for calendar + feed freshness.

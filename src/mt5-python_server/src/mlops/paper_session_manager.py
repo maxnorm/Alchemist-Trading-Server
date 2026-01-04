@@ -67,7 +67,9 @@ class PaperTradingSessionManager:
         """
         self.db = database
 
-    def create_session(self, model_id: int, start_balance: float) -> PaperSession:
+    def create_session(
+        self, model_id: int, start_balance: float
+    ) -> Optional[PaperSession]:
         """
         Create a new paper trading session
 
@@ -301,7 +303,10 @@ class PaperTradingSessionManager:
             logger.info(f"Ended paper trading session {session_id}")
 
             # Return updated session
-            return self.get_session(session_id).to_dict()
+            session = self.get_session(session_id)
+            if session is None:
+                raise ValueError(f"Session {session_id} not found after ending")
+            return session.to_dict()
 
         except Exception as e:
             logger.error(f"Error ending session: {e}", exc_info=True)

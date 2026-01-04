@@ -7,7 +7,7 @@ import json
 import socket
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from codes.socket_code import Socket
 from models.account import Account
@@ -64,12 +64,12 @@ class TerminalManager:
             import json as json_log
             import os
 
-            sock_state = {"closed": False}
+            sock_state_before: Dict[str, Any] = {"closed": False}
             try:
                 client.getpeername()
             except Exception as e:
-                sock_state["closed"] = True
-                sock_state["error"] = str(e)
+                sock_state_before["closed"] = True
+                sock_state_before["error"] = str(e)
             log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
             with open(log_path, "a") as f:
                 f.write(
@@ -80,7 +80,7 @@ class TerminalManager:
                             "hypothesisId": "I",
                             "location": "terminal_manager.py:22",
                             "message": "authenticate_terminal socket state before send",
-                            "data": sock_state,
+                            "data": sock_state_before,
                             "timestamp": int(__import__("time").time() * 1000),
                         }
                     )
@@ -99,12 +99,12 @@ class TerminalManager:
             import json as json_log
             import os
 
-            sock_state = {"closed": False}
+            sock_state_after: Dict[str, Any] = {"closed": False}
             try:
                 client.getpeername()
             except Exception as e:
-                sock_state["closed"] = True
-                sock_state["error"] = str(e)
+                sock_state_after["closed"] = True
+                sock_state_after["error"] = str(e)
             log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
             with open(log_path, "a") as f:
                 f.write(
@@ -115,7 +115,7 @@ class TerminalManager:
                             "hypothesisId": "I",
                             "location": "terminal_manager.py:22",
                             "message": "authenticate_terminal socket state after send",
-                            "data": sock_state,
+                            "data": sock_state_after,
                             "timestamp": int(__import__("time").time() * 1000),
                         }
                     )
