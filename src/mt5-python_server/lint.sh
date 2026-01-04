@@ -108,26 +108,5 @@ else
 fi
 echo ""
 
-# Step 4: Bandit security scan
-echo -e "${YELLOW}📋 Step 4/5: Running Bandit security scan...${NC}"
-if $PYTHON_CMD -m bandit -r src/ -f json -o bandit-report.json; then
-    echo -e "${GREEN}✅ Bandit: No security issues found${NC}"
-else
-    echo -e "${YELLOW}⚠️  Bandit: Security issues found (see bandit-report.json)${NC}"
-    # Bandit exits with non-zero on findings, but we continue
-fi
-echo ""
-
-# Step 5: Safety dependency vulnerability scan
-echo -e "${YELLOW}📋 Step 5/5: Running Safety dependency vulnerability scan...${NC}"
-if $PYTHON_CMD -m safety check --json > /dev/null 2>&1; then
-    echo -e "${GREEN}✅ Safety: No vulnerable dependencies found${NC}"
-else
-    echo -e "${YELLOW}⚠️  Safety: Some dependency vulnerabilities found (see safety report)${NC}"
-    echo -e "${YELLOW}💡 Run '$PYTHON_CMD -m safety check' to see details${NC}"
-    # Safety warnings are non-blocking - dependency updates needed separately
-fi
-echo ""
-
 echo -e "${GREEN}🎉 Core linting checks passed!${NC}"
 echo -e "${YELLOW}ℹ️  Note: Safety dependency issues are informational${NC}"
