@@ -52,3 +52,30 @@ export interface PerformanceBreakdown {
   trades: number
   win_rate: number
 }
+
+export interface ModelStatistics {
+  sortino_ratio?: number
+  recovery_factor?: number
+  longest_win_streak?: number
+  longest_loss_streak?: number
+  average_win?: number
+  average_loss?: number
+  profit_factor?: number
+  expectancy?: number
+  avg_duration_seconds?: number
+  min_duration_seconds?: number
+  max_duration_seconds?: number
+}
+
+export interface ComparisonMetrics {
+  sharpe_ratio?: number
+  win_rate?: number
+  profit_factor?: number
+  avg_trade?: number
+}
+
+export interface ModelComparison {
+  paper?: ComparisonMetrics
+  live?: ComparisonMetrics
+  difference?: ComparisonMetrics
+}

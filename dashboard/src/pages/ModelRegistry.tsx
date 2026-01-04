@@ -122,15 +122,15 @@ export default function ModelRegistry() {
                     <div className="space-y-1">
                       <div>
                         <span className="font-medium">Sharpe:</span>{' '}
-                        {model.paper_trading_results.sharpe_ratio?.toFixed(2) || 'N/A'}
+                        {model.paper_trading_results.sharpe_ratio != null ? model.paper_trading_results.sharpe_ratio.toFixed(2) : 'N/A'}
                       </div>
                       <div>
                         <span className="font-medium">Win Rate:</span>{' '}
-                        {(model.paper_trading_results.win_rate * 100)?.toFixed(1) || 'N/A'}%
+                        {model.paper_trading_results.win_rate != null ? (model.paper_trading_results.win_rate * 100).toFixed(1) : 'N/A'}%
                       </div>
                       <div>
                         <span className="font-medium">Trades:</span>{' '}
-                        {model.paper_trading_results.total_trades || 0}
+                        {model.paper_trading_results.total_trades ?? 0}
                       </div>
                     </div>
                   )}
@@ -261,12 +261,12 @@ export default function ModelRegistry() {
               <div>
                 <div className="text-sm font-medium mb-2">Paper Trading Results</div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>Total Trades: {selectedModel.paper_trading_results.total_trades || 0}</div>
-                  <div>Win Rate: {(selectedModel.paper_trading_results.win_rate * 100)?.toFixed(1) || 0}%</div>
-                  <div>Sharpe Ratio: {selectedModel.paper_trading_results.sharpe_ratio?.toFixed(2) || 'N/A'}</div>
-                  <div>Max Drawdown: {(selectedModel.paper_trading_results.max_drawdown * 100)?.toFixed(2) || 'N/A'}%</div>
-                  <div>P&L: ${selectedModel.paper_trading_results.pnl?.toFixed(2) || '0.00'}</div>
-                  <div>Days Traded: {selectedModel.paper_trading_results.days_traded || 0}</div>
+                  <div>Total Trades: {selectedModel.paper_trading_results.total_trades ?? 0}</div>
+                  <div>Win Rate: {selectedModel.paper_trading_results.win_rate != null ? (selectedModel.paper_trading_results.win_rate * 100).toFixed(1) : '0'}%</div>
+                  <div>Sharpe Ratio: {selectedModel.paper_trading_results.sharpe_ratio != null ? selectedModel.paper_trading_results.sharpe_ratio.toFixed(2) : 'N/A'}</div>
+                  <div>Max Drawdown: {selectedModel.paper_trading_results.max_drawdown != null ? (selectedModel.paper_trading_results.max_drawdown * 100).toFixed(2) : 'N/A'}%</div>
+                  <div>P&L: ${selectedModel.paper_trading_results.pnl != null ? selectedModel.paper_trading_results.pnl.toFixed(2) : '0.00'}</div>
+                  <div>Days Traded: {selectedModel.paper_trading_results.days_traded ?? 0}</div>
                 </div>
               </div>
             )}

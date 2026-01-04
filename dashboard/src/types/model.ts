@@ -11,7 +11,7 @@ export interface Model {
   promoted_at?: string
   promoted_by?: string
   performance_metrics?: Record<string, unknown>
-  paper_trading_results?: Record<string, unknown>
+  paper_trading_results?: PaperTradingResults
   created_at: string
 }
 
@@ -43,4 +43,13 @@ export interface ValidationResult {
   checks: Record<string, boolean>
   metrics: Record<string, number>
   messages: string[]
+}
+
+export interface PaperTradingResults {
+  sharpe_ratio?: number
+  win_rate?: number
+  total_trades?: number
+  max_drawdown?: number
+  pnl?: number
+  days_traded?: number
 }

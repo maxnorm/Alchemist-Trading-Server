@@ -5,7 +5,7 @@ import type { Feature, FeatureFilters } from '@/types/feature'
 import type { Model, ModelStage } from '@/types/model'
 import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
 import type { MT5Account, ModelAssignment } from '@/types/mt5'
-import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade } from '@/types/performance'
+import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade, ModelStatistics, ModelComparison } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
 import type { PaperSession, ValidationResult } from '@/types/model'
 import type { PerformanceBreakdown } from '@/types/performance'
@@ -321,16 +321,16 @@ class ApiClient {
     return response.data
   }
 
-  async getModelStatistics(modelId: number, period: string = 'all_time'): Promise<Record<string, unknown>> {
-    const response = await this.client.get<Record<string, unknown>>(
+  async getModelStatistics(modelId: number, period: string = 'all_time'): Promise<ModelStatistics> {
+    const response = await this.client.get<ModelStatistics>(
       `${API_ENDPOINTS.performance}/models/${modelId}/statistics`,
       { params: { period } }
     )
     return response.data
   }
 
-  async getModelComparison(modelId: number): Promise<Record<string, unknown>> {
-    const response = await this.client.get<Record<string, unknown>>(
+  async getModelComparison(modelId: number): Promise<ModelComparison> {
+    const response = await this.client.get<ModelComparison>(
       `${API_ENDPOINTS.performance}/models/${modelId}/comparison`
     )
     return response.data

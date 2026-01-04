@@ -144,19 +144,19 @@ export default function ModelPerformance() {
             <CardContent className="space-y-4">
               <div className="flex justify-between">
                 <span>Sortino Ratio:</span>
-                <span className="font-medium">{statistics.sortino_ratio?.toFixed(2) || 'N/A'}</span>
+                <span className="font-medium">{statistics.sortino_ratio != null ? statistics.sortino_ratio.toFixed(2) : 'N/A'}</span>
               </div>
               <div className="flex justify-between">
                 <span>Recovery Factor:</span>
-                <span className="font-medium">{statistics.recovery_factor?.toFixed(2) || 'N/A'}</span>
+                <span className="font-medium">{statistics.recovery_factor != null ? statistics.recovery_factor.toFixed(2) : 'N/A'}</span>
               </div>
               <div className="flex justify-between">
                 <span>Longest Win Streak:</span>
-                <span className="font-medium">{statistics.longest_win_streak || 0}</span>
+                <span className="font-medium">{statistics.longest_win_streak ?? 0}</span>
               </div>
               <div className="flex justify-between">
                 <span>Longest Loss Streak:</span>
-                <span className="font-medium text-red-600">{statistics.longest_loss_streak || 0}</span>
+                <span className="font-medium text-red-600">{statistics.longest_loss_streak ?? 0}</span>
               </div>
             </CardContent>
           </Card>
@@ -168,23 +168,23 @@ export default function ModelPerformance() {
               <div className="flex justify-between">
                 <span>Average Win:</span>
                 <span className="font-medium text-green-600">
-                  {statistics.average_win ? formatCurrency(statistics.average_win) : 'N/A'}
+                  {statistics.average_win != null ? formatCurrency(statistics.average_win) : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Average Loss:</span>
                 <span className="font-medium text-red-600">
-                  {statistics.average_loss ? formatCurrency(statistics.average_loss) : 'N/A'}
+                  {statistics.average_loss != null ? formatCurrency(statistics.average_loss) : 'N/A'}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Profit Factor:</span>
-                <span className="font-medium">{statistics.profit_factor?.toFixed(2) || 'N/A'}</span>
+                <span className="font-medium">{statistics.profit_factor != null ? statistics.profit_factor.toFixed(2) : 'N/A'}</span>
               </div>
               <div className="flex justify-between">
                 <span>Expectancy:</span>
                 <span className="font-medium">
-                  {statistics.expectancy ? formatCurrency(statistics.expectancy) : 'N/A'}
+                  {statistics.expectancy != null ? formatCurrency(statistics.expectancy) : 'N/A'}
                 </span>
               </div>
             </CardContent>
@@ -203,7 +203,7 @@ export default function ModelPerformance() {
               <div>
                 <p className="text-sm text-muted-foreground">Avg Duration</p>
                 <p className="text-lg font-medium">
-                  {statistics.avg_duration_seconds
+                  {statistics.avg_duration_seconds != null
                     ? formatDuration(statistics.avg_duration_seconds)
                     : 'N/A'}
                 </p>
@@ -211,7 +211,7 @@ export default function ModelPerformance() {
               <div>
                 <p className="text-sm text-muted-foreground">Shortest</p>
                 <p className="text-lg font-medium">
-                  {statistics.min_duration_seconds
+                  {statistics.min_duration_seconds != null
                     ? formatDuration(statistics.min_duration_seconds)
                     : 'N/A'}
                 </p>
@@ -219,7 +219,7 @@ export default function ModelPerformance() {
               <div>
                 <p className="text-sm text-muted-foreground">Longest</p>
                 <p className="text-lg font-medium">
-                  {statistics.max_duration_seconds
+                  {statistics.max_duration_seconds != null
                     ? formatDuration(statistics.max_duration_seconds)
                     : 'N/A'}
                 </p>
@@ -350,30 +350,30 @@ export default function ModelPerformance() {
                 <tbody>
                   <tr className="border-b">
                     <td className="p-2">Sharpe Ratio</td>
-                    <td className="text-right p-2">{comparison.paper?.sharpe_ratio?.toFixed(2) || 'N/A'}</td>
-                    <td className="text-right p-2">{comparison.live?.sharpe_ratio?.toFixed(2) || 'N/A'}</td>
+                    <td className="text-right p-2">{comparison.paper?.sharpe_ratio != null ? comparison.paper.sharpe_ratio.toFixed(2) : 'N/A'}</td>
+                    <td className="text-right p-2">{comparison.live?.sharpe_ratio != null ? comparison.live.sharpe_ratio.toFixed(2) : 'N/A'}</td>
                     <td className="text-right p-2">
-                      {comparison.difference?.sharpe_ratio !== undefined
+                      {comparison.difference?.sharpe_ratio != null
                         ? `${comparison.difference.sharpe_ratio >= 0 ? '+' : ''}${comparison.difference.sharpe_ratio.toFixed(2)}`
                         : 'N/A'}
                     </td>
                   </tr>
                   <tr className="border-b">
                     <td className="p-2">Win Rate</td>
-                    <td className="text-right p-2">{comparison.paper?.win_rate ? formatPercent(comparison.paper.win_rate) : 'N/A'}</td>
-                    <td className="text-right p-2">{comparison.live?.win_rate ? formatPercent(comparison.live.win_rate) : 'N/A'}</td>
+                    <td className="text-right p-2">{comparison.paper?.win_rate != null ? formatPercent(comparison.paper.win_rate) : 'N/A'}</td>
+                    <td className="text-right p-2">{comparison.live?.win_rate != null ? formatPercent(comparison.live.win_rate) : 'N/A'}</td>
                     <td className="text-right p-2">
-                      {comparison.difference?.win_rate !== undefined
+                      {comparison.difference?.win_rate != null
                         ? `${comparison.difference.win_rate >= 0 ? '+' : ''}${formatPercent(comparison.difference.win_rate)}`
                         : 'N/A'}
                     </td>
                   </tr>
                   <tr className="border-b">
                     <td className="p-2">Profit Factor</td>
-                    <td className="text-right p-2">{comparison.paper?.profit_factor?.toFixed(2) || 'N/A'}</td>
-                    <td className="text-right p-2">{comparison.live?.profit_factor?.toFixed(2) || 'N/A'}</td>
+                    <td className="text-right p-2">{comparison.paper?.profit_factor != null ? comparison.paper.profit_factor.toFixed(2) : 'N/A'}</td>
+                    <td className="text-right p-2">{comparison.live?.profit_factor != null ? comparison.live.profit_factor.toFixed(2) : 'N/A'}</td>
                     <td className="text-right p-2">
-                      {comparison.difference?.profit_factor !== undefined
+                      {comparison.difference?.profit_factor != null
                         ? `${comparison.difference.profit_factor >= 0 ? '+' : ''}${comparison.difference.profit_factor.toFixed(2)}`
                         : 'N/A'}
                     </td>
@@ -381,13 +381,13 @@ export default function ModelPerformance() {
                   <tr>
                     <td className="p-2">Avg Trade</td>
                     <td className="text-right p-2">
-                      {comparison.paper?.avg_trade ? formatCurrency(comparison.paper.avg_trade) : 'N/A'}
+                      {comparison.paper?.avg_trade != null ? formatCurrency(comparison.paper.avg_trade) : 'N/A'}
                     </td>
                     <td className="text-right p-2">
-                      {comparison.live?.avg_trade ? formatCurrency(comparison.live.avg_trade) : 'N/A'}
+                      {comparison.live?.avg_trade != null ? formatCurrency(comparison.live.avg_trade) : 'N/A'}
                     </td>
                     <td className="text-right p-2">
-                      {comparison.difference?.avg_trade !== undefined
+                      {comparison.difference?.avg_trade != null
                         ? `${comparison.difference.avg_trade >= 0 ? '+' : ''}${formatCurrency(comparison.difference.avg_trade)}`
                         : 'N/A'}
                     </td>
