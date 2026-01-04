@@ -1,11 +1,6 @@
 name: Build Dashboard
 
 on:
-  pull_request:
-    branches: [master, dev]
-    paths:
-      - 'src/dashboard/**'
-      - '.github/workflows/build_dashboard.yml'
   push:
     branches: [master, dev]
     paths:
