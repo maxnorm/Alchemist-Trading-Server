@@ -3,8 +3,16 @@ name: Build Server
 on:
   pull_request:
     branches: [master, dev]
+    paths:
+      - 'src/mt5-python_server/**'
+      - 'Dockerfile'
+      - '.github/workflows/build_server.yml'
   push: 
     branches: [master, dev]
+    paths:
+      - 'src/mt5-python_server/**'
+      - 'Dockerfile'
+      - '.github/workflows/build_server.yml'
 
 jobs:
   build:

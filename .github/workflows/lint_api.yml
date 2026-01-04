@@ -3,8 +3,14 @@ name: Lint API
 on:
   pull_request:
     branches: [master, dev]
+    paths:
+      - 'src/api/**'
+      - '.github/workflows/lint_api.yml'
   push:
     branches: [master, dev]
+    paths:
+      - 'src/api/**'
+      - '.github/workflows/lint_api.yml'
 
 jobs:
   lint:
