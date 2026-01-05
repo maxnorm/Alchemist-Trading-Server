@@ -204,7 +204,7 @@ class MT5TickConnector(IDataSourceConnector):
                 spread = 0.0001  # Default spread (1 pip)
                 raw_event = {
                     "symbol": self.symbol,
-                    "date_time": tick_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                    "date_time": tick_datetime,  # Pass datetime object directly (preserves microseconds)
                     "ask": mid_price + spread / 2,
                     "bid": mid_price - spread / 2,
                 }

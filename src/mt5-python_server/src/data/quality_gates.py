@@ -3,7 +3,7 @@ Systematic quality pipeline for tick validation
 """
 
 import os
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Union
 from datetime import datetime, timedelta
 from collections import defaultdict
 import statistics
@@ -30,8 +30,24 @@ class QualityGate:
         if config is None:
             config = {}
         
-        self.outlier_z_threshold = config.get('outlier_z_threshold', 3.0)
-        self.staleness_threshold_seconds = config.get('staleness_threshold_seconds', 300)
+        # Capture-all mode: prioritize data completeness over strict filtering
+        # Only reject clearly invalid data (missing fields, invalid prices, extreme errors)
+        self.capture_all_mode = config.get('capture_all_mode', 
+            os.getenv("QUALITY_GATE_CAPTURE_ALL_MODE", "true").lower() == "true"
+        )
+        
+        # Outlier threshold - only reject extreme outliers in capture-all mode
+        default_outlier_threshold = 10.0 if self.capture_all_mode else 3.0
+        self.outlier_z_threshold = config.get('outlier_z_threshold', default_outlier_threshold)
+        
+        # Staleness threshold - very lenient in capture-all mode (accept all with timestamp override)
+        default_staleness_threshold = float(
+            os.getenv("QUALITY_GATE_STALENESS_THRESHOLD_SECONDS", "3600" if self.capture_all_mode else "300")
+        )
+        self.staleness_threshold_seconds = config.get(
+            'staleness_threshold_seconds', 
+            default_staleness_threshold
+        )
         # Change default duplicate tolerance to milliseconds (configurable via env var)
         default_duplicate_tolerance = float(
             os.getenv("QUALITY_GATE_DUPLICATE_TOLERANCE_SECONDS", "0.001")
@@ -50,6 +66,8 @@ class QualityGate:
             'duplicates_rejected': 0,
             'stale_rejected': 0,
             'missing_data_rejected': 0,
+            'stale_accepted_price_change': 0,  # Stale ticks accepted due to price change
+            'timestamp_overrides': 0,  # Timestamps overridden due to staleness + price change
         }
         
         # Track recent ticks for duplicate detection and outlier calculation
@@ -68,14 +86,15 @@ class QualityGate:
 
     def validate(
         self, tick: Dict[str, Any], symbol: str, current_time: datetime
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> Tuple[bool, Optional[str], Optional[Dict]]:
         """
         Validate tick quality
         
         :param tick: Tick data dictionary with keys: symbol, datetime, ask, bid
         :param symbol: Currency pair symbol
         :param current_time: Current datetime for staleness check
-        :return: Tuple of (is_valid, rejection_reason)
+        :return: Tuple of (is_valid, rejection_reason, timestamp_metadata)
+                 timestamp_metadata contains bitemporal timestamp information (is_stale, latency, etc.)
         """
         self.metrics['total_processed'] += 1
         
@@ -83,39 +102,50 @@ class QualityGate:
         missing_reason = self._check_missing_data(tick, symbol)
         if missing_reason:
             self.metrics['missing_data_rejected'] += 1
-            return False, missing_reason
+            return False, missing_reason, None
         
         # Extract tick data
         try:
-            tick_datetime = self._parse_datetime(tick.get('datetime') or tick.get('date_time'))
+            # Get MT5 timezone offset if available
+            mt5_timezone_offset = tick.get('_mt5_timezone_offset')
+            tick_datetime = self._parse_datetime(tick.get('datetime') or tick.get('date_time'), mt5_timezone_offset)
             ask = float(tick.get('ask', 0))
             bid = float(tick.get('bid', 0))
         except (ValueError, TypeError) as e:
             self.metrics['missing_data_rejected'] += 1
-            return False, f"Invalid data types: {e}"
+            return False, f"Invalid data types: {e}", None
         
-        # Check 2: Staleness
-        staleness_reason = self._check_staleness(tick_datetime, current_time, symbol)
-        if staleness_reason:
+        # Check 2: Staleness (pass bid/ask to allow price-aware staleness check)
+        staleness_result = self._check_staleness(tick_datetime, current_time, symbol, bid, ask)
+        if isinstance(staleness_result, tuple):
+            # Staleness check returned (rejection_reason, metadata)
+            staleness_reason, timestamp_metadata = staleness_result
+            if staleness_reason:
+                self.metrics['stale_rejected'] += 1
+                return False, staleness_reason, None
+            # Accepted with metadata - return metadata
+            return True, None, timestamp_metadata
+        elif staleness_result:
+            # Staleness check returned rejection reason (string)
             self.metrics['stale_rejected'] += 1
-            return False, staleness_reason
+            return False, staleness_result, None
         
         # Check 3: Duplicates (pass bid/ask for price comparison)
         duplicate_reason = self._check_duplicates(tick_datetime, symbol, bid, ask)
         if duplicate_reason:
             self.metrics['duplicates_rejected'] += 1
-            return False, duplicate_reason
+            return False, duplicate_reason, None
         
-        # Check 4: Outliers
+        # Check 4: Outliers (only reject extreme outliers in capture-all mode)
         outlier_reason = self._check_outliers(bid, ask, symbol)
         if outlier_reason:
             self.metrics['outliers_rejected'] += 1
-            return False, outlier_reason
+            return False, outlier_reason, None
         
         # All checks passed - update tracking data
         self._update_tracking(symbol, tick_datetime, bid, ask)
         self.metrics['total_accepted'] += 1
-        return True, None
+        return True, None, None
 
     def _check_missing_data(self, tick: Dict[str, Any], symbol: str) -> Optional[str]:
         """
@@ -154,15 +184,25 @@ class QualityGate:
         return None
 
     def _check_staleness(
-        self, tick_datetime: datetime, current_time: datetime, symbol: str
-    ) -> Optional[str]:
+        self, tick_datetime: datetime, current_time: datetime, symbol: str,
+        bid: float = None, ask: float = None
+    ) -> Union[Optional[str], Tuple[Optional[str], Optional[Dict]]]:
         """
         Check if tick is too old (stale)
         
-        :param tick_datetime: Tick datetime
-        :param current_time: Current datetime
+        IMPORTANT: This method preserves the original event_time and returns metadata
+        about staleness instead of overriding the timestamp. This enables bitemporal
+        timestamp tracking and prevents timeseries misalignment.
+        
+        :param tick_datetime: Tick datetime (event_time - preserved)
+        :param current_time: Current datetime (server receive time)
         :param symbol: Currency pair symbol
-        :return: Rejection reason if stale, None otherwise
+        :param bid: Bid price (optional, for price-aware staleness check)
+        :param ask: Ask price (optional, for price-aware staleness check)
+        :return: 
+            - If rejected: rejection reason (string)
+            - If accepted with metadata: (None, metadata_dict)
+            - If accepted without issues: None
         """
         # Normalize timezones for comparison - convert both to UTC
         utc_tz = pytz.UTC
@@ -183,9 +223,40 @@ class QualityGate:
         
         age_seconds = (current_time - tick_datetime).total_seconds()
         
+        # If tick is stale, return metadata instead of overriding timestamp
         if age_seconds > self.staleness_threshold_seconds:
+            # Check if price has changed (for acceptance decision)
+            price_changed = False
+            if bid is not None and ask is not None:
+                if symbol in self.last_seen_prices:
+                    last_bid, last_ask = self.last_seen_prices[symbol]
+                    # Use relative price difference to account for floating point precision
+                    bid_diff = abs(bid - last_bid) / max(abs(bid), abs(last_bid), 1e-10)
+                    ask_diff = abs(ask - last_ask) / max(abs(ask), abs(last_ask), 1e-10)
+                    price_changed = bid_diff > 1e-6 or ask_diff > 1e-6
+                else:
+                    # No previous price - assume this is a new price
+                    price_changed = True
+            
+            # In capture-all mode: always accept stale ticks (with metadata)
+            # Otherwise: only accept if price changed
+            if self.capture_all_mode or price_changed:
+                # Accept the tick with metadata (preserve original event_time)
+                self.metrics['stale_accepted_price_change'] += 1
+                # Build metadata dict
+                metadata = {
+                    'is_stale': True,
+                    'stale_age_seconds': int(age_seconds),
+                    'receive_time': current_time,
+                    'latency_seconds': int(age_seconds),
+                    'timestamp_source': 'event',  # Preserve original timestamp
+                }
+                return (None, metadata)
+            
+            # Reject stale tick (no price change and not in capture-all mode)
             return f"Tick is stale: {age_seconds:.1f}s old (threshold: {self.staleness_threshold_seconds}s)"
         
+        # Not stale - return None (no issues)
         return None
 
     def _check_duplicates(
@@ -222,7 +293,7 @@ class QualityGate:
             
             # Check if timestamp is within tolerance (now in milliseconds)
             if time_diff_seconds <= self.duplicate_tolerance_seconds:
-                # Check if price has changed
+                # Check if price has changed (only if we have price info for both current and last tick)
                 if bid is not None and ask is not None and symbol in self.last_seen_prices:
                     last_bid, last_ask = self.last_seen_prices[symbol]
                     
@@ -236,11 +307,24 @@ class QualityGate:
                         self.last_seen_timestamps[symbol] = tick_dt
                         self.last_seen_prices[symbol] = (bid, ask)
                         return None
+                    # Price is same - this is a true duplicate
+                    return (
+                        f"Duplicate tick: {time_diff_microseconds:.0f}μs from last tick "
+                        f"(tolerance: {self.duplicate_tolerance_seconds*1_000_000:.0f}μs), same price"
+                    )
+                elif bid is not None and ask is not None:
+                    # We have price info for current tick but not for last tick
+                    # This means last tick didn't have prices, so allow this one through and update tracking
+                    self.last_seen_timestamps[symbol] = tick_dt
+                    self.last_seen_prices[symbol] = (bid, ask)
+                    return None
                 
-                # Timestamp within tolerance AND price is same (or no price info)
+                # Timestamp within tolerance but no price info available to compare
+                # Without price info, we can't determine if it's a duplicate
+                # For safety, reject it as a potential duplicate
                 return (
                     f"Duplicate tick: {time_diff_microseconds:.0f}μs from last tick "
-                    f"(tolerance: {self.duplicate_tolerance_seconds*1_000_000:.0f}μs)"
+                    f"(tolerance: {self.duplicate_tolerance_seconds*1_000_000:.0f}μs), no price info to compare"
                 )
         
         # Update tracking
@@ -258,22 +342,39 @@ class QualityGate:
         """
         Check for outliers using z-score or IQR method
         
+        In capture-all mode: Only reject extreme outliers (>10% price change)
+        Otherwise: Use standard z-score/IQR thresholds
+        
         :param bid: Bid price
         :param ask: Ask price
         :param symbol: Currency pair symbol
         :return: Rejection reason if outlier, None otherwise
         """
-        # Check spread
+        # Check spread - always reject invalid spreads
         spread = ask - bid
         if spread <= 0:
             return "Invalid spread: ask <= bid"
         
-        # Check for unrealistic spread (> 10 pips for major pairs, which is ~0.0010 for most pairs)
+        # Check for unrealistic spread - more lenient in capture-all mode
         # For EUR/USD, 1 pip = 0.0001, so 10 pips = 0.0010
-        # We'll use a more conservative threshold of 0.001 (10 pips)
-        if spread > 0.001:
-            return f"Unrealistic spread: {spread:.6f} (> 0.001 / 10 pips)"
+        spread_threshold = 0.01 if self.capture_all_mode else 0.001  # 100 pips vs 10 pips
+        if spread > spread_threshold:
+            return f"Unrealistic spread: {spread:.6f} (> {spread_threshold} / {int(spread_threshold * 10000)} pips)"
         
+        # In capture-all mode: Only check for extreme outliers (>10% price change)
+        if self.capture_all_mode:
+            if symbol in self.last_seen_prices:
+                last_bid, last_ask = self.last_seen_prices[symbol]
+                bid_change_pct = abs(bid - last_bid) / max(abs(bid), abs(last_bid), 1e-10)
+                ask_change_pct = abs(ask - last_ask) / max(abs(ask), abs(last_ask), 1e-10)
+                
+                # Only reject if price changed by more than 10% (extreme outlier, likely error)
+                if bid_change_pct > 0.10 or ask_change_pct > 0.10:
+                    return f"Extreme price change: bid {bid_change_pct*100:.2f}%, ask {ask_change_pct*100:.2f}% (>10%)"
+            # Not enough history or no extreme change - accept
+            return None
+        
+        # Standard outlier detection (not in capture-all mode)
         # Need historical data for outlier detection
         bid_history = self.price_history_bid.get(symbol, [])
         ask_history = self.price_history_ask.get(symbol, [])
@@ -347,28 +448,56 @@ class QualityGate:
         
         return value < lower_bound or value > upper_bound
 
-    def _parse_datetime(self, dt_value: Any) -> datetime:
+    def _parse_datetime(self, dt_value: Any, mt5_timezone_offset: Optional[float] = None) -> datetime:
         """
         Parse datetime from various formats
         
         :param dt_value: Datetime value (string or datetime object)
-        :return: Parsed datetime
+        :param mt5_timezone_offset: Optional MT5 timezone offset in hours (for MT5 timestamps)
+        :return: Parsed datetime (timezone-aware in UTC)
         """
+        # #region agent log
+        import json, os, time
+        try:
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_dir)))
+            log_path = os.path.join(project_root, '.cursor', 'debug.log')
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "H1", "location": "quality_gates.py:_parse_datetime", "message": "Parsing datetime", "data": {"dt_value": str(dt_value), "mt5_timezone_offset": mt5_timezone_offset}, "timestamp": int(time.time() * 1000)}) + "\n")
+        except: pass
+        # #endregion
+        
         if isinstance(dt_value, datetime):
-            return dt_value
+            # If already a datetime object, ensure it's timezone-aware and in UTC
+            from utils.time_utils import ensure_utc_timezone
+            return ensure_utc_timezone(dt_value)
         
         if isinstance(dt_value, str):
+            import pytz
+            from utils.time_utils import get_server_timezone
             # Try MT5 format with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm" (23 chars)
             if "." in dt_value and len(dt_value) == 23 and dt_value[19] == '.':
-                return datetime.strptime(dt_value, "%Y.%m.%d %H:%M:%S.%f")
+                dt = datetime.strptime(dt_value, "%Y.%m.%d %H:%M:%S.%f")
             # Try MT5 format without milliseconds: "YYYY.MM.DD HH:MM:SS" (19 chars)
             elif "." in dt_value and len(dt_value) == 19:
-                return datetime.strptime(dt_value, "%Y.%m.%d %H:%M:%S")
+                dt = datetime.strptime(dt_value, "%Y.%m.%d %H:%M:%S")
             # Try standard format: "YYYY-MM-DD HH:MM:SS" (19 chars)
             elif "-" in dt_value and len(dt_value) == 19:
-                return datetime.strptime(dt_value, "%Y-%m-%d %H:%M:%S")
+                dt = datetime.strptime(dt_value, "%Y-%m-%d %H:%M:%S")
             else:
                 raise ValueError(f"Unsupported datetime format: {dt_value}")
+            
+            # Apply timezone offset if provided (for MT5 timestamps)
+            if mt5_timezone_offset is not None:
+                source_tz = pytz.FixedOffset(int(mt5_timezone_offset * 60))
+                dt = source_tz.localize(dt)
+                return dt.astimezone(get_server_timezone())
+            else:
+                # Default to UTC for naive datetimes
+                utc_tz = pytz.UTC
+                dt = utc_tz.localize(dt)
+                return dt.astimezone(get_server_timezone())
         
         raise ValueError(f"Invalid datetime type: {type(dt_value)}")
 
@@ -424,4 +553,6 @@ class QualityGate:
             'duplicates_rejected': 0,
             'stale_rejected': 0,
             'missing_data_rejected': 0,
+            'stale_accepted_price_change': 0,
+            'timestamp_overrides': 0,
         }

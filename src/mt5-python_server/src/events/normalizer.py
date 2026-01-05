@@ -100,7 +100,7 @@ class EventNormalizer(IEventNormalizer):
     
     def normalize(self, raw_event: Dict, source: str) -> Dict[str, Any]:
         """
-        Convert raw event to canonical format
+        Convert raw event to canonical format with bitemporal timestamps
         
         :param raw_event: Raw event dictionary from source
         :param source: Source identifier (e.g., "mt5", "api")
@@ -122,17 +122,51 @@ class EventNormalizer(IEventNormalizer):
                 self.logger.warning(f"Source event validation failed: {error}")
                 # Continue anyway - schema validation is advisory
             
+            # Extract receive_time (when we received the event)
+            receive_time = raw_event.get('_receive_time')
+            if receive_time is None:
+                receive_time = get_utc_time()
+            else:
+                # Ensure receive_time is timezone-aware UTC
+                receive_time = normalize_to_utc(receive_time)
+            
             # Source-specific normalization
             if source == "mt5":
-                return self._normalize_mt5(raw_event)
+                canonical_event = self._normalize_mt5(raw_event, receive_time)
             elif source == "api":
-                return self._normalize_api(raw_event)
+                canonical_event = self._normalize_api(raw_event, receive_time)
             elif source == "scraper":
-                return self._normalize_scraped(raw_event)
+                canonical_event = self._normalize_scraped(raw_event, receive_time)
             elif source == "news":
-                return self._normalize_news(raw_event)
+                canonical_event = self._normalize_news(raw_event, receive_time)
             else:
                 raise ValueError(f"Unsupported source for normalization: {source}")
+            
+            # Get timestamp_metadata from raw_event if available (from quality gate)
+            timestamp_metadata = raw_event.get('_timestamp_metadata', {})
+            
+            # Extract event_time (timestamp) from canonical event
+            event_time = canonical_event.get('timestamp')
+            if event_time is None:
+                event_time = receive_time
+            
+            # Calculate latency if not already in metadata
+            if 'latency_seconds' not in timestamp_metadata:
+                latency_seconds = (receive_time - event_time).total_seconds()
+                timestamp_metadata['latency_seconds'] = latency_seconds
+            
+            # Update metadata with receive_time
+            timestamp_metadata['receive_time'] = receive_time.isoformat() if isinstance(receive_time, datetime) else str(receive_time)
+            
+            # Ensure timestamp_source is set
+            if 'timestamp_source' not in timestamp_metadata:
+                timestamp_metadata['timestamp_source'] = 'event'
+            
+            # Add bitemporal fields to canonical event
+            canonical_event['receive_time'] = receive_time
+            canonical_event['timestamp_metadata'] = timestamp_metadata
+            
+            return canonical_event
                 
         except Exception as e:
             self.logger.error(
@@ -141,27 +175,44 @@ class EventNormalizer(IEventNormalizer):
             )
             raise
     
-    def _normalize_mt5(self, raw_event: Dict) -> Dict[str, Any]:
+    def _normalize_mt5(self, raw_event: Dict, receive_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Normalize MT5 tick event to canonical format
+        Normalize MT5 tick event to canonical format with bitemporal timestamps
         
         :param raw_event: Raw MT5 tick dictionary
+        :param receive_time: When we received the event (optional)
         :return: Normalized event dictionary
         """
         # Extract fields (handle both "date_time" and "datetime")
-        date_time_str = raw_event.get("date_time") or raw_event.get("datetime")
+        date_time_value = raw_event.get("date_time") or raw_event.get("datetime")
         symbol = raw_event.get("symbol", "")
         ask = raw_event.get("ask", 0.0)
         bid = raw_event.get("bid", 0.0)
         
         # Normalize timestamp to UTC
-        try:
-            # Parse MT5 timestamp format: "YYYY.MM.DD HH:MM:SS"
-            timestamp = normalize_to_utc(date_time_str)
-        except Exception as e:
-            self.logger.error(f"Failed to normalize MT5 timestamp: {e}")
-            # Fallback to current time
-            timestamp = get_utc_time()
+        # Handle both datetime objects and strings
+        if isinstance(date_time_value, datetime):
+            # Already a datetime object, ensure it's UTC and timezone-aware
+            from utils.time_utils import ensure_utc_timezone
+            timestamp = ensure_utc_timezone(date_time_value)
+            date_time_str = str(date_time_value)  # For logging/reference
+        else:
+            # String input - parse and normalize
+            date_time_str = date_time_value
+            # Check if timezone offset is provided in the raw event (from tick_streamer detection)
+            mt5_timezone_offset = raw_event.get("_mt5_timezone_offset")
+            try:
+                if mt5_timezone_offset is not None:
+                    # Use the detected timezone offset from tick_streamer
+                    from utils.time_utils import parse_mt5_timestamp
+                    timestamp = parse_mt5_timestamp(date_time_str, mt5_timezone_offset)
+                else:
+                    # Fallback to default normalization (assumes UTC)
+                    timestamp = normalize_to_utc(date_time_str)
+            except Exception as e:
+                self.logger.error(f"Failed to normalize MT5 timestamp: {e}")
+                # Fallback to current time
+                timestamp = get_utc_time()
         
         # After timestamp normalization, add validation logging
         current_time = get_utc_time()
@@ -173,9 +224,9 @@ class EventNormalizer(IEventNormalizer):
                 f"(raw: {date_time_str}, normalized: {timestamp})"
             )
         
-        # Create canonical event
+        # Create canonical event with event_time (preserve original timestamp)
         canonical_event = {
-            "timestamp": timestamp,
+            "timestamp": timestamp,  # event_time (preserved)
             "source": "mt5",
             "symbol": symbol,
             "data_type": "tick",
@@ -189,11 +240,12 @@ class EventNormalizer(IEventNormalizer):
         
         return canonical_event
     
-    def _normalize_api(self, raw_event: Dict) -> Dict[str, Any]:
+    def _normalize_api(self, raw_event: Dict, receive_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Normalize API event to canonical format
+        Normalize API event to canonical format with bitemporal timestamps
         
         :param raw_event: Raw API event dictionary
+        :param receive_time: When we received the event (optional)
         :return: Normalized event dictionary
         """
         # Extract timestamp (could be ISO string or datetime)
@@ -225,11 +277,12 @@ class EventNormalizer(IEventNormalizer):
         
         return canonical_event
     
-    def _normalize_scraped(self, raw_event: Dict) -> Dict[str, Any]:
+    def _normalize_scraped(self, raw_event: Dict, receive_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Normalize scraped data event to canonical format
+        Normalize scraped data event to canonical format with bitemporal timestamps
         
         :param raw_event: Raw scraped data dictionary
+        :param receive_time: When we received the event (optional)
         :return: Normalized event dictionary
         """
         # Extract timestamp
@@ -258,11 +311,12 @@ class EventNormalizer(IEventNormalizer):
         
         return canonical_event
     
-    def _normalize_news(self, raw_event: Dict) -> Dict[str, Any]:
+    def _normalize_news(self, raw_event: Dict, receive_time: Optional[datetime] = None) -> Dict[str, Any]:
         """
-        Normalize news event to canonical format
+        Normalize news event to canonical format with bitemporal timestamps
         
         :param raw_event: Raw news event dictionary
+        :param receive_time: When we received the event (optional)
         :return: Normalized event dictionary
         """
         # Extract timestamp

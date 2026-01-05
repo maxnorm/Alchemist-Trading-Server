@@ -32,23 +32,42 @@ class CanonicalEventSchema:
     
     All events must conform to this schema after normalization.
     Timestamps are always UTC and timezone-aware.
+    
+    Bitemporal timestamp system:
+    - timestamp: event_time (valid time) - when event occurred
+    - receive_time: transaction time - when we received it
+    - timestamp_metadata: quality and latency information
     """
     
-    timestamp: datetime  # UTC normalized, timezone-aware
+    timestamp: datetime  # UTC normalized, timezone-aware (event_time)
     source: str  # "mt5", "api", "scraper", "news"
     symbol: str  # "EURUSD", "GBPUSD", etc.
     data_type: str  # "tick", "bar", "news", "economic"
     payload: Dict[str, Any]  # Source-specific data
+    receive_time: Optional[datetime] = None  # UTC normalized, timezone-aware (transaction time)
+    timestamp_metadata: Dict[str, Any] = field(default_factory=lambda: {
+        'is_stale': False,
+        'stale_age_seconds': None,
+        'latency_seconds': None,
+        'timestamp_source': 'event',  # 'event', 'receive', 'estimated'
+        'original_timestamp': None,
+    })
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation"""
-        return {
+        result = {
             "timestamp": self.timestamp.isoformat() if isinstance(self.timestamp, datetime) else str(self.timestamp),
             "source": self.source,
             "symbol": self.symbol,
             "data_type": self.data_type,
             "payload": self.payload,
         }
+        # Add optional bitemporal fields
+        if self.receive_time is not None:
+            result["receive_time"] = self.receive_time.isoformat() if isinstance(self.receive_time, datetime) else str(self.receive_time)
+        if self.timestamp_metadata:
+            result["timestamp_metadata"] = self.timestamp_metadata
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CanonicalEventSchema":
@@ -66,12 +85,38 @@ class CanonicalEventSchema:
                 except ValueError:
                     raise ValueError(f"Unsupported timestamp format: {timestamp}")
         
+        # Parse receive_time if present
+        receive_time = None
+        if "receive_time" in data and data["receive_time"] is not None:
+            receive_time_value = data["receive_time"]
+            if isinstance(receive_time_value, str):
+                try:
+                    receive_time = datetime.fromisoformat(receive_time_value.replace('Z', '+00:00'))
+                except ValueError:
+                    try:
+                        receive_time = datetime.strptime(receive_time_value, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        receive_time = None
+            elif isinstance(receive_time_value, datetime):
+                receive_time = receive_time_value
+        
+        # Get timestamp_metadata if present
+        timestamp_metadata = data.get("timestamp_metadata", {
+            'is_stale': False,
+            'stale_age_seconds': None,
+            'latency_seconds': None,
+            'timestamp_source': 'event',
+            'original_timestamp': None,
+        })
+        
         return cls(
             timestamp=timestamp,
             source=data["source"],
             symbol=data["symbol"],
             data_type=data["data_type"],
             payload=data["payload"],
+            receive_time=receive_time,
+            timestamp_metadata=timestamp_metadata,
         )
     
     def validate(self) -> tuple[bool, Optional[str]]:
@@ -90,6 +135,18 @@ class CanonicalEventSchema:
         # Timestamp must be timezone-aware
         if self.timestamp.tzinfo is None:
             return False, "Timestamp must be timezone-aware"
+        
+        # Check receive_time if provided (optional but must be timezone-aware if present)
+        if self.receive_time is not None:
+            if not isinstance(self.receive_time, datetime):
+                return False, f"Invalid receive_time type: {type(self.receive_time)}"
+            if self.receive_time.tzinfo is None:
+                return False, "receive_time must be timezone-aware"
+        
+        # Check timestamp_metadata if provided
+        if self.timestamp_metadata is not None:
+            if not isinstance(self.timestamp_metadata, dict):
+                return False, f"Invalid timestamp_metadata type: {type(self.timestamp_metadata)}"
         
         # Check source
         if not self.source:

@@ -121,12 +121,14 @@ class EventQualityGates:
                     f"(buffer: {self.future_timestamp_buffer}s)"
                 )
             
-            # Check for stale timestamps
+            # Check for stale timestamps - be lenient (main quality gate already handles this)
+            # Only reject extremely stale timestamps (>1 hour) as they're likely errors
             age_seconds = (current_time - dt).total_seconds()
-            if age_seconds > self.stale_threshold:
+            extreme_stale_threshold = 3600  # 1 hour - only reject extremely stale
+            if age_seconds > extreme_stale_threshold:
                 return False, (
-                    f"Stale timestamp: {age_seconds:.1f}s old "
-                    f"(threshold: {self.stale_threshold}s)"
+                    f"Extremely stale timestamp: {age_seconds:.1f}s old "
+                    f"(threshold: {extreme_stale_threshold}s)"
                 )
             
             return True, None

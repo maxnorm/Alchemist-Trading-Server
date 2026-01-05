@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Server Linting Script
-# Runs all linting checks: Black, Flake8, MyPy, Bandit, and Safety
-# Matches the CI workflow configuration
+# Runs all linting checks: Black, Flake8, and MyPy
+# Matches the CI workflow configuration exactly
 
 set -e  # Exit on any error
 
@@ -69,16 +69,16 @@ fi
 
 # Verify Python is accessible and has the required modules
 echo -e "${YELLOW}ℹ️  Using Python: $PYTHON_CMD${NC}"
-if ! $PYTHON_CMD -c "import black, flake8, mypy, bandit, safety" 2>/dev/null; then
+if ! $PYTHON_CMD -c "import black, flake8, mypy" 2>/dev/null; then
     echo -e "${RED}❌ Error: Required linting tools not found${NC}"
-    echo -e "${YELLOW}💡 Please install them with: $PYTHON_CMD -m pip install black flake8 mypy bandit safety${NC}"
+    echo -e "${YELLOW}💡 Please install them with: $PYTHON_CMD -m pip install black flake8 mypy${NC}"
     echo -e "${YELLOW}💡 Or activate your virtual environment first${NC}"
     exit 1
 fi
 echo ""
 
 # Step 1: Black formatting check
-echo -e "${YELLOW}📋 Step 1/5: Checking code formatting with Black...${NC}"
+echo -e "${YELLOW}📋 Step 1/3: Checking code formatting with Black...${NC}"
 if $PYTHON_CMD -m black --check src/; then
     echo -e "${GREEN}✅ Black: Code is properly formatted${NC}"
 else
@@ -89,7 +89,7 @@ fi
 echo ""
 
 # Step 2: Flake8 linting
-echo -e "${YELLOW}📋 Step 2/5: Running Flake8 linter...${NC}"
+echo -e "${YELLOW}📋 Step 2/3: Running Flake8 linter...${NC}"
 if $PYTHON_CMD -m flake8 src/ --max-line-length=120 --extend-ignore=E203,W503; then
     echo -e "${GREEN}✅ Flake8: No linting issues found${NC}"
 else
@@ -99,8 +99,8 @@ fi
 echo ""
 
 # Step 3: MyPy type checking
-echo -e "${YELLOW}📋 Step 3/5: Running MyPy type checker...${NC}"
-if $PYTHON_CMD -m mypy src/ --ignore-missing-imports --no-strict-optional --allow-untyped-defs --allow-untyped-calls; then
+echo -e "${YELLOW}📋 Step 3/3: Running MyPy type checker...${NC}"
+if $PYTHON_CMD -m mypy src/ --ignore-missing-imports; then
     echo -e "${GREEN}✅ MyPy: No type errors found${NC}"
 else
     echo -e "${RED}❌ MyPy: Type errors found${NC}"
@@ -108,5 +108,4 @@ else
 fi
 echo ""
 
-echo -e "${GREEN}🎉 Core linting checks passed!${NC}"
-echo -e "${YELLOW}ℹ️  Note: Safety dependency issues are informational${NC}"
+echo -e "${GREEN}🎉 All linting checks passed!${NC}"

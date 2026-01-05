@@ -24,10 +24,13 @@ def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data,
         if timestamp is None:
             from utils.time_utils import get_utc_time
             timestamp = int(get_utc_time().timestamp() * 1000)
-        # Calculate path relative to this file: go up 4 levels to project root, then .cursor/debug.log
-        current_file = __file__
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+        # Use absolute path from system reminder - calculate dynamically
+        import os
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_dir)))
         log_path = os.path.join(project_root, '.cursor', 'debug.log')
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps({
                 "sessionId": session_id,
@@ -38,8 +41,10 @@ def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data,
                 "data": data,
                 "timestamp": timestamp
             }) + "\n")
-    except Exception:
-        pass  # Silently fail to not disrupt normal operation
+    except Exception as e:
+        # Log to stderr for debugging instrumentation issues
+        import sys
+        sys.stderr.write(f"Debug log write failed: {e}\n")
 
 
 class MT5TickStreamer:
@@ -182,11 +187,20 @@ class MT5TickStreamer:
             import pytz
             from datetime import datetime
 
-            # Parse MT5 timestamp as naive (MT5 format)
-            mt5_dt_naive = datetime.strptime(mt5_timestamp_str, "%Y.%m.%d %H:%M:%S")
+            # Parse MT5 timestamp as naive (MT5 format) - handle both with and without milliseconds
+            # Try parsing with milliseconds first (23 chars: "YYYY.MM.DD HH:MM:SS.mmm")
+            if len(mt5_timestamp_str) == 23 and mt5_timestamp_str[19] == '.':
+                mt5_dt_naive = datetime.strptime(mt5_timestamp_str, "%Y.%m.%d %H:%M:%S.%f")
+            # Fallback to seconds-only format (19 chars: "YYYY.MM.DD HH:MM:SS")
+            else:
+                mt5_dt_naive = datetime.strptime(mt5_timestamp_str, "%Y.%m.%d %H:%M:%S")
             
             # Get current UTC time (timezone-aware)
             utc_now = get_utc_time()
+            
+            # #region agent log
+            _write_debug_log("debug-session", "run1", "H2", "tick_streamer.py:__detect_mt5_timezone", "Starting timezone detection", {"mt5_timestamp_str": mt5_timestamp_str, "utc_now": utc_now.isoformat()})
+            # #endregion
             
             # Try different timezone offsets to find the best match
             # Common broker timezones: UTC, GMT+2, GMT+3
@@ -202,6 +216,10 @@ class MT5TickStreamer:
                 if diff_seconds < min_diff:
                     min_diff = diff_seconds
                     best_offset = offset_hours
+            
+            # #region agent log
+            _write_debug_log("debug-session", "run1", "H2", "tick_streamer.py:__detect_mt5_timezone", "Timezone detection result", {"best_offset": best_offset, "min_diff_seconds": min_diff})
+            # #endregion
             
             # If best match is still > 1 hour off, log warning
             if min_diff > 3600:
@@ -237,22 +255,45 @@ class MT5TickStreamer:
             self.__mt5_timezone_offset = 0.0
             self.__timezone_detected = True
 
-    def __normalize_mt5_timestamp(self, date_time: str) -> str:
+    def __normalize_mt5_timestamp(self, date_time) -> datetime:
         """
-        Normalize MT5 timestamp to UTC timezone
+        Normalize MT5 timestamp to UTC timezone, preserving microseconds
 
-        :param date_time: MT5 timestamp string
-        :return: Normalized timestamp string in UTC timezone (format: "YYYY-MM-DD HH:MM:SS")
+        :param date_time: MT5 timestamp string (either MT5 format "YYYY.MM.DD HH:MM:SS.mmm" or datetime object)
+        :return: Normalized timezone-aware datetime object in UTC (preserves microseconds)
         """
-        # Detect timezone on first tick if not already detected
-        if not self.__timezone_detected:
-            self.__detect_mt5_timezone(date_time)
+        # If already a datetime object, just ensure it's UTC and timezone-aware
+        if isinstance(date_time, datetime):
+            from utils.time_utils import ensure_utc_timezone
+            return ensure_utc_timezone(date_time)
+        
+        # Handle string input
+        if isinstance(date_time, str):
+            # Check if timestamp is already in standard format (normalized)
+            # MT5 format uses dots: "YYYY.MM.DD", standard format uses dashes: "YYYY-MM-DD"
+            if "-" in date_time and len(date_time) >= 19 and date_time[4] == '-':
+                # Already normalized string format - parse it back to datetime
+                try:
+                    # Try parsing with microseconds if present
+                    if len(date_time) > 19 and '.' in date_time:
+                        dt = datetime.strptime(date_time[:26], "%Y-%m-%d %H:%M:%S.%f")
+                    else:
+                        dt = datetime.strptime(date_time[:19], "%Y-%m-%d %H:%M:%S")
+                    from utils.time_utils import ensure_utc_timezone
+                    return ensure_utc_timezone(dt)
+                except ValueError:
+                    # Fallback to parse_mt5_timestamp
+                    pass
+            
+            # Detect timezone on first tick if not already detected
+            if not self.__timezone_detected:
+                self.__detect_mt5_timezone(date_time)
 
-        # Parse and convert to UTC
-        utc_dt = parse_mt5_timestamp(date_time, self.__mt5_timezone_offset)
-
-        # Return as string in standard format for database storage
-        return utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+            # Parse and convert to UTC (preserves microseconds)
+            return parse_mt5_timestamp(date_time, self.__mt5_timezone_offset)
+        
+        # Fallback: convert to string and try again
+        return self.__normalize_mt5_timestamp(str(date_time))
 
     def __validate_tick(
         self, symbol: str, date_time: str, ask: float, bid: float
@@ -370,20 +411,40 @@ class MT5TickStreamer:
             )
             return True  # Allow on error to not block processing
 
-    def __add_tick_to_buffer(self, symbol, date_time, ask, bid):
+    def __add_tick_to_buffer(
+        self, 
+        symbol, 
+        date_time, 
+        ask, 
+        bid,
+        receive_time=None,
+        latency_seconds=None,
+        is_stale=False,
+        stale_age_seconds=None
+    ):
         """
         Add a tick to the buffer and flush if needed
 
         :param symbol: Currency pair symbol
-        :param date_time: Tick datetime (MT5 format string, will be normalized to EST)
+        :param date_time: Tick datetime (event_time, string or datetime object, will be normalized to UTC)
         :param ask: Ask price
         :param bid: Bid price
+        :param receive_time: When we received the tick (transaction time, optional)
+        :param latency_seconds: Latency in seconds (optional)
+        :param is_stale: Flag if original timestamp was stale (optional)
+        :param stale_age_seconds: Age of stale timestamp in seconds (optional)
         """
         # #region agent log
-        _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:349", "__add_tick_to_buffer called", {"symbol": symbol, "date_time": date_time, "bid": bid, "ask": ask})
+        _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:349", "__add_tick_to_buffer called", {"symbol": symbol, "date_time": str(date_time) if isinstance(date_time, datetime) else date_time, "bid": bid, "ask": ask})
         # #endregion
-        # Normalize timestamp to EST before buffering
+        # Normalize timestamp to UTC (returns datetime object, preserves microseconds)
         normalized_date_time = self.__normalize_mt5_timestamp(date_time)
+        
+        # Normalize receive_time if provided
+        normalized_receive_time = None
+        if receive_time is not None:
+            from utils.time_utils import normalize_to_utc
+            normalized_receive_time = normalize_to_utc(receive_time)
 
         with self.__buffer_lock:
             # Check buffer size - emergency overflow protection
@@ -405,7 +466,11 @@ class MT5TickStreamer:
                     level="WARNING",
                 )
 
-            self.__tick_buffer.append((symbol, normalized_date_time, ask, bid))
+            # Store with bitemporal information: (symbol, event_time, ask, bid, receive_time, latency_seconds, is_stale, stale_age_seconds)
+            self.__tick_buffer.append((
+                symbol, normalized_date_time, ask, bid,
+                normalized_receive_time, latency_seconds, is_stale, stale_age_seconds
+            ))
             # #region agent log
             _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:354", "Tick added to buffer", {"symbol": symbol, "buffer_size": len(self.__tick_buffer), "batch_size": self.__batch_size, "buffer_max_size": self.__buffer_max_size})
             # #endregion
@@ -500,9 +565,9 @@ class MT5TickStreamer:
 
     def __flush_ticks_to_db(self, ticks):
         """
-        Flush ticks to database in batch
+        Flush ticks to database in batch with bitemporal timestamps
 
-        :param ticks: List of (symbol, date_time, ask, bid) tuples
+        :param ticks: List of (symbol, date_time, ask, bid, receive_time, latency_seconds, is_stale, stale_age_seconds) tuples
         """
         if not ticks:
             return
@@ -514,7 +579,37 @@ class MT5TickStreamer:
             with self.__logger.performance_context(
                 "flush_ticks_to_db", count=len(ticks)
             ):
-                result = self.__db.insert_forex_ticks_batch(ticks)
+                # Check if ticks have bitemporal data (new format) or old format
+                if len(ticks) > 0 and len(ticks[0]) >= 8:
+                    # New format with bitemporal data
+                    # Convert to format expected by batch insert (for now, use individual inserts with metadata)
+                    # TODO: Update insert_forex_ticks_batch to support bitemporal data
+                    result = 0
+                    for tick in ticks:
+                        symbol, date_time, ask, bid, receive_time, latency_seconds, is_stale, stale_age_seconds = tick[:8]
+                        try:
+                            if self.__db.insert_forex_tick(
+                                symbol, date_time, ask, bid,
+                                receive_time=receive_time,
+                                latency_seconds=latency_seconds,
+                                is_stale=is_stale,
+                                stale_age_seconds=stale_age_seconds,
+                                timestamp_source='event'
+                            ):
+                                result += 1
+                        except Exception as e2:
+                            self.__logger.log_error(
+                                event_type="individual_tick_insert_error",
+                                error=f"Error inserting individual tick: {e2}",
+                                symbol=symbol,
+                                exc_info=True,
+                            )
+                else:
+                    # Old format (backward compatibility)
+                    # Convert to old format for batch insert
+                    old_format_ticks = [(t[0], t[1], t[2], t[3]) for t in ticks]
+                    result = self.__db.insert_forex_ticks_batch(old_format_ticks)
+                
                 # #region agent log
                 _write_debug_log("debug-session", "run1", "E", "tick_streamer.py:481", "Database insert result", {"result": result, "tick_count": len(ticks)})
                 # #endregion
@@ -536,14 +631,28 @@ class MT5TickStreamer:
             )
             print_with_datetime(f"Error flushing ticks to database: {e}")
             # On error, try inserting individually as fallback
-            for symbol, date_time, ask, bid in ticks:
+            for tick in ticks:
                 try:
-                    self.__db.insert_forex_tick(symbol, date_time, ask, bid)
+                    if len(tick) >= 8:
+                        # New format with bitemporal data
+                        symbol, date_time, ask, bid, receive_time, latency_seconds, is_stale, stale_age_seconds = tick[:8]
+                        self.__db.insert_forex_tick(
+                            symbol, date_time, ask, bid,
+                            receive_time=receive_time,
+                            latency_seconds=latency_seconds,
+                            is_stale=is_stale,
+                            stale_age_seconds=stale_age_seconds,
+                            timestamp_source='event'
+                        )
+                    else:
+                        # Old format
+                        symbol, date_time, ask, bid = tick[:4]
+                        self.__db.insert_forex_tick(symbol, date_time, ask, bid)
                 except Exception as e2:
                     self.__logger.log_error(
                         event_type="individual_tick_insert_error",
                         error=f"Error inserting individual tick: {e2}",
-                        symbol=symbol,
+                        symbol=tick[0] if tick else "unknown",
                         exc_info=True,
                     )
                     print_with_datetime(f"Error inserting individual tick: {e2}")
@@ -715,19 +824,32 @@ class MT5TickStreamer:
                             if not self.__validate_tick_order(symbol, date_time):
                                 continue  # Skip out-of-order tick
 
+                            # Detect timezone on first tick if not already detected (before quality gate)
+                            if not self.__timezone_detected:
+                                self.__detect_mt5_timezone(date_time)
+                            
+                            # #region agent log
+                            _write_debug_log("debug-session", "run1", "H1", "tick_streamer.py:720", "Before quality gate", {"date_time": date_time, "mt5_timezone_offset": self.__mt5_timezone_offset, "timezone_detected": self.__timezone_detected})
+                            # #endregion
+                            
+                            # Capture receive_time (when we received the tick)
+                            receive_time = get_utc_time()
+                            
                             # Quality gate validation
                             tick_info_dict = {
                                 "symbol": symbol,
-                                "date_time": date_time,
+                                "date_time": date_time,  # Original event_time (preserved)
                                 "ask": ask,
                                 "bid": bid,
+                                "_mt5_timezone_offset": self.__mt5_timezone_offset,  # Pass detected offset to normalizer
+                                "_receive_time": receive_time,  # Pass receive_time to normalizer
                             }
-                            current_time = get_utc_time()
-                            is_valid, rejection_reason = self.quality_gate.validate(
+                            current_time = receive_time
+                            is_valid, rejection_reason, timestamp_metadata = self.quality_gate.validate(
                                 tick_info_dict, symbol, current_time
                             )
                             # #region agent log
-                            _write_debug_log("debug-session", "run1", "A", "tick_streamer.py:679", "Quality gate validation result", {"symbol": symbol, "is_valid": is_valid, "rejection_reason": rejection_reason, "bid": bid, "ask": ask}, int(current_time.timestamp() * 1000))
+                            _write_debug_log("debug-session", "run1", "A", "tick_streamer.py:679", "Quality gate validation result", {"symbol": symbol, "is_valid": is_valid, "rejection_reason": rejection_reason, "bid": bid, "ask": ask, "has_metadata": timestamp_metadata is not None}, int(current_time.timestamp() * 1000))
                             # #endregion
                             if not is_valid:
                                 if self._use_structured:
@@ -743,6 +865,22 @@ class MT5TickStreamer:
                                         f"Tick rejected by quality gate for {symbol}: {rejection_reason}"
                                     )
                                 continue  # Skip tick rejected by quality gate
+                            
+                            # Pass timestamp_metadata to normalizer (preserve original event_time)
+                            if timestamp_metadata:
+                                tick_info_dict["_timestamp_metadata"] = timestamp_metadata
+                                # Extract metadata values for database insert
+                                metadata_receive_time = timestamp_metadata.get('receive_time')
+                                if metadata_receive_time and isinstance(metadata_receive_time, datetime):
+                                    receive_time = metadata_receive_time
+                                latency_seconds = timestamp_metadata.get('latency_seconds')
+                                is_stale = timestamp_metadata.get('is_stale', False)
+                                stale_age_seconds = timestamp_metadata.get('stale_age_seconds')
+                            else:
+                                # No metadata - calculate latency
+                                latency_seconds = None
+                                is_stale = False
+                                stale_age_seconds = None
                             
                             # Add acceptance logging
                             if self._use_structured:
@@ -796,13 +934,29 @@ class MT5TickStreamer:
                             _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:735", "About to add tick to buffer", {"symbol": symbol, "has_normalized_tick": normalized_tick is not None})
                             # #endregion
                             if normalized_tick:
-                                # Extract normalized timestamp and use it
+                                # Extract normalized timestamp (event_time - preserved)
                                 normalized_date_time = normalized_tick["timestamp"]
-                                if isinstance(normalized_date_time, datetime):
-                                    normalized_date_time = normalized_date_time.strftime("%Y-%m-%d %H:%M:%S")
-                                self.__add_tick_to_buffer(symbol, normalized_date_time, ask, bid)
+                                # Extract receive_time and metadata from normalized tick
+                                normalized_receive_time = normalized_tick.get("receive_time")
+                                normalized_metadata = normalized_tick.get("timestamp_metadata", {})
+                                # Pass datetime object directly (preserves microseconds) with metadata
+                                self.__add_tick_to_buffer(
+                                    symbol, normalized_date_time, ask, bid,
+                                    receive_time=normalized_receive_time or receive_time,
+                                    latency_seconds=normalized_metadata.get('latency_seconds') or latency_seconds,
+                                    is_stale=normalized_metadata.get('is_stale', False) or is_stale,
+                                    stale_age_seconds=normalized_metadata.get('stale_age_seconds') or stale_age_seconds
+                                )
                             else:
-                                self.__add_tick_to_buffer(symbol, date_time, ask, bid)
+                                # Pass original MT5 string, will be normalized in __add_tick_to_buffer
+                                # Use metadata from quality gate
+                                self.__add_tick_to_buffer(
+                                    symbol, date_time, ask, bid,
+                                    receive_time=receive_time,
+                                    latency_seconds=latency_seconds,
+                                    is_stale=is_stale,
+                                    stale_age_seconds=stale_age_seconds
+                                )
                             tick_count += 1
 
                             # Update last tick time and reset warning flag

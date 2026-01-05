@@ -19,10 +19,12 @@ def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data,
         if timestamp is None:
             from utils.time_utils import get_utc_time
             timestamp = int(get_utc_time().timestamp() * 1000)
-        # Calculate path relative to this file: go up 4 levels to project root, then .cursor/debug.log
-        current_file = __file__
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+        # Use absolute path from system reminder - calculate dynamically
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_dir)))
         log_path = os.path.join(project_root, '.cursor', 'debug.log')
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(json.dumps({
                 "sessionId": session_id,
@@ -33,8 +35,10 @@ def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data,
                 "data": data,
                 "timestamp": timestamp
             }) + "\n")
-    except Exception:
-        pass  # Silently fail to not disrupt normal operation
+    except Exception as e:
+        # Log to stderr for debugging instrumentation issues
+        import sys
+        sys.stderr.write(f"Debug log write failed: {e}\n")
 
 
 class Database:
@@ -232,50 +236,102 @@ class Database:
 
         Note: We use UTC consistently throughout the system. This avoids DST issues
         and provides a universal standard. All timestamps are stored in UTC.
+        Preserves microsecond precision.
 
         :param date_time: datetime object or string
-        :return: Normalized datetime string in UTC timezone
+        :return: Normalized timezone-aware datetime object in UTC (preserves microseconds)
         """
         if isinstance(date_time, datetime):
-            # Convert datetime object to UTC
-            utc_dt = ensure_utc_timezone(date_time)
-            return utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+            # Convert datetime object to UTC (preserves microseconds)
+            return ensure_utc_timezone(date_time)
         elif isinstance(date_time, str):
-            # If already a string, assume it's already normalized (from tick_streamer)
-            # But verify format and normalize if needed
+            # Parse string and normalize to UTC
+            # Try to parse with microseconds if present
             try:
-                # Try to parse and normalize to UTC
-                dt = datetime.strptime(date_time, "%Y-%m-%d %H:%M:%S")
-                utc_dt = normalize_to_utc(dt)
-                return utc_dt.strftime("%Y-%m-%d %H:%M:%S")
+                # Try standard format with microseconds: "YYYY-MM-DD HH:MM:SS.microseconds"
+                if len(date_time) > 19 and '.' in date_time:
+                    try:
+                        # Try parsing with microseconds (up to 6 digits)
+                        dt = datetime.strptime(date_time[:26], "%Y-%m-%d %H:%M:%S.%f")
+                    except ValueError:
+                        # Fallback to seconds-only
+                        dt = datetime.strptime(date_time[:19], "%Y-%m-%d %H:%M:%S")
+                else:
+                    # Standard format without microseconds
+                    dt = datetime.strptime(date_time[:19], "%Y-%m-%d %H:%M:%S")
+                return normalize_to_utc(dt)
             except ValueError:
-                # If parsing fails, return as-is (might be in different format)
-                return date_time
+                # If parsing fails, try MT5 format or other formats via normalize_to_utc
+                return normalize_to_utc(date_time)
         else:
-            return str(date_time)
+            # Convert to string and try again
+            return normalize_to_utc(str(date_time))
 
-    def insert_forex_tick(self, symbol, date_time, ask, bid):
+    def insert_forex_tick(
+        self, 
+        symbol, 
+        date_time, 
+        ask, 
+        bid,
+        receive_time=None,
+        latency_seconds=None,
+        is_stale=False,
+        stale_age_seconds=None,
+        timestamp_source='event'
+    ):
         """
-        Insert a tick to the database
+        Insert a tick to the database with bitemporal timestamps
 
         :param symbol: Symbol of the tick
-        :param date_time: Datetime of the tick (datetime object or string, will be normalized to EST)
+        :param date_time: Datetime of the tick (event_time, datetime object or string, will be normalized to UTC)
         :param ask: Ask price
         :param bid: Bid price
+        :param receive_time: When we received the tick (transaction time, optional)
+        :param latency_seconds: Latency in seconds (optional, calculated if not provided)
+        :param is_stale: Flag if original timestamp was stale (optional)
+        :param stale_age_seconds: Age of stale timestamp in seconds (optional)
+        :param timestamp_source: Source of timestamp ('event', 'receive', 'estimated', optional)
         :return: True if insert is done
         """
         conn = None
         try:
-            # Normalize timestamp to EST before storing
+            # Normalize timestamps to UTC (returns datetime object, preserves microseconds)
             normalized_date_time = self._normalize_timestamp(date_time)
+            normalized_receive_time = None
+            if receive_time is not None:
+                normalized_receive_time = self._normalize_timestamp(receive_time)
+            
+            # Calculate latency if not provided and both timestamps available
+            if latency_seconds is None and normalized_receive_time is not None:
+                latency_seconds = int((normalized_receive_time - normalized_date_time).total_seconds())
 
             conn = self.__get_connection()
             cursor = conn.cursor()
 
-            cursor.callproc(
-                "insert_tick_forex",
-                (normalized_date_time, ask, bid, symbol[:3], symbol[3:]),
-            )
+            # Use direct INSERT to support bitemporal columns
+            # Get pair_id first
+            base_currency = symbol[:3]
+            quoted_currency = symbol[3:]
+            
+            cursor.execute("""
+                INSERT INTO ticks_forex (
+                    datetime, ask, bid, forex_pairs_id,
+                    receive_time, latency_seconds, is_stale, 
+                    stale_age_seconds, timestamp_source
+                )
+                SELECT ?, ?, ?, fp.id, ?, ?, ?, ?, ?
+                FROM currency c1
+                CROSS JOIN currency c2
+                INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
+                WHERE c1.iso_code = ? AND c2.iso_code = ?
+                LIMIT 1
+            """, (
+                normalized_date_time, ask, bid,
+                normalized_receive_time, latency_seconds, is_stale,
+                stale_age_seconds, timestamp_source,
+                base_currency, quoted_currency
+            ))
+            
             conn.commit()
 
             cursor.close()
@@ -317,11 +373,12 @@ class Database:
             # We'll use a more efficient approach: bulk insert with subquery for pair_id
 
             # Group ticks by currency pair to optimize lookups
-            # Normalize all timestamps to EST before storing
+            # Normalize all timestamps to UTC (returns datetime objects, preserves microseconds)
             tick_data = []
             for symbol, date_time, ask, bid in ticks:
                 base_currency = symbol[:3]
                 quoted_currency = symbol[3:]
+                # Normalize returns datetime object (preserves microseconds)
                 normalized_date_time = self._normalize_timestamp(date_time)
                 tick_data.append(
                     (normalized_date_time, ask, bid, base_currency, quoted_currency)
@@ -396,13 +453,7 @@ class Database:
 
         except Exception as e:
             # #region agent log
-            try:
-                import json
-                from datetime import datetime
-                t = datetime.now()
-                with open(r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"database.py:400","message":"Database insert exception","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(t.timestamp()*1000)})+"\n")
-            except: pass
+            _write_debug_log("debug-session", "run1", "F", "database.py:400", "Database insert exception", {"error": str(e), "error_type": type(e).__name__})
             # #endregion
         except mariadb.Error as e:
             print_with_datetime(f"Error in batch insert: {e}")
@@ -453,14 +504,21 @@ class Database:
             if conn:
                 conn.close()  # Return connection to pool
 
-    def get_recent_ticks(self, symbol: str, limit: int = 100, hours: int = 24):
+    def get_recent_ticks(
+        self, 
+        symbol: str, 
+        limit: int = 100, 
+        hours: int = 24,
+        query_by: str = 'event_time'
+    ):
         """
-        Get recent tick data for a symbol
+        Get recent tick data for a symbol with bitemporal information
 
         :param symbol: Currency pair symbol (e.g., 'EURUSD')
         :param limit: Maximum number of ticks to return
         :param hours: Number of hours to look back
-        :return: List of dictionaries with 'datetime' and 'mid_price' keys
+        :param query_by: Query by 'event_time' (datetime column) or 'receive_time' (for point-in-time training)
+        :return: List of dictionaries with bitemporal timestamp information
         """
         conn = None
         try:
@@ -471,15 +529,34 @@ class Database:
             conn = self.__get_connection()
             cursor = conn.cursor()
 
-            query = """
-                SELECT tf.datetime, (tf.ask + tf.bid) / 2 as mid_price
+            # Determine which timestamp column to use for filtering and ordering
+            if query_by == 'receive_time':
+                # Query by receive_time (transaction time) for point-in-time training
+                time_column = 'COALESCE(tf.receive_time, tf.datetime)'  # Fallback to datetime if receive_time is NULL
+                order_by = 'COALESCE(tf.receive_time, tf.datetime)'
+            else:
+                # Query by event_time (datetime) for pattern learning
+                time_column = 'tf.datetime'
+                order_by = 'tf.datetime'
+
+            query = f"""
+                SELECT 
+                    tf.datetime as event_time,
+                    tf.receive_time,
+                    (tf.ask + tf.bid) / 2 as mid_price,
+                    tf.ask,
+                    tf.bid,
+                    tf.latency_seconds,
+                    tf.is_stale,
+                    tf.stale_age_seconds,
+                    tf.timestamp_source
                 FROM ticks_forex tf
                 JOIN forex_pairs fp ON tf.forex_pairs_id = fp.id
                 JOIN currency c1 ON fp.base_currency_id = c1.id
                 JOIN currency c2 ON fp.quote_currency_id = c2.id
                 WHERE c1.iso_code = %s AND c2.iso_code = %s
-                AND tf.datetime >= DATE_SUB(NOW(), INTERVAL %s HOUR)
-                ORDER BY tf.datetime ASC
+                AND {time_column} >= DATE_SUB(NOW(), INTERVAL %s HOUR)
+                ORDER BY {order_by} ASC
                 LIMIT %s
             """
 
@@ -488,7 +565,17 @@ class Database:
 
             ticks = []
             for row in results:
-                ticks.append({"datetime": row[0], "mid_price": float(row[1])})
+                ticks.append({
+                    "event_time": row[0],
+                    "receive_time": row[1],
+                    "mid_price": float(row[2]),
+                    "ask": float(row[3]),
+                    "bid": float(row[4]),
+                    "latency_seconds": row[5],
+                    "is_stale": bool(row[6]) if row[6] is not None else False,
+                    "stale_age_seconds": row[7],
+                    "timestamp_source": row[8],
+                })
 
             cursor.close()
             return ticks

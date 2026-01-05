@@ -127,8 +127,8 @@ class TrainingLoop:
                         else 0.0
                     )
 
-                # Get next state
-                next_state = self.env.get_state()
+                # Get next state with latency awareness (training mode for point-in-time constraint)
+                next_state = self.env.get_state(mode='training', include_latency=True)
 
                 # Check if episode should end
                 done = self.episode_manager.should_end_episode()
@@ -219,8 +219,8 @@ class TrainingLoop:
         self.is_running = False
 
     def _wait_for_state(self) -> Optional[np.ndarray]:
-        """Wait for sufficient data and return state"""
-        state = self.env.get_state()
+        """Wait for sufficient data and return state with latency awareness"""
+        state = self.env.get_state(mode='training', include_latency=True)
 
         if state is None or state.shape[0] < self.env.window_size:
             # Log detailed data availability per pair

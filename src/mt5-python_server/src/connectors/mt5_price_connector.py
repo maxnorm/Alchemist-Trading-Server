@@ -195,7 +195,7 @@ class MT5PriceConnector(IDataSourceConnector):
                 spread = 0.0001  # Default spread (1 pip)
                 raw_event = {
                     "symbol": self.config.symbol,
-                    "date_time": tick_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+                    "date_time": tick_datetime,  # Pass datetime object directly (preserves microseconds)
                     "ask": mid_price + spread / 2,
                     "bid": mid_price - spread / 2,
                 }
@@ -253,9 +253,10 @@ class MT5PriceConnector(IDataSourceConnector):
             self._last_update_time = time.time()
             
             # Get current price data
+            from utils.time_utils import get_utc_time
             raw_event = {
                 "symbol": pair.symbol,
-                "date_time": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "date_time": get_utc_time(),  # Pass datetime object directly (preserves microseconds)
                 "bid": pair.bid,
                 "ask": pair.ask,
             }

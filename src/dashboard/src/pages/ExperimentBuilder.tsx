@@ -102,7 +102,7 @@ export default function ExperimentBuilder() {
               >
                 <div className="font-medium">Live Training</div>
                 <div className="text-sm text-muted-foreground">
-                  Train on real-time data from MT5
+                  Train on real-time data
                 </div>
               </button>
               <button
@@ -116,7 +116,7 @@ export default function ExperimentBuilder() {
               >
                 <div className="font-medium">Historical Backtest</div>
                 <div className="text-sm text-muted-foreground">
-                  Train on historical data (when available)
+                  Train on historical data
                 </div>
               </button>
             </div>

@@ -24,8 +24,8 @@ class PriceHistoryManager:
         self.window_size = window_size
         self.price_history_by_pair: Dict[str, List[float]] = {}
         self.last_update_time: Dict[str, float] = {}  # symbol -> timestamp
-        # New: track timestamps with prices for point-in-time filtering
-        self.price_timestamps: Dict[str, List[datetime]] = {}
+        # Track bitemporal timestamps: (event_time, receive_time) tuples
+        self.price_timestamps: Dict[str, List[tuple[datetime, Optional[datetime]]]] = {}
         
         # Background threads for consuming connector streams
         self._consumer_threads: List[threading.Thread] = []
@@ -74,24 +74,39 @@ class PriceHistoryManager:
                 ask = payload.get('ask', 0.0)
                 mid_price = (bid + ask) / 2.0
                 
-                # Extract timestamp
-                timestamp = event.get('timestamp')
-                if timestamp:
-                    if isinstance(timestamp, str):
+                # Extract event_time (timestamp) and receive_time
+                event_time = event.get('timestamp')
+                receive_time = event.get('receive_time')
+                
+                # Parse event_time
+                if event_time:
+                    if isinstance(event_time, str):
                         try:
-                            timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                            event_time = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
                         except ValueError:
                             from utils.time_utils import get_utc_time
-                            timestamp = get_utc_time()
-                    elif not isinstance(timestamp, datetime):
+                            event_time = get_utc_time()
+                    elif not isinstance(event_time, datetime):
                         from utils.time_utils import get_utc_time
-                        timestamp = get_utc_time()
+                        event_time = get_utc_time()
                 else:
                     from utils.time_utils import get_utc_time
-                    timestamp = get_utc_time()
+                    event_time = get_utc_time()
                 
-                # Add price to history
-                self.add_price(symbol, mid_price, timestamp)
+                # Parse receive_time if present
+                if receive_time:
+                    if isinstance(receive_time, str):
+                        try:
+                            receive_time = datetime.fromisoformat(receive_time.replace("Z", "+00:00"))
+                        except ValueError:
+                            receive_time = None
+                    elif not isinstance(receive_time, datetime):
+                        receive_time = None
+                else:
+                    receive_time = None
+                
+                # Add price to history with bitemporal timestamps
+                self.add_price(symbol, mid_price, event_time, receive_time)
                 
         except Exception as e:
             logger.error(
@@ -106,12 +121,19 @@ class PriceHistoryManager:
             if thread.is_alive():
                 thread.join(timeout=2.0)
 
-    def add_price(self, symbol: str, price: float, timestamp: Optional[datetime] = None):
+    def add_price(
+        self, 
+        symbol: str, 
+        price: float, 
+        timestamp: Optional[datetime] = None,
+        receive_time: Optional[datetime] = None
+    ):
         """
-        Add price to history with timestamp
+        Add price to history with bitemporal timestamps
         :param symbol: Currency pair symbol
         :param price: Price value
-        :param timestamp: Timestamp (defaults to current time if None)
+        :param timestamp: Event time (when event occurred, defaults to current time if None)
+        :param receive_time: Receive time (when we received it, optional)
         """
         if timestamp is None:
             from utils.time_utils import get_utc_time
@@ -122,7 +144,8 @@ class PriceHistoryManager:
             self.price_timestamps[symbol] = []
 
         self.price_history_by_pair[symbol].append(price)
-        self.price_timestamps[symbol].append(timestamp)
+        # Store as tuple: (event_time, receive_time)
+        self.price_timestamps[symbol].append((timestamp, receive_time))
         self.last_update_time[symbol] = time.time()
 
         # Prune if too long (keep more for indicators calculation)
@@ -189,7 +212,10 @@ class PriceHistoryManager:
                 ticks = database.get_recent_ticks(symbol, limit=limit, hours=hours)
 
                 for tick in ticks:
-                    self.add_price(symbol, tick["mid_price"])
+                    # Extract bitemporal timestamps if available
+                    event_time = tick.get("event_time")
+                    receive_time = tick.get("receive_time")
+                    self.add_price(symbol, tick["mid_price"], event_time, receive_time)
 
                 loaded_count = len(self.price_history_by_pair.get(symbol, []))
                 if loaded_count >= self.window_size:
@@ -228,12 +254,18 @@ class PriceHistoryManager:
             return None
         return time.time() - last_update
 
-    def get_history_up_to(self, symbol: str, max_timestamp: datetime) -> List[float]:
+    def get_history_up_to(
+        self, 
+        symbol: str, 
+        max_timestamp: datetime,
+        query_by: str = 'receive_time'
+    ) -> List[tuple[datetime, float, Optional[datetime]]]:
         """
-        Get price history filtered to only include prices <= max_timestamp
+        Get price history filtered to only include prices <= max_timestamp (point-in-time)
         :param symbol: Currency pair symbol
         :param max_timestamp: Maximum timestamp (point-in-time constraint)
-        :return: List of prices with timestamp <= max_timestamp
+        :param query_by: Filter by 'event_time' or 'receive_time' (default: 'receive_time' for point-in-time training)
+        :return: List of tuples (event_time, price, receive_time) with timestamp <= max_timestamp
         """
         if symbol not in self.price_history_by_pair:
             return []
@@ -243,11 +275,21 @@ class PriceHistoryManager:
         
         # If no timestamps tracked, return all (backward compatibility)
         if not timestamps or len(timestamps) != len(prices):
-            return prices
+            # Backward compatibility: return prices only
+            return [(get_utc_time() if timestamp is None else timestamp, price, None) 
+                    for price, timestamp in zip(prices, [None] * len(prices))]
         
-        # Filter by timestamp
-        filtered = [
-            price for price, ts in zip(prices, timestamps)
-            if ts <= max_timestamp
-        ]
+        # Filter by point-in-time constraint
+        filtered = []
+        for price, (event_time, receive_time) in zip(prices, timestamps):
+            if query_by == 'receive_time':
+                # Filter by receive_time (transaction time) for point-in-time training
+                filter_time = receive_time if receive_time is not None else event_time
+                if filter_time <= max_timestamp:
+                    filtered.append((event_time, price, receive_time))
+            else:
+                # Filter by event_time (valid time) for pattern learning
+                if event_time <= max_timestamp:
+                    filtered.append((event_time, price, receive_time))
+        
         return filtered

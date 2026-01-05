@@ -177,11 +177,21 @@ class LiveTradingEnv(BaseTradingEnv):
                     timestamp = data["datetime"]
                 self.price_history_manager.add_price(symbol, data["mid"], timestamp=timestamp)
 
-    def get_state(self):
-        """Get current state from all data sources - delegates to StateBuilder"""
+    def get_state(self, mode: str = 'live', include_latency: bool = True):
+        """
+        Get current state from all data sources - delegates to StateBuilder
+        
+        :param mode: 'training' (point-in-time) or 'live' (real-time)
+        :param include_latency: Include latency features in state
+        :return: State array with latency features
+        """
         from utils.time_utils import get_utc_time
         current_time = get_utc_time()
-        return self.state_builder.build_state(current_time=current_time)
+        return self.state_builder.build_state(
+            current_time=current_time,
+            mode=mode,
+            include_latency=include_latency
+        )
 
     # Property for backward compatibility
     @property
