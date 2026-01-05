@@ -4,14 +4,42 @@ Class for the tick streaming operation from MT5
 
 import json
 import os
+import socket
 import threading
 import queue
 from typing import Optional
+from datetime import datetime
 
 from database import Database
 from utils.time_utils import print_with_datetime, parse_mt5_timestamp, get_utc_time
 from utils.logging_config import get_logger
 from utils.market_utils import check_if_market_open
+from data.quality_gates import QualityGate
+from events.normalizer import EventNormalizer
+
+# Helper function for debug logging
+def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data, timestamp=None):
+    """Write debug log entry"""
+    try:
+        if timestamp is None:
+            from utils.time_utils import get_utc_time
+            timestamp = int(get_utc_time().timestamp() * 1000)
+        # Calculate path relative to this file: go up 4 levels to project root, then .cursor/debug.log
+        current_file = __file__
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+        log_path = os.path.join(project_root, '.cursor', 'debug.log')
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({
+                "sessionId": session_id,
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": timestamp
+            }) + "\n")
+    except Exception:
+        pass  # Silently fail to not disrupt normal operation
 
 
 class MT5TickStreamer:
@@ -20,9 +48,9 @@ class MT5TickStreamer:
     """
 
     def __init__(
-        self, socket, asset, stop_char="\n", verbose=False, console_lock=None, db=None
+        self, sock, asset, stop_char="\n", verbose=False, console_lock=None, db=None
     ):
-        self.__socket = socket
+        self.__socket = sock
         self.__asset = asset
         self.__stop_char = stop_char
         self.__verbose = verbose
@@ -55,6 +83,24 @@ class MT5TickStreamer:
         else:
             self.__logger.info(f"Initializing tick streamer for symbol: {symbol}")
 
+        # Configure socket timeout to prevent indefinite blocking
+        # Use a reasonable timeout (30 seconds) that allows for market pauses
+        socket_timeout = float(os.getenv("MT5_SOCKET_TIMEOUT", "30.0"))
+        try:
+            self.__socket.settimeout(socket_timeout)
+            # Enable TCP keepalive to detect dead connections
+            self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+            if hasattr(socket, "TCP_KEEPINTVL"):
+                self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 30)
+            if hasattr(socket, "TCP_KEEPCNT"):
+                self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 4)
+        except Exception as e:
+            self.__logger.warning(
+                f"Failed to configure socket options: {e}. Continuing with default settings."
+            )
+
         # Tick buffering configuration
         self.__batch_size = int(os.getenv("TICK_BATCH_SIZE", "50"))
         self.__batch_interval = float(os.getenv("TICK_BATCH_INTERVAL", "2.0"))
@@ -83,6 +129,12 @@ class MT5TickStreamer:
 
         # Tick ordering validation
         self.__last_tick_timestamp = {}  # Track last timestamp per symbol
+
+        # Quality gate for systematic quality checks
+        self.quality_gate = QualityGate()
+
+        # Event normalizer for canonical format conversion
+        self.event_normalizer = EventNormalizer()
 
         # Async database write queue
         self.__db_write_queue = queue.Queue(maxsize=1000)
@@ -119,6 +171,7 @@ class MT5TickStreamer:
     def __detect_mt5_timezone(self, mt5_timestamp_str: str):
         """
         Detect MT5 broker timezone offset by comparing with UTC server time
+        Fixed to properly handle timezone-aware comparisons
 
         :param mt5_timestamp_str: MT5 timestamp string in format "YYYY.MM.DD HH:MM:SS"
         """
@@ -126,20 +179,45 @@ class MT5TickStreamer:
             return
 
         try:
-            # Parse MT5 timestamp (assume UTC initially for comparison)
+            import pytz
             from datetime import datetime
 
-            mt5_dt = datetime.strptime(mt5_timestamp_str, "%Y.%m.%d %H:%M:%S")
+            # Parse MT5 timestamp as naive (MT5 format)
+            mt5_dt_naive = datetime.strptime(mt5_timestamp_str, "%Y.%m.%d %H:%M:%S")
+            
+            # Get current UTC time (timezone-aware)
             utc_now = get_utc_time()
-
-            # Calculate offset: difference between MT5 time (as UTC) and actual UTC
-            # If MT5 time is ahead of UTC, offset is positive
-            time_diff = (mt5_dt - utc_now.replace(tzinfo=None)).total_seconds() / 3600.0
-
-            # Round to nearest hour (most brokers use whole hour offsets)
-            self.__mt5_timezone_offset = round(time_diff)
-
+            
+            # Try different timezone offsets to find the best match
+            # Common broker timezones: UTC, GMT+2, GMT+3
+            best_offset = 0.0
+            min_diff = float('inf')
+            
+            for offset_hours in [0, 2, 3, -2, -3]:  # Common broker offsets
+                test_tz = pytz.FixedOffset(int(offset_hours * 60))
+                mt5_dt_tz = test_tz.localize(mt5_dt_naive)
+                mt5_utc = mt5_dt_tz.astimezone(pytz.UTC)
+                
+                diff_seconds = abs((mt5_utc - utc_now).total_seconds())
+                if diff_seconds < min_diff:
+                    min_diff = diff_seconds
+                    best_offset = offset_hours
+            
+            # If best match is still > 1 hour off, log warning
+            if min_diff > 3600:
+                self.__logger.log_event(
+                    event_type="timezone_detection_warning",
+                    message=f"Large time difference detected: {min_diff/3600:.1f} hours",
+                    metrics={
+                        "min_diff_hours": min_diff / 3600,
+                        "detected_offset": best_offset,
+                    },
+                    level="WARNING",
+                )
+            
+            self.__mt5_timezone_offset = best_offset
             self.__timezone_detected = True
+            
             self.__logger.log_event(
                 event_type="timezone_detected",
                 message=f"Detected MT5 timezone offset: {self.__mt5_timezone_offset} hours from UTC",
@@ -147,6 +225,7 @@ class MT5TickStreamer:
                     "timezone_offset": self.__mt5_timezone_offset,
                     "mt5_timestamp": mt5_timestamp_str,
                     "utc_now": utc_now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+                    "time_diff_seconds": min_diff,
                 },
             )
         except Exception as e:
@@ -244,13 +323,18 @@ class MT5TickStreamer:
         """
         Validate tick timestamp ordering
         :param symbol: Currency pair symbol
-        :param date_time: Tick datetime string (MT5 format)
+        :param date_time: Tick datetime string (MT5 format, with or without milliseconds)
         :return: True if in order or first tick, False if out of order
         """
         try:
             from datetime import datetime
 
-            current_timestamp = datetime.strptime(date_time, "%Y.%m.%d %H:%M:%S")
+            # Try parsing with milliseconds first (23 chars: "YYYY.MM.DD HH:MM:SS.mmm")
+            if len(date_time) == 23 and date_time[19] == '.':
+                current_timestamp = datetime.strptime(date_time, "%Y.%m.%d %H:%M:%S.%f")
+            # Fallback to seconds-only format (19 chars: "YYYY.MM.DD HH:MM:SS")
+            else:
+                current_timestamp = datetime.strptime(date_time, "%Y.%m.%d %H:%M:%S")
 
             if symbol in self.__last_tick_timestamp:
                 last_timestamp = self.__last_tick_timestamp[symbol]
@@ -295,6 +379,9 @@ class MT5TickStreamer:
         :param ask: Ask price
         :param bid: Bid price
         """
+        # #region agent log
+        _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:349", "__add_tick_to_buffer called", {"symbol": symbol, "date_time": date_time, "bid": bid, "ask": ask})
+        # #endregion
         # Normalize timestamp to EST before buffering
         normalized_date_time = self.__normalize_mt5_timestamp(date_time)
 
@@ -319,6 +406,9 @@ class MT5TickStreamer:
                 )
 
             self.__tick_buffer.append((symbol, normalized_date_time, ask, bid))
+            # #region agent log
+            _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:354", "Tick added to buffer", {"symbol": symbol, "buffer_size": len(self.__tick_buffer), "batch_size": self.__batch_size, "buffer_max_size": self.__buffer_max_size})
+            # #endregion
 
             # Flush if buffer reaches max size
             if len(self.__tick_buffer) >= self.__buffer_max_size:
@@ -349,6 +439,9 @@ class MT5TickStreamer:
 
         ticks_to_flush = self.__tick_buffer.copy()
         self.__tick_buffer.clear()
+        # #region agent log
+        _write_debug_log("debug-session", "run1", "D", "tick_streamer.py:428", "Flushing buffer to queue", {"tick_count": len(ticks_to_flush), "symbols": [t[0] for t in ticks_to_flush]})
+        # #endregion
 
         # Non-blocking queue put (with timeout)
         try:
@@ -414,11 +507,17 @@ class MT5TickStreamer:
         if not ticks:
             return
 
+        # #region agent log
+        _write_debug_log("debug-session", "run1", "E", "tick_streamer.py:468", "__flush_ticks_to_db called", {"tick_count": len(ticks), "symbols": [t[0] for t in ticks]})
+        # #endregion
         try:
             with self.__logger.performance_context(
                 "flush_ticks_to_db", count=len(ticks)
             ):
                 result = self.__db.insert_forex_ticks_batch(ticks)
+                # #region agent log
+                _write_debug_log("debug-session", "run1", "E", "tick_streamer.py:481", "Database insert result", {"result": result, "tick_count": len(ticks)})
+                # #endregion
                 if result > 0:
                     self.__logger.log_event(
                         event_type="ticks_flushed",
@@ -454,9 +553,31 @@ class MT5TickStreamer:
         Receive tick from mt5 client
         and store them in the database buffer
         """
+        symbol = self.__asset.symbol if self.__asset else "unknown"
         self.__logger.log_event(
-            event_type="tick_reception_started", message="Starting tick reception loop"
+            event_type="tick_reception_started",
+            message=f"Starting tick reception loop for {symbol}",
+            symbol=symbol,
         )
+        
+        # Log socket connection status
+        try:
+            peer = self.__socket.getpeername()
+            timeout = self.__socket.gettimeout()
+            self.__logger.log_event(
+                event_type="socket_info",
+                message=f"Socket connected to {peer}, timeout={timeout}s",
+                symbol=symbol,
+                metrics={"peer": str(peer), "timeout": timeout},
+            )
+        except Exception as e:
+            self.__logger.log_error(
+                event_type="socket_info_error",
+                error=f"Could not get socket info: {e}",
+                symbol=symbol,
+                exc_info=False,
+            )
+        
         cum_data = ""
         tick_count = 0
         last_market_check = get_utc_time()
@@ -527,7 +648,39 @@ class MT5TickStreamer:
                         )
                         self.__no_tick_warning_logged = True
 
-                data = self.__socket.recv(1024).decode("utf-8")
+                # Receive data with proper error handling
+                try:
+                    raw_data = self.__socket.recv(1024)
+                    if not raw_data:
+                        # Empty data indicates connection closed
+                        self.__logger.log_event(
+                            event_type="connection_closed",
+                            message="Socket connection closed by MT5 client (empty data received)",
+                            level="WARNING",
+                        )
+                        break  # Exit the loop
+                    
+                    data = raw_data.decode("utf-8")
+                except socket.timeout:
+                    # Timeout is expected during quiet periods - just continue
+                    # The periodic market check above will log if needed
+                    continue
+                except socket.error as e:
+                    # Socket error (connection lost, etc.)
+                    self.__logger.log_error(
+                        event_type="socket_error",
+                        error=f"Socket error while receiving tick data: {e}",
+                        exc_info=True,
+                    )
+                    break  # Exit the loop
+                except Exception as e:
+                    # Unexpected error
+                    self.__logger.log_error(
+                        event_type="receive_error",
+                        error=f"Unexpected error receiving tick data: {e}",
+                        exc_info=True,
+                    )
+                    break  # Exit the loop
 
                 cum_data += data
 
@@ -545,18 +698,111 @@ class MT5TickStreamer:
                             date_time = tick_info["date_time"]
                             ask = tick_info["ask"]
                             bid = tick_info["bid"]
+                            
+                            # #region agent log
+                            _write_debug_log("debug-session", "run1", "Z", "tick_streamer.py:656", "Tick received from socket", {"symbol": symbol, "date_time": date_time, "bid": bid, "ask": ask})
+                            # #endregion
 
                             # Validate tick data quality
-                            if not self.__validate_tick(symbol, date_time, ask, bid):
+                            validate_result = self.__validate_tick(symbol, date_time, ask, bid)
+                            # #region agent log
+                            _write_debug_log("debug-session", "run1", "Z", "tick_streamer.py:664", "Basic validation result", {"symbol": symbol, "is_valid": validate_result})
+                            # #endregion
+                            if not validate_result:
                                 continue  # Skip invalid tick
 
                             # Validate tick ordering
                             if not self.__validate_tick_order(symbol, date_time):
                                 continue  # Skip out-of-order tick
 
+                            # Quality gate validation
+                            tick_info_dict = {
+                                "symbol": symbol,
+                                "date_time": date_time,
+                                "ask": ask,
+                                "bid": bid,
+                            }
+                            current_time = get_utc_time()
+                            is_valid, rejection_reason = self.quality_gate.validate(
+                                tick_info_dict, symbol, current_time
+                            )
+                            # #region agent log
+                            _write_debug_log("debug-session", "run1", "A", "tick_streamer.py:679", "Quality gate validation result", {"symbol": symbol, "is_valid": is_valid, "rejection_reason": rejection_reason, "bid": bid, "ask": ask}, int(current_time.timestamp() * 1000))
+                            # #endregion
+                            if not is_valid:
+                                if self._use_structured:
+                                    self.__logger.log_event(
+                                        event_type="quality_gate_rejection",
+                                        message=f"Tick rejected by quality gate: {rejection_reason}",
+                                        symbol=symbol,
+                                        metrics={"rejection_reason": rejection_reason},
+                                        level="WARNING",
+                                    )
+                                else:
+                                    self.__logger.warning(
+                                        f"Tick rejected by quality gate for {symbol}: {rejection_reason}"
+                                    )
+                                continue  # Skip tick rejected by quality gate
+                            
+                            # Add acceptance logging
+                            if self._use_structured:
+                                self.__logger.log_event(
+                                    event_type="tick_accepted_quality_gate",
+                                    message=f"Tick passed quality gate for {symbol}",
+                                    symbol=symbol,
+                                    metrics={"bid": bid, "ask": ask},
+                                    level="DEBUG",
+                                )
+
+                            # Normalize tick to canonical format
+                            try:
+                                normalized_tick = self.event_normalizer.normalize(
+                                    tick_info_dict, source="mt5"
+                                )
+                                # #region agent log
+                                _write_debug_log("debug-session", "run1", "B", "tick_streamer.py:709", "Normalization completed", {"symbol": symbol, "has_normalized_tick": normalized_tick is not None})
+                                # #endregion
+                                # Validate normalized event
+                                validate_result = self.event_normalizer.validate(normalized_tick)
+                                # #region agent log
+                                _write_debug_log("debug-session", "run1", "B", "tick_streamer.py:713", "Event quality gate validation result", {"symbol": symbol, "is_valid": validate_result})
+                                # #endregion
+                                if not validate_result:
+                                    self.__logger.warning(
+                                        f"Normalized tick failed validation for {symbol}, skipping"
+                                    )
+                                    continue
+                                
+                                # Add acceptance logging after normalization
+                                if self._use_structured:
+                                    self.__logger.log_event(
+                                        event_type="tick_accepted_normalization",
+                                        message=f"Tick passed normalization for {symbol}",
+                                        symbol=symbol,
+                                        level="DEBUG",
+                                    )
+                            except Exception as e:
+                                self.__logger.error(
+                                    f"Failed to normalize tick for {symbol}: {e}",
+                                    exc_info=True,
+                                )
+                                # Continue with original tick if normalization fails (backward compatibility)
+                                normalized_tick = None
+
                             self.__asset.update(bid, ask)
                             # Add to buffer instead of direct insert
-                            self.__add_tick_to_buffer(symbol, date_time, ask, bid)
+                            # Store normalized tick if available, otherwise use original format
+                            # #region agent log
+                            _write_debug_log("debug-session", "run1", "C", "tick_streamer.py:735", "About to add tick to buffer", {"symbol": symbol, "has_normalized_tick": normalized_tick is not None})
+                            # #endregion
+                            if normalized_tick:
+                                # Extract normalized timestamp and use it
+                                normalized_date_time = normalized_tick["timestamp"]
+                                if isinstance(normalized_date_time, datetime):
+                                    normalized_date_time = normalized_date_time.strftime("%Y-%m-%d %H:%M:%S")
+                                self.__add_tick_to_buffer(symbol, normalized_date_time, ask, bid)
+                            else:
+                                self.__add_tick_to_buffer(symbol, date_time, ask, bid)
                             tick_count += 1
 
                             # Update last tick time and reset warning flag
@@ -587,6 +833,18 @@ class MT5TickStreamer:
                                     },
                                     level="DEBUG",
                                 )
+                            
+                            # Log quality metrics periodically (every 1000 ticks)
+                            if tick_count % 1000 == 0:
+                                metrics = self.quality_gate.get_metrics()
+                                if self._use_structured:
+                                    self.__logger.log_event(
+                                        event_type="quality_metrics",
+                                        message="Quality gate metrics",
+                                        metrics=metrics,
+                                    )
+                                else:
+                                    self.__logger.info(f"Quality gate metrics: {metrics}")
                         else:
                             self.__logger.log_error(
                                 event_type="invalid_tick_format",

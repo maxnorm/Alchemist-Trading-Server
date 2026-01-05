@@ -93,65 +93,10 @@ class SellActionStrategy(ActionStrategy):
                 )
 
             # Send order and check result
-            # #region agent log
-            try:
-                import json as json_log
-
-                log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                with open(log_path, "a") as f:
-                    f.write(
-                        json_log.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "A",
-                                "location": "sell_action_strategy.py:96",
-                                "message": "Before send_order call",
-                                "data": {
-                                    "symbol": context.pair.symbol,
-                                    "lot_size": lot_size,
-                                    "entry_price": entry_price,
-                                    "sl": sl,
-                                    "tp": tp,
-                                },
-                                "timestamp": int(__import__("time").time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # #endregion
             try:
                 trade = context.account.send_order(
                     OrderType.SELL, context.pair, lot_size, None, sl, tp
                 )
-                # #region agent log
-                try:
-                    import json as json_log
-
-                    log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                    with open(log_path, "a") as f:
-                        f.write(
-                            json_log.dumps(
-                                {
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "A",
-                                    "location": "sell_action_strategy.py:98",
-                                    "message": "After send_order call",
-                                    "data": {
-                                        "trade_is_none": trade is None,
-                                        "trade_ticket": trade.ticket if trade else None,
-                                    },
-                                    "timestamp": int(__import__("time").time() * 1000),
-                                }
-                            )
-                            + "\n"
-                        )
-                except Exception:
-                    pass
-                # #endregion
             except Exception as e:
                 error_msg = f"❌ EXCEPTION sending SELL order: {e}"
                 if hasattr(self.logger, "log_error"):

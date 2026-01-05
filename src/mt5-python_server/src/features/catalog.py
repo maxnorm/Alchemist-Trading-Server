@@ -7,7 +7,7 @@ Stores and retrieves features discovered from data providers.
 
 import logging
 import mariadb
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from data_providers.base_provider import Feature
 from database import Database
@@ -345,7 +345,7 @@ class FeatureCatalog:
         """
         Sync catalog with features discovered from registry.
 
-        :param registry: DataProviderRegistry instance
+        :param registry: DataProviderRegistry or ConnectorRegistry instance
         """
         try:
             features = registry.discover_features()
@@ -353,6 +353,227 @@ class FeatureCatalog:
             logger.info(f"Synced {len(features)} features from registry to catalog")
         except Exception as e:
             logger.error(f"Error syncing registry with catalog: {e}", exc_info=True)
+    
+    def sync_with_connector_registry(self, connector_registry) -> None:
+        """
+        Sync catalog with features discovered from connector registry.
+
+        :param connector_registry: ConnectorRegistry instance
+        """
+        try:
+            features = connector_registry.discover_features()
+            self.store_features(features)
+            logger.info(f"Synced {len(features)} features from connector registry to catalog")
+        except Exception as e:
+            logger.error(f"Error syncing connector registry with catalog: {e}", exc_info=True)
+    
+    def get_features_by_pipeline_version(self, pipeline_version: str) -> List[Feature]:
+        """
+        Get features for a specific pipeline version.
+
+        :param pipeline_version: Pipeline version string
+        :return: List of Feature objects
+        """
+        conn = None
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT name, data_type, source, description, category, available
+                FROM features
+                WHERE pipeline_version = %s AND available = TRUE
+                ORDER BY category, name
+                """,
+                (pipeline_version,),
+            )
+
+            rows = cursor.fetchall()
+            features = []
+
+            for row in rows:
+                name, data_type_str, source, description, category, available = row
+                data_type = self._string_to_type(data_type_str)
+
+                feature = Feature(
+                    name=name,
+                    data_type=data_type,
+                    source=source,
+                    description=description or "",
+                    category=category,
+                )
+                features.append(feature)
+
+            cursor.close()
+            return features
+        except Exception as e:
+            logger.error(
+                f"Error retrieving features by pipeline version '{pipeline_version}': {e}",
+                exc_info=True,
+            )
+            return []
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_feature_history(self, feature_name: str) -> List[Dict[str, Any]]:
+        """
+        Track feature changes across pipeline versions.
+
+        :param feature_name: Feature name
+        :return: List of dictionaries with version history
+        """
+        conn = None
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            # Get all versions where this feature appears
+            cursor.execute(
+                """
+                SELECT pipeline_version, first_seen_version, created_at, updated_at
+                FROM features
+                WHERE name = %s
+                ORDER BY created_at
+                """,
+                (feature_name,),
+            )
+
+            rows = cursor.fetchall()
+            history = []
+
+            for row in rows:
+                pipeline_version, first_seen_version, created_at, updated_at = row
+                history.append({
+                    "pipeline_version": pipeline_version,
+                    "first_seen_version": first_seen_version,
+                    "created_at": created_at.isoformat() if created_at else None,
+                    "updated_at": updated_at.isoformat() if updated_at else None,
+                })
+
+            cursor.close()
+            return history
+        except Exception as e:
+            logger.error(
+                f"Error retrieving feature history for '{feature_name}': {e}",
+                exc_info=True,
+            )
+            return []
+        finally:
+            if conn:
+                conn.close()
+    
+    def compare_versions(
+        self, version1: str, version2: str
+    ) -> Dict[str, Any]:
+        """
+        Compare feature sets between two pipeline versions.
+
+        :param version1: First pipeline version
+        :param version2: Second pipeline version
+        :return: Dictionary with comparison results
+        """
+        features1 = {f.name for f in self.get_features_by_pipeline_version(version1)}
+        features2 = {f.name for f in self.get_features_by_pipeline_version(version2)}
+
+        added = features2 - features1
+        removed = features1 - features2
+        common = features1 & features2
+
+        return {
+            "version1": version1,
+            "version2": version2,
+            "added_features": list(added),
+            "removed_features": list(removed),
+            "common_features": list(common),
+            "version1_count": len(features1),
+            "version2_count": len(features2),
+            "added_count": len(added),
+            "removed_count": len(removed),
+            "common_count": len(common),
+        }
+    
+    def update_feature_pipeline_version(
+        self, feature_name: str, pipeline_version: str
+    ) -> None:
+        """
+        Update the pipeline version for a feature.
+
+        :param feature_name: Feature name
+        :param pipeline_version: Pipeline version string
+        """
+        conn = None
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            # Check if feature exists and get current first_seen_version
+            cursor.execute(
+                """
+                SELECT first_seen_version FROM features WHERE name = %s
+                """,
+                (feature_name,),
+            )
+            row = cursor.fetchone()
+
+            if row:
+                first_seen_version = row[0]
+                # If first_seen_version is not set, set it to current version
+                if not first_seen_version:
+                    first_seen_version = pipeline_version
+
+                cursor.execute(
+                    """
+                    UPDATE features
+                    SET pipeline_version = %s,
+                        first_seen_version = %s,
+                        updated_at = %s
+                    WHERE name = %s
+                    """,
+                    (
+                        pipeline_version,
+                        first_seen_version,
+                        datetime.utcnow(),
+                        feature_name,
+                    ),
+                )
+            else:
+                # Feature doesn't exist, create it with pipeline version
+                cursor.execute(
+                    """
+                    INSERT INTO features
+                    (name, data_type, source, description, category, available,
+                     pipeline_version, first_seen_version, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
+                    """,
+                    (
+                        feature_name,
+                        "float",  # Default type
+                        "feature_engine",  # Default source
+                        f"Feature from pipeline {pipeline_version}",
+                        None,
+                        pipeline_version,
+                        pipeline_version,
+                        datetime.utcnow(),
+                        datetime.utcnow(),
+                    ),
+                )
+
+            conn.commit()
+            cursor.close()
+            logger.info(
+                f"Updated feature '{feature_name}' to pipeline version {pipeline_version}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error updating feature pipeline version: {e}", exc_info=True
+            )
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
 
     def _type_to_string(self, data_type: type) -> str:
         """

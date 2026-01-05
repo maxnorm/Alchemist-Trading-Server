@@ -37,6 +37,11 @@ def normalize_to_utc(
     """
     Convert any datetime to UTC timezone (used consistently throughout the system)
 
+    Supports datetime strings in formats:
+    - MT5 format with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm"
+    - MT5 format without milliseconds: "YYYY.MM.DD HH:MM:SS"
+    - Standard format: "YYYY-MM-DD HH:MM:SS"
+
     :param dt: datetime object (naive or timezone-aware) or datetime string
     :param source_timezone: Source timezone if dt is naive or string. If None, assumes UTC for naive datetimes
     :return: timezone-aware datetime in UTC
@@ -48,10 +53,13 @@ def normalize_to_utc(
     if isinstance(dt, str):
         # Try to parse common formats
         try:
-            # MT5 format: "YYYY.MM.DD HH:MM:SS"
-            if "." in dt and len(dt) == 19:
+            # MT5 format with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm" (23 chars)
+            if "." in dt and len(dt) == 23 and dt[19] == '.':
+                parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S.%f")
+            # MT5 format without milliseconds: "YYYY.MM.DD HH:MM:SS" (19 chars)
+            elif "." in dt and len(dt) == 19:
                 parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S")
-            # Standard format: "YYYY-MM-DD HH:MM:SS"
+            # Standard format: "YYYY-MM-DD HH:MM:SS" (19 chars)
             elif "-" in dt and len(dt) == 19:
                 parsed_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
             else:
@@ -88,8 +96,13 @@ def normalize_to_est(
     parsed_dt: datetime
     if isinstance(dt, str):
         try:
-            if "." in dt and len(dt) == 19:
+            # MT5 format with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm" (23 chars)
+            if "." in dt and len(dt) == 23 and dt[19] == '.':
+                parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S.%f")
+            # MT5 format without milliseconds: "YYYY.MM.DD HH:MM:SS" (19 chars)
+            elif "." in dt and len(dt) == 19:
                 parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S")
+            # Standard format: "YYYY-MM-DD HH:MM:SS" (19 chars)
             elif "-" in dt and len(dt) == 19:
                 parsed_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M:%S")
             else:
@@ -115,15 +128,19 @@ def parse_mt5_timestamp(
     """
     Parse MT5 timestamp string and convert to UTC timezone
 
-    MT5 format: "YYYY.MM.DD HH:MM:SS" (from TimeToString)
+    MT5 format: "YYYY.MM.DD HH:MM:SS" or "YYYY.MM.DD HH:MM:SS.mmm" (with milliseconds)
 
     :param timestamp_str: MT5 timestamp string
     :param mt5_timezone_offset: Offset in hours from UTC (e.g., 3.0 for GMT+3). If None, will try to detect
     :return: timezone-aware datetime in UTC
     """
     try:
-        # Parse MT5 format
-        dt = datetime.strptime(timestamp_str, "%Y.%m.%d %H:%M:%S")
+        # Try parsing with milliseconds first (23 chars: "YYYY.MM.DD HH:MM:SS.mmm")
+        if len(timestamp_str) == 23 and timestamp_str[19] == '.':
+            dt = datetime.strptime(timestamp_str, "%Y.%m.%d %H:%M:%S.%f")
+        # Fallback to seconds-only format (19 chars: "YYYY.MM.DD HH:MM:SS")
+        else:
+            dt = datetime.strptime(timestamp_str, "%Y.%m.%d %H:%M:%S")
 
         # If offset provided, use it
         if mt5_timezone_offset is not None:

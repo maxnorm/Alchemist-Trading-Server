@@ -6,7 +6,7 @@ Executes experiments by creating agents, environments, and training loops.
 
 import logging
 import threading
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 
 from .models import ExperimentStatus, ExperimentRepository
@@ -19,6 +19,14 @@ from models.account import Account
 from utils.risk_management import RiskManager
 
 logger = logging.getLogger(__name__)
+
+# Try to import CSCV
+try:
+    from training.cscv import combinatorially_symmetric_cross_validation, interpret_pbo
+    CSCV_AVAILABLE = True
+except ImportError:
+    CSCV_AVAILABLE = False
+    logger.warning("CSCV module not available. PBO calculation will be skipped.")
 
 
 class ExperimentRunner:
@@ -130,6 +138,22 @@ class ExperimentRunner:
                     experiment.hyperparameters
                 )
 
+                # Execute DVC pipeline to ensure data is up-to-date
+                data_versioner = None
+                try:
+                    from mlops.data_versioner import DataVersioner
+                    data_versioner = DataVersioner()
+                    if data_versioner._dvc_available:
+                        # Check if pipeline needs to be run
+                        status = data_versioner.get_pipeline_status()
+                        if not status.get("up_to_date", False):
+                            logger.info("DVC pipeline not up-to-date, running pipeline...")
+                            data_versioner.run_pipeline()
+                        else:
+                            logger.info("DVC pipeline is up-to-date")
+                except Exception as e:
+                    logger.warning(f"Failed to execute DVC pipeline: {e}")
+
                 # Start MLflow run and link to experiment
                 run_name = f"experiment_{experiment_id}_{experiment.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 mlflow_run_id = None
@@ -145,10 +169,31 @@ class ExperimentRunner:
                                 "currency_pairs": ",".join(experiment.currency_pairs),
                                 "features": ",".join(experiment.features),
                             },
+                            log_data_versions=False,  # Will log manually with data_versioner
                         )
+
+                        # Log data versions if available
+                        if data_versioner:
+                            try:
+                                self.experiment_tracker.log_data_versions(data_versioner)
+                            except Exception as e:
+                                logger.warning(f"Failed to log data versions: {e}")
 
                         # Log experiment configuration
                         self.experiment_tracker.log_experiment_config(experiment)
+
+                        # Log feature pipeline metadata if available
+                        try:
+                            if hasattr(environment, 'feature_engine') and environment.feature_engine:
+                                feature_metadata = environment.feature_engine.get_pipeline_metadata()
+                                if feature_metadata and feature_metadata.get("version"):
+                                    self.experiment_tracker.log_feature_pipeline(
+                                        pipeline_version=feature_metadata["version"],
+                                        feature_list=feature_metadata.get("features", []),
+                                        feature_metadata=feature_metadata.get("feature_definitions", {}),
+                                    )
+                        except Exception as e:
+                            logger.warning(f"Failed to log feature pipeline metadata: {e}")
 
                         # Log hyperparameters
                         self.experiment_tracker.log_params(experiment.hyperparameters)
@@ -388,6 +433,15 @@ class ExperimentRunner:
                             f"Failed to register model for experiment {experiment_id}: {e}",
                             exc_info=True,
                         )
+                    
+                    # Calculate and store PBO if CSCV is available and multiple experiments exist
+                    if CSCV_AVAILABLE and self.experiment_tracker:
+                        try:
+                            self._calculate_and_store_pbo(experiment_id, mlflow_run_id)
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to calculate PBO for experiment {experiment_id}: {e}"
+                            )
 
                 logger.info(
                     f"Experiment {experiment_id} completed with status: {final_status.value}"
@@ -446,24 +500,195 @@ class ExperimentRunner:
 
     def _get_data_providers_for_pairs(self, currency_pairs: list):
         """
-        Get data providers for specified currency pairs
+        Get data connectors for specified currency pairs
 
         :param currency_pairs: List of currency pair symbols
-        :return: List of PriceDataProvider instances
+        :return: List of IDataSourceConnector instances
         """
         # This is a placeholder - in real implementation, this would query
-        # the server's data provider registry for providers matching the pairs
-        # For now, we'll need to get this from the server instance
+        # the server's connector registry for connectors matching the pairs
+        # For now, we'll create connectors directly
         # TODO: Enhance to support feature filtering
-        from data_providers.price_provider import PriceDataProvider
+        from connectors.mt5_price_connector import MT5PriceConnector
+        from connectors.base import ConnectorConfig
         from models.currency_pair import CurrencyPair
 
-        providers = []
+        connectors = []
         for symbol in currency_pairs:
-            # Create a basic provider - in real implementation, get from registry
+            # Create a basic connector - in real implementation, get from registry
             # Default to 5 digits for most forex pairs
             pair = CurrencyPair(symbol=symbol, digits=5)
-            provider = PriceDataProvider(currency_pair=pair)
-            providers.append(provider)
+            connector_config = ConnectorConfig(
+                source="mt5",
+                symbol=symbol,
+                extra_config={"digits": 5},
+            )
+            connector = MT5PriceConnector(
+                currency_pair=pair,
+                config=connector_config,
+            )
+            connector.connect()
+            connectors.append(connector)
 
-        return providers
+        return connectors
+    
+    def _calculate_and_store_pbo(
+        self, experiment_id: int, mlflow_run_id: Optional[str]
+    ) -> None:
+        """
+        Calculate PBO using CSCV if multiple strategy configurations are available.
+        
+        This method attempts to find related experiments (e.g., from Optuna trials)
+        and calculate PBO. If insufficient configurations are available, PBO is skipped.
+        
+        Args:
+            experiment_id: Current experiment ID
+            mlflow_run_id: MLflow run ID for storing PBO
+        """
+        if not CSCV_AVAILABLE:
+            return
+        
+        try:
+            # Try to get related experiments (e.g., from same Optuna study)
+            # For now, we'll check if there are other experiments with similar names
+            # In a full implementation, this would query Optuna studies or experiment groups
+            experiment = self.repository.get_experiment(experiment_id)
+            if not experiment:
+                return
+            
+            # Check if this is part of an Optuna study
+            # Look for experiments with similar names (trial experiments)
+            if "_trial_" in experiment.name:
+                # This is likely an Optuna trial - try to get all trials
+                base_name = experiment.name.split("_trial_")[0]
+                related_experiments = self._get_related_experiments(base_name)
+                
+                if len(related_experiments) >= 2:
+                    # We have multiple configurations - can calculate PBO
+                    # Note: This is a simplified version. In practice, you'd need:
+                    # 1. Historical data for all experiments
+                    # 2. Train/evaluate functions
+                    # 3. Proper strategy configurations
+                    
+                    # For now, we'll just log that PBO calculation would be possible
+                    # A full implementation would require:
+                    # - Access to historical data
+                    # - Ability to re-run evaluations on different splits
+                    # - Strategy configurations from all related experiments
+                    
+                    logger.info(
+                        f"Found {len(related_experiments)} related experiments for PBO calculation. "
+                        "Full CSCV implementation requires historical data and evaluation functions."
+                    )
+                    
+                    # Store a placeholder PBO tag indicating that PBO calculation is available
+                    # but requires additional setup
+                    if mlflow_run_id and self.experiment_tracker:
+                        try:
+                            # Re-open the run to add tags
+                            import mlflow
+                            with mlflow.start_run(run_id=mlflow_run_id):
+                                mlflow.set_tag("pbo_available", "true")
+                                mlflow.set_tag("pbo_n_strategies", str(len(related_experiments)))
+                                mlflow.set_tag(
+                                    "pbo_note",
+                                    "PBO calculation available but requires historical data and evaluation setup"
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to store PBO tags: {e}")
+        except Exception as e:
+            logger.debug(f"PBO calculation skipped: {e}")
+    
+    def _get_related_experiments(self, base_name: str) -> List[Any]:
+        """
+        Get related experiments (e.g., from same Optuna study).
+        
+        Args:
+            base_name: Base experiment name to search for
+        
+        Returns:
+            List of related experiment IDs or configurations
+        """
+        # This is a placeholder - in a full implementation, this would:
+        # 1. Query database for experiments with similar names
+        # 2. Or query Optuna studies for all trials
+        # 3. Return experiment configurations or IDs
+        
+        # For now, return empty list
+        return []
+    
+    def calculate_pbo_for_experiments(
+        self,
+        experiment_ids: List[int],
+        historical_data,
+        train_func,
+        evaluate_func,
+        evaluation_metric: str = "sharpe_ratio",
+    ) -> Dict[str, Any]:
+        """
+        Calculate PBO for a set of experiments using CSCV.
+        
+        This method should be called when you have:
+        - Multiple completed experiments (e.g., from Optuna trials)
+        - Historical data for evaluation
+        - Train and evaluate functions
+        
+        Args:
+            experiment_ids: List of experiment IDs to evaluate
+            historical_data: Historical data DataFrame with timestamp column
+            train_func: Function to train strategy: train_func(data, config) -> model
+            evaluate_func: Function to evaluate strategy: evaluate_func(data, model, config) -> metrics
+            evaluation_metric: Metric to use for ranking (default: "sharpe_ratio")
+        
+        Returns:
+            Dictionary with PBO results
+        """
+        if not CSCV_AVAILABLE:
+            raise ImportError("CSCV module not available")
+        
+        if len(experiment_ids) < 2:
+            raise ValueError("Need at least 2 experiments for PBO calculation")
+        
+        # Get strategy configurations from experiments
+        strategy_configs = []
+        for exp_id in experiment_ids:
+            experiment = self.repository.get_experiment(exp_id)
+            if experiment:
+                strategy_configs.append(experiment.hyperparameters)
+        
+        if len(strategy_configs) < 2:
+            raise ValueError("Insufficient strategy configurations for PBO")
+        
+        # Run CSCV
+        cscv_result = combinatorially_symmetric_cross_validation(
+            data=historical_data,
+            strategy_configs=strategy_configs,
+            n_splits=4,
+            evaluation_metric=evaluation_metric,
+            train_func=train_func,
+            evaluate_func=evaluate_func,
+        )
+        
+        # Store PBO in MLflow for each experiment
+        pbo = cscv_result["pbo"]
+        interpretation = interpret_pbo(pbo)
+        
+        for exp_id in experiment_ids:
+            experiment = self.repository.get_experiment(exp_id)
+            if experiment and experiment.mlflow_run_id:
+                try:
+                    import mlflow
+                    with mlflow.start_run(run_id=experiment.mlflow_run_id):
+                        mlflow.set_tag("pbo", str(pbo))
+                        mlflow.set_tag("pbo_interpretation", interpretation)
+                        mlflow.set_tag("pbo_performance_degradation", str(cscv_result["performance_degradation"]))
+                        mlflow.set_tag("pbo_logit", str(cscv_result["logit_pbo"]))
+                        mlflow.set_tag("pbo_n_strategies", str(cscv_result["n_strategies"]))
+                except Exception as e:
+                    logger.warning(f"Failed to store PBO for experiment {exp_id}: {e}")
+        
+        logger.info(
+            f"Calculated PBO for {len(experiment_ids)} experiments: {pbo:.3f} ({interpretation})"
+        )
+        
+        return cscv_result

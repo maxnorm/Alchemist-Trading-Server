@@ -1,10 +1,12 @@
 //+------------------------------------------------------------------+
 //|                                                 socket_utils.mqh |
-//|                                                 Maxime Normandin |
-//|                                             https://www.mql5.com |
+//|                                                                  |
+//| Utility functions for socket communication: sending and          |
+//| receiving JSON messages to/from the server                       |
 //+------------------------------------------------------------------+
-#property copyright "Maxime Normandin"
-#property link      "https://www.mql5.com"
+#property copyright "Alchemist Capital Management"
+#property link      "https://github.com/maxnorm/Alchemist-AI"
+#property version   "1.00"
 
 #include <JAson.mqh>
 

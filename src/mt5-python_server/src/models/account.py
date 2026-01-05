@@ -1,10 +1,11 @@
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-from mt5_connection.terminal import MT5Terminal
+from trading.brokers.base import IBrokerAdapter
 from utils.time_utils import print_with_datetime
 from domain.entities.account_info import AccountInfo
 from application.trading.trade_executor import TradeExecutor
+from mt5_connection.terminal import MT5Terminal  # Keep for backward compatibility
 
 
 class Account:
@@ -12,9 +13,27 @@ class Account:
     Class for an account
     """
 
-    def __init__(self, login, terminal: MT5Terminal):
+    def __init__(self, login, broker_adapter: Optional[IBrokerAdapter] = None, terminal: Optional[MT5Terminal] = None):
+        """
+        Initialize account
+        
+        :param login: Account login ID
+        :param broker_adapter: IBrokerAdapter instance (preferred)
+        :param terminal: MT5Terminal instance (for backward compatibility)
+        """
         self.login = login
-        self.trade_executor = TradeExecutor(terminal)
+        
+        # Use broker_adapter if provided, otherwise create from terminal
+        if broker_adapter:
+            self.broker_adapter = broker_adapter
+        elif terminal:
+            # Create adapter from terminal for backward compatibility
+            from trading.brokers.mt5_adapter import MT5BrokerAdapter
+            self.broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
+        else:
+            raise ValueError("Either broker_adapter or terminal must be provided")
+        
+        self.trade_executor = TradeExecutor(broker_adapter=self.broker_adapter)
         self.current_trade: Dict[str, Any] = {}
 
         # Initialize account info
@@ -23,10 +42,21 @@ class Account:
 
     def set_terminal(self, terminal: MT5Terminal):
         """
-        Set the terminal for the account
+        Set the terminal for the account (backward compatibility)
         :param terminal: Terminal to set
         """
-        self.trade_executor = TradeExecutor(terminal)
+        from trading.brokers.mt5_adapter import MT5BrokerAdapter
+        self.broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
+        self.trade_executor = TradeExecutor(broker_adapter=self.broker_adapter)
+        self.update_info()
+    
+    def set_broker_adapter(self, broker_adapter: IBrokerAdapter):
+        """
+        Set the broker adapter for the account
+        :param broker_adapter: Broker adapter to set
+        """
+        self.broker_adapter = broker_adapter
+        self.trade_executor = TradeExecutor(broker_adapter=broker_adapter)
         self.update_info()
 
     def send_order(self, order_type, pair, lotsize, price=None, sl=None, tp=None):
@@ -39,60 +69,7 @@ class Account:
         :param sl: Stop loss (optional)
         :param tp: Take profit (optional)
         """
-        # #region agent log
-        try:
-            import json as json_log
-
-            log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-            with open(log_path, "a") as f:
-                f.write(
-                    json_log.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "B",
-                            "location": "account.py:35",
-                            "message": "Account.send_order entry",
-                            "data": {
-                                "order_type": order_type,
-                                "symbol": pair.symbol,
-                                "lotsize": lotsize,
-                            },
-                            "timestamp": int(__import__("time").time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
         trade = self.trade_executor.send_order(order_type, pair, lotsize, price, sl, tp)
-        # #region agent log
-        try:
-            import json as json_log
-
-            log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-            with open(log_path, "a") as f:
-                f.write(
-                    json_log.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "B",
-                            "location": "account.py:45",
-                            "message": "Account.send_order after trade_executor",
-                            "data": {
-                                "trade_is_none": trade is None,
-                                "trade_ticket": trade.ticket if trade else None,
-                            },
-                            "timestamp": int(__import__("time").time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
         if trade:
             self.current_trade[trade.ticket] = trade
         return trade
@@ -134,11 +111,12 @@ class Account:
 
     def _fetch_account_info(self) -> AccountInfo:
         """
-        Fetch account information from terminal
+        Fetch account information from broker adapter
         :return: AccountInfo instance
         """
-        infos = asyncio.run(self.trade_executor.terminal.get_all_infos())
-        return AccountInfo.from_dict({"login": self.login, **infos})
+        account_info = self.broker_adapter.get_account_info()
+        # Ensure login matches
+        return account_info.update(login=self.login) if account_info.login != self.login else account_info
 
     def _update_from_dict(self, infos: dict):
         """

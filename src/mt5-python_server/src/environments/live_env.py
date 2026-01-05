@@ -11,25 +11,36 @@ from utils.transaction_costs import TransactionCostModel
 from application.environment.price_history_manager import PriceHistoryManager
 from application.environment.feature_engine import FeatureEngine
 from application.environment.state_builder import StateBuilder
+from environments.reward_normalizer import RewardNormalizer
+from environments.reward_monitor import RewardMonitor
+from connectors.base import IDataSourceConnector
 
 
 class LiveTradingEnv(BaseTradingEnv):
     def __init__(
         self,
         account,
-        data_providers,
+        connectors: List[IDataSourceConnector],
         window_size: int = 50,
         feature_engineer: Optional[FeatureEngineer] = None,
+        reward_normalizer: Optional[RewardNormalizer] = None,
+        use_reward_normalization: bool = True,
+        reward_monitor: Optional[RewardMonitor] = None,
+        use_reward_monitoring: bool = True,
     ):
         """
         Initialize the live trading environment
         :param account: The account to use for trading (Account object)
-        :param data_providers: The data providers to use for the environment (DataProvider objects)
+        :param connectors: The data source connectors to use for the environment (IDataSourceConnector objects)
         :param window_size: The window size to use for the environment
         :param feature_engineer: Optional pre-fitted feature engineer
+        :param reward_normalizer: Optional reward normalizer instance
+        :param use_reward_normalization: Whether to normalize rewards (default: True)
+        :param reward_monitor: Optional reward monitor instance
+        :param use_reward_monitoring: Whether to monitor rewards (default: True)
         """
         # Calculate number of pairs and features per pair
-        n_pairs = len(data_providers) if data_providers else 1
+        n_pairs = len(connectors) if connectors else 1
         features_per_pair = 15  # Updated for feature count
         # Economic calendar features - DISABLED
         # TODO: Re-enable when new scraping methods are implemented
@@ -48,7 +59,7 @@ class LiveTradingEnv(BaseTradingEnv):
             window_size, price_shape=total_features, action_size=action_size
         )
         self.account = account
-        self.data_providers = data_providers
+        self.connectors = connectors
         self.n_pairs = n_pairs
         self.features_per_pair = features_per_pair
         self.state_buffer: List[Any] = []
@@ -66,7 +77,7 @@ class LiveTradingEnv(BaseTradingEnv):
         self._load_feature_engineer()
 
         # Initialize components
-        self.price_history_manager = PriceHistoryManager(window_size, data_providers)
+        self.price_history_manager = PriceHistoryManager(window_size, connectors)
 
         # Load historical data if available
         try:
@@ -74,8 +85,8 @@ class LiveTradingEnv(BaseTradingEnv):
 
             db = Database()
             symbols = (
-                [provider.currency_pair.symbol for provider in data_providers]
-                if data_providers
+                [connector.config.symbol for connector in connectors]
+                if connectors
                 else []
             )
             if symbols:
@@ -93,16 +104,26 @@ class LiveTradingEnv(BaseTradingEnv):
             else:
                 logger.warning(f"Could not load historical data: {e}")
 
+        # Initialize feature engine with database for versioning
+        try:
+            from mlops.feature_registry import FeatureRegistry
+            feature_registry = FeatureRegistry(db) if db else None
+        except Exception as e:
+            logger.warning(f"Failed to create feature registry: {e}")
+            feature_registry = None
+        
         self.feature_engine = FeatureEngine(
             feature_engineer=self.feature_engineer,
             window_size=window_size,
             features_per_pair=features_per_pair,
+            database=db,
+            feature_registry=feature_registry,
         )
         self.state_builder = StateBuilder(
             price_history_manager=self.price_history_manager,
             feature_engine=self.feature_engine,
             window_size=window_size,
-            data_providers=data_providers,
+            connectors=connectors,
         )
 
         # Initialize performance metrics tracker
@@ -113,13 +134,30 @@ class LiveTradingEnv(BaseTradingEnv):
         # Initialize transaction cost model
         self.transaction_cost_model = TransactionCostModel()
 
+        # Initialize reward normalizer
+        self.use_reward_normalization = use_reward_normalization
+        if reward_normalizer is not None:
+            self.reward_normalizer = reward_normalizer
+        elif use_reward_normalization:
+            self.reward_normalizer = RewardNormalizer(alpha=0.99, clip_range=(-3.0, 3.0))
+        else:
+            self.reward_normalizer = None
+
+        # Initialize reward monitor
+        self.use_reward_monitoring = use_reward_monitoring
+        if reward_monitor is not None:
+            self.reward_monitor = reward_monitor
+        elif use_reward_monitoring:
+            self.reward_monitor = RewardMonitor(window_size=100, anomaly_threshold=3.0)
+        else:
+            self.reward_monitor = None
+
         # Initialize with current balance if account exists
         if account and account.balance:
             self.previous_balance = account.balance
 
-        # Subscribe to all data providers
-        for provider in self.data_providers:
-            provider.subscribe(self._on_data_update)
+        # Note: Connectors are consumed by PriceHistoryManager via background threads
+        # No need to subscribe here - data flows through PriceHistoryManager
 
     def _on_data_update(self, data):
         """Callback function to handle data updates from any provider"""
@@ -131,11 +169,19 @@ class LiveTradingEnv(BaseTradingEnv):
             # Extract price for technical indicators and track by pair
             if "mid" in data and "symbol" in data and data["mid"] is not None:
                 symbol = data["symbol"]
-                self.price_history_manager.add_price(symbol, data["mid"])
+                # Extract timestamp if available, otherwise use current time
+                timestamp = None
+                if "timestamp" in data:
+                    timestamp = data["timestamp"]
+                elif "datetime" in data:
+                    timestamp = data["datetime"]
+                self.price_history_manager.add_price(symbol, data["mid"], timestamp=timestamp)
 
     def get_state(self):
         """Get current state from all data sources - delegates to StateBuilder"""
-        return self.state_builder.build_state()
+        from utils.time_utils import get_utc_time
+        current_time = get_utc_time()
+        return self.state_builder.build_state(current_time=current_time)
 
     # Property for backward compatibility
     @property
@@ -280,6 +326,24 @@ class LiveTradingEnv(BaseTradingEnv):
             + action_penalty
         )
 
+        # Track reward components for monitoring
+        reward_components = {
+            'sharpe_reward': sharpe_reward,
+            'drawdown_penalty': drawdown_penalty,
+            'volatility_penalty': volatility_penalty,
+            'transaction_penalty': transaction_penalty,
+            'action_penalty': action_penalty,
+        }
+
+        # Normalize reward if normalizer is configured
+        raw_reward = reward
+        if self.reward_normalizer is not None and self.use_reward_normalization:
+            reward = self.reward_normalizer.normalize(reward)
+
+        # Update reward monitor if configured
+        if self.reward_monitor is not None and self.use_reward_monitoring:
+            self.reward_monitor.update(reward, components=reward_components)
+
         return reward
 
     def get_performance_metrics(self) -> dict:
@@ -296,6 +360,24 @@ class LiveTradingEnv(BaseTradingEnv):
         """
         self.performance_metrics.reset()
         self.previous_balance = None
+        if self.reward_normalizer is not None:
+            self.reward_normalizer.reset()
+        if self.reward_monitor is not None:
+            self.reward_monitor.reset()
+
+    def get_reward_statistics(self) -> dict:
+        """
+        Get reward normalization statistics
+        Useful for monitoring reward stability
+
+        :return: Dictionary with reward statistics
+        """
+        stats = {}
+        if self.reward_normalizer is not None:
+            stats['normalizer'] = self.reward_normalizer.get_statistics()
+        if self.reward_monitor is not None:
+            stats['monitor'] = self.reward_monitor.get_statistics()
+        return stats
 
     def _save_feature_engineer(self):
         """Persist fitted feature engineer for reuse across sessions"""

@@ -1,6 +1,6 @@
 """
 Trade executor
-Executes trades via terminal
+Executes trades via broker adapter
 """
 
 import asyncio
@@ -8,21 +8,35 @@ from typing import Optional
 
 from codes.order_type import OrderType
 from models.currency_pair import CurrencyPair
-from mt5_connection.terminal import MT5Terminal
+from trading.brokers.base import IBrokerAdapter
+from mt5_connection.terminal import MT5Terminal  # Keep for backward compatibility
 from models.trade import Trade
+from risk.oms import Order, OrderSide
 from utils.time_utils import print_with_datetime
 from utils.market_utils import check_if_market_open
+import uuid
 
 
 class TradeExecutor:
-    """Executes trades via terminal"""
+    """Executes trades via broker adapter"""
 
-    def __init__(self, terminal: MT5Terminal):
+    def __init__(self, broker_adapter: Optional[IBrokerAdapter] = None, terminal: Optional[MT5Terminal] = None):
         """
         Initialize trade executor
-        :param terminal: MT5 terminal connection
+        :param broker_adapter: IBrokerAdapter instance (preferred)
+        :param terminal: MT5Terminal instance (for backward compatibility)
         """
-        self.terminal = terminal
+        if broker_adapter:
+            self.broker_adapter = broker_adapter
+        elif terminal:
+            # Create adapter from terminal for backward compatibility
+            from trading.brokers.mt5_adapter import MT5BrokerAdapter
+            self.broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
+        else:
+            raise ValueError("Either broker_adapter or terminal must be provided")
+        
+        # Keep terminal reference for backward compatibility
+        self.terminal = getattr(self.broker_adapter, 'terminal', None) if hasattr(self.broker_adapter, 'terminal') else terminal
 
     def send_order(
         self,
@@ -43,220 +57,52 @@ class TradeExecutor:
         :param tp: Take profit (optional)
         :return: Trade object or None if failed
         """
-        # #region agent log
-        try:
-            import json as json_log
-            import time
-
-            log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-            with open(log_path, "a") as f:
-                f.write(
-                    json_log.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "trade_executor.py:26",
-                            "message": "TradeExecutor.send_order entry",
-                            "data": {
-                                "order_type": order_type,
-                                "symbol": pair.symbol,
-                                "lotsize": lotsize,
-                                "price": price,
-                                "sl": sl,
-                                "tp": tp,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
         # Check if market is open before sending order
-        market_open = check_if_market_open()
-        # #region agent log
-        try:
-            import json as json_log
-            import time
-
-            log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-            with open(log_path, "a") as f:
-                f.write(
-                    json_log.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "A",
-                            "location": "trade_executor.py:46",
-                            "message": "Market check result",
-                            "data": {"market_open": market_open, "symbol": pair.symbol},
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
         if not check_if_market_open():
             print_with_datetime(
                 f"Order blocked: Market is closed. "
                 f"[ORDER:{order_type}|PAIR:{pair.symbol}|LOTSIZE:{lotsize}]"
             )
             return None
-
-        # #region agent log
+        
+        # Convert to Order model and use broker adapter
         try:
-            import json as json_log
-            import time
-
-            log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-            with open(log_path, "a") as f:
-                f.write(
-                    json_log.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "B",
-                            "location": "trade_executor.py:62",
-                            "message": "Before asyncio.run terminal.send_order",
-                            "data": {"order_type": order_type, "symbol": pair.symbol},
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-        # #region agent log
-        try:
-            import json as json_log
-            import os
-            import time as _t
-
-            payload = {
-                "sessionId": "debug-session",
-                "runId": "run-debug",
-                "hypothesisId": "H4",
-                "location": "trade_executor.py:send_order",
-                "message": "before_asyncio_run",
-                "data": {
-                    "order_type": order_type,
-                    "symbol": pair.symbol,
-                    "lotsize": lotsize,
-                },
-                "timestamp": int(_t.time() * 1000),
-            }
-            try:
-                host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                with open(host_log, "a") as f:
-                    f.write(json_log.dumps(payload) + "\n")
-            except Exception:
-                pass
-            try:
-                log_path = os.path.join(os.getenv("LOG_DIR", "/app/logs"), "debug.log")
-                with open(log_path, "a") as f:
-                    f.write(json_log.dumps(payload) + "\n")
-            except Exception:
-                pass
-        except Exception:  # pragma: no cover
-            pass
-        # #endregion
-        try:
-            trade = asyncio.run(
-                self.terminal.send_order(order_type, pair, lotsize, price, sl, tp)
+            order_side = "BUY" if order_type == OrderType.BUY else "SELL"
+            order = Order(
+                order_id=str(uuid.uuid4()),
+                client_order_id=str(uuid.uuid4()),
+                symbol=pair.symbol,
+                side=order_side,
+                quantity=lotsize,
+                order_type="MARKET",
+                price=price,
+                stop_loss=sl,
+                take_profit=tp,
             )
-            # #region agent log
-            try:
-                import json as json_log
-                import time
-
-                log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                with open(log_path, "a") as f:
-                    f.write(
-                        json_log.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "B",
-                                "location": "trade_executor.py:73",
-                                "message": "After asyncio.run terminal.send_order",
-                                "data": {
-                                    "trade_is_none": trade is None,
-                                    "trade_ticket": trade.ticket if trade else None,
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # #endregion
-            # #region agent log
-            try:
-                import json as json_log
-                import os
-                import time as _t
-
-                payload = {
-                    "sessionId": "debug-session",
-                    "runId": "run-debug",
-                    "hypothesisId": "H4",
-                    "location": "trade_executor.py:send_order",
-                    "message": "after_asyncio_run",
-                    "data": {
-                        "trade_is_none": trade is None,
-                        "trade_ticket": trade.ticket if trade else None,
-                    },
-                    "timestamp": int(_t.time() * 1000),
-                }
-                try:
-                    host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                    with open(host_log, "a") as f:
-                        f.write(json_log.dumps(payload) + "\n")
-                except Exception:
-                    pass
-                try:
-                    log_path = os.path.join(
-                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
-                    )
-                    with open(log_path, "a") as f:
-                        f.write(json_log.dumps(payload) + "\n")
-                except Exception:
-                    pass
-            except Exception:  # pragma: no cover
-                pass
-            # #endregion
-            return trade
+            
+            # Submit order via broker adapter
+            idempotency_key = order.client_order_id
+            order_status = self.broker_adapter.submit_order(order, idempotency_key)
+            
+            # Convert OrderStatus back to Trade for backward compatibility
+            if order_status.state.value in ["filled", "partially_filled"]:
+                trade = Trade(
+                    ticket=int(order_status.broker_order_id) if order_status.broker_order_id else 0,
+                    ordertype=order_type,
+                    pair=pair,
+                    lotsize=order_status.filled_quantity,
+                    open_price=order_status.average_fill_price or price or 0.0,
+                    sl=sl,
+                    tp=tp,
+                )
+                return trade
+            else:
+                print_with_datetime(
+                    f"Order rejected: {order_status.reject_reason}. "
+                    f"[ORDER:{order_type}|PAIR:{pair.symbol}|LOTSIZE:{lotsize}]"
+                )
+                return None
         except TimeoutError as e:
-            # #region agent log
-            try:
-                import json as json_log
-
-                log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                with open(log_path, "a") as f:
-                    f.write(
-                        json_log.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "E",
-                                "location": "trade_executor.py:58",
-                                "message": "TimeoutError caught",
-                                "data": {"error": str(e)},
-                                "timestamp": int(__import__("time").time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # #endregion
             error_msg = (
                 f"Trade execution timeout: {e}\n"
                 f"[ORDER:{order_type}|PAIR:{pair.symbol}|LOTSIZE:{lotsize}|PRICE:{price}|SL:{sl}|TP:{tp}]\n"
@@ -265,61 +111,6 @@ class TradeExecutor:
             print_with_datetime(error_msg)
             return None
         except ConnectionError as e:
-            # #region agent log
-            try:
-                import json as json_log
-
-                log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                with open(log_path, "a") as f:
-                    f.write(
-                        json_log.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "E",
-                                "location": "trade_executor.py:66",
-                                "message": "ConnectionError caught",
-                                "data": {"error": str(e)},
-                                "timestamp": int(__import__("time").time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # #endregion
-            # #region agent log
-            try:
-                import json as json_log
-                import os
-                import time as _t
-
-                payload = {
-                    "sessionId": "debug-session",
-                    "runId": "run-debug",
-                    "hypothesisId": "H4",
-                    "location": "trade_executor.py:send_order",
-                    "message": "connection_error",
-                    "data": {"error": str(e)},
-                    "timestamp": int(_t.time() * 1000),
-                }
-                try:
-                    host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                    with open(host_log, "a") as f:
-                        f.write(json_log.dumps(payload) + "\n")
-                except Exception:
-                    pass
-                try:
-                    log_path = os.path.join(
-                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
-                    )
-                    with open(log_path, "a") as f:
-                        f.write(json_log.dumps(payload) + "\n")
-                except Exception:
-                    pass
-            except Exception:  # pragma: no cover
-                pass
-            # #endregion
             error_msg = (
                 f"Trade execution connection error: {e}\n"
                 f"[ORDER:{order_type}|PAIR:{pair.symbol}|LOTSIZE:{lotsize}|PRICE:{price}|SL:{sl}|TP:{tp}]\n"
@@ -328,65 +119,6 @@ class TradeExecutor:
             print_with_datetime(error_msg)
             return None
         except Exception as e:
-            # #region agent log
-            try:
-                import json as json_log
-                import time
-
-                log_path = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                with open(log_path, "a") as f:
-                    f.write(
-                        json_log.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "C",
-                                "location": "trade_executor.py:115",
-                                "message": "Exception caught in send_order",
-                                "data": {
-                                    "error_type": type(e).__name__,
-                                    "error": str(e),
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }
-                        )
-                        + "\n"
-                    )
-            except Exception:
-                pass
-            # #endregion
-            # #region agent log
-            try:
-                import json as json_log
-                import os
-                import time as _t
-
-                payload = {
-                    "sessionId": "debug-session",
-                    "runId": "run-debug",
-                    "hypothesisId": "H4",
-                    "location": "trade_executor.py:send_order",
-                    "message": "generic_exception",
-                    "data": {"error_type": type(e).__name__, "error": str(e)},
-                    "timestamp": int(_t.time() * 1000),
-                }
-                try:
-                    host_log = r"c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log"
-                    with open(host_log, "a") as f:
-                        f.write(json_log.dumps(payload) + "\n")
-                except Exception:
-                    pass
-                try:
-                    log_path = os.path.join(
-                        os.getenv("LOG_DIR", "/app/logs"), "debug.log"
-                    )
-                    with open(log_path, "a") as f:
-                        f.write(json_log.dumps(payload) + "\n")
-                except Exception:
-                    pass
-            except Exception:  # pragma: no cover
-                pass
-            # #endregion
             error_msg = (
                 f"Trade execution error: {e}\n"
                 f"[ORDER:{order_type}|PAIR:{pair.symbol}|LOTSIZE:{lotsize}|PRICE:{price}|SL:{sl}|TP:{tp}]"
@@ -398,7 +130,7 @@ class TradeExecutor:
         self, trade: Trade, lotsize: Optional[float] = None
     ) -> Optional[dict]:
         """
-        Close order via terminal
+        Close order via broker adapter
         :param trade: Trade to close
         :param lotsize: Lot size to close (None for full close)
         :return: Result dictionary or None if failed
@@ -417,8 +149,25 @@ class TradeExecutor:
             if lotsize is None:
                 lotsize = trade.lotsize
 
-            result = asyncio.run(self.terminal.close_order(trade, lotsize))
-            return result
+            # Use broker adapter to cancel order
+            order_id = str(trade.ticket)
+            success = self.broker_adapter.cancel_order(order_id)
+            
+            if success:
+                # Return result in expected format for backward compatibility
+                return {
+                    "order": {
+                        "ticket": trade.ticket,
+                        "lotsize": trade.lotsize - lotsize if lotsize < trade.lotsize else 0,
+                        "close_price": trade.open_price,  # Approximate
+                    }
+                }
+            else:
+                # Fallback to terminal if adapter doesn't support cancel
+                if self.terminal:
+                    result = asyncio.run(self.terminal.close_order(trade, lotsize))
+                    return result
+                return None
         except Exception as e:
             print_with_datetime(f"Close order error: {e}.\n[TICKET:{trade.ticket}]")
             return None

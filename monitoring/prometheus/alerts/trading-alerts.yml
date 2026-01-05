@@ -1,0 +1,48 @@
+groups:
+  - name: trading_alerts
+    interval: 30s
+    rules:
+      - alert: KillSwitchActive
+        expr: kill_switch_active == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kill switch is active"
+          description: "Kill switch has been triggered and trading is halted"
+
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state{state="open"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker is open"
+          description: "Circuit breaker has tripped and trading is halted"
+
+      - alert: HighDrawdown
+        expr: trading_drawdown_pct > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High drawdown detected"
+          description: "Current drawdown is {{ $value }}%, exceeding 15% threshold"
+
+      - alert: OMSReconciliationErrors
+        expr: rate(oms_reconciliation_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High OMS reconciliation error rate"
+          description: "OMS reconciliation errors are occurring at {{ $value }} errors/second"
+
+      - alert: SystemFailure
+        expr: up{job=~"api|server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "{{ $labels.job }} service is not responding"

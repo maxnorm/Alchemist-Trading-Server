@@ -37,3 +37,5 @@ pytest-asyncio>=0.21.0
 typing-extensions>=4.0.0
 types-pytz
 types-PyYAML
+# Observability
+prometheus-client>=0.19.0

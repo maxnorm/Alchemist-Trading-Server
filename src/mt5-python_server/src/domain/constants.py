@@ -28,6 +28,14 @@ class TradingConstants:
     DEFAULT_TAKE_PROFIT_PCT = 0.04  # 4% take profit (2:1 ratio)
     DEFAULT_MAX_OPEN_POSITIONS = 3
 
+    # Pre-trade control defaults
+    DEFAULT_MAX_TOTAL_EXPOSURE_PCT = 0.30  # 30% max total exposure
+    DEFAULT_MAX_TRADES_PER_MINUTE = 3
+    DEFAULT_MAX_TRADES_PER_HOUR = 20
+    DEFAULT_MAX_LEVERAGE = 100.0
+    DEFAULT_TRADING_HOURS_START = 0  # 00:00 UTC
+    DEFAULT_TRADING_HOURS_END = 24  # 24:00 UTC
+
     # Agent configuration defaults
     DEFAULT_LEARNING_RATE = 0.001
     DEFAULT_DISCOUNT_FACTOR = 0.95

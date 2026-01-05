@@ -1,5 +1,11 @@
-#property copyright "Maxime Normandin"
-#property link      ""
+//+------------------------------------------------------------------+
+//|                                            mt5-tick-streamer.mq5 |
+//|                                                                  |
+//| Expert Advisor for streaming real-time tick data (bid/ask prices)|
+//| to the trading server via socket connection                      |
+//+------------------------------------------------------------------+
+#property copyright "Alchemist Capital Management"
+#property link      "https://github.com/maxnorm/Alchemist-AI"
 #property version   "1.00"
 
 #include <JAson.mqh>
@@ -77,11 +83,15 @@ void OnTick()
    {
       CJAVal json;
       json["symbol"] = symbol;
-      json["date_time"] = TimeToString(tick.time,TIME_DATE|TIME_SECONDS);
+      // Format timestamp with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm"
+      datetime tick_time = tick.time;
+      long msc = tick.time_msc % 1000;  // Extract milliseconds (0-999)
+      string time_str = TimeToString(tick_time, TIME_DATE|TIME_SECONDS);
+      json["date_time"] = StringFormat("%s.%03d", time_str, (int)msc);
       json["ask"] = tick.ask;
       json["bid"] = tick.bid;
 
-      send_msg(socket, json);
+      send_msg(socket, json, false);
    }
    else
    {
@@ -98,7 +108,7 @@ bool auth()
       json["symbol"] = symbol;
       json["digits"] = digits;
 
-      send_msg(socket, json);
+      send_msg(socket, json, false);
       CJAVal msg = receive_msg(socket);
       if (msg["auth_status"] == successful_auth_code)
       {

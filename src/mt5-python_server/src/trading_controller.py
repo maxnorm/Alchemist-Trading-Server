@@ -20,6 +20,14 @@ from models.account import Account
 from application.services.action_executor import ActionExecutor
 from utils.market_utils import get_market_feed_status
 from utils.logging_config import get_logger
+from risk.pre_trade_controls import PreTradeControls
+from domain.config.risk_config import RiskConfig
+from monitoring.metrics import (
+    trades_executed_total,
+    trade_latency_seconds,
+    account_equity,
+    current_drawdown_pct,
+)
 import logging
 
 # Import safety components
@@ -111,6 +119,21 @@ class TradingController:
         except Exception:
             self.logger = logging.getLogger(__name__)
         self.action_executor = ActionExecutor(self.logger)
+
+        # Initialize pre-trade controls from RiskConfig
+        try:
+            risk_config = RiskConfig.from_env()
+        except Exception:
+            risk_config = RiskConfig.default()
+        
+        self.pre_trade_controls = PreTradeControls(
+            max_total_exposure_pct=risk_config.max_total_exposure_pct,
+            max_trades_per_minute=risk_config.max_trades_per_minute,
+            max_trades_per_hour=risk_config.max_trades_per_hour,
+            max_leverage=risk_config.max_leverage,
+            trading_hours_start=risk_config.trading_hours_start,
+            trading_hours_end=risk_config.trading_hours_end,
+        )
 
         # Register kill switch callback
         if self.kill_switch:
@@ -480,6 +503,73 @@ class TradingController:
                 1+ = 1 + (pair_index * 3 + action_type_offset)
         """
         try:
+            # Decode action to get symbol and action type for metrics
+            symbol = "N/A"
+            action_type_str = "hold"
+            pair = None
+            action_type = None
+            pair_index = None
+            
+            if action != 0:
+                try:
+                    pair_index, action_type = self.env.decode_action(action)
+                    if pair_index is not None and self.env.data_providers:
+                        pair = (
+                            self.env.data_providers[pair_index].currency_pair
+                            if pair_index < len(self.env.data_providers)
+                            else None
+                        )
+                        if pair:
+                            symbol = pair.symbol
+                    if action_type:
+                        action_type_str = str(action_type).lower().replace("actiontype.", "")
+                except Exception:
+                    pass
+
+            # Pre-trade validation for non-HOLD actions
+            if action != 0 and pair is not None and action_type is not None:
+                # Get feed status
+                feed_status = get_market_feed_status(
+                    self.env.data_providers, self.feed_stale_threshold
+                )
+                
+                # Convert action_type to string for validation
+                action_type_name = action_type_str.upper()
+                
+                # Validate action before execution
+                is_valid, reason = self.pre_trade_controls.validate_action(
+                    account=self.account,
+                    pair=pair,
+                    action_type=action_type_name,
+                    risk_manager=self.risk_manager,
+                    current_positions=self.account.current_trade,
+                    feed_status=feed_status,
+                )
+                
+                if not is_valid:
+                    if hasattr(self.logger, "log_event"):
+                        self.logger.log_event(
+                            event_type="pre_trade_validation_failed",
+                            message=f"Pre-trade validation failed: {reason}",
+                            symbol=symbol,
+                            account_login=self.account.login if self.account else None,
+                            metrics={
+                                "action": action,
+                                "action_type": action_type_name,
+                                "reason": reason,
+                            },
+                            level="WARNING",
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Pre-trade validation failed for {action_type_name} on {symbol}: {reason}"
+                        )
+                    # Block the trade
+                    return
+
+            # Track trade execution latency
+            start_time = time.time()
+            
             # Use ActionExecutor to execute the action
             previous_balance = self.account.balance
             self.action_executor.execute(
@@ -493,6 +583,24 @@ class TradingController:
                 session_id=self.session_id,
                 trade_logger=self.trade_logger,
             )
+            
+            # Record trade for throttle tracking (only for BUY/SELL actions)
+            if action != 0 and action_type_str in ["buy", "sell"]:
+                self.pre_trade_controls.record_trade(action_type_name)
+            
+            # Record metrics for non-HOLD actions
+            if action != 0 and action_type_str != "hold":
+                execution_time = time.time() - start_time
+                trade_latency_seconds.labels(symbol=symbol).observe(execution_time)
+                
+                # Increment trade counter
+                if action_type_str in ["buy", "sell"]:
+                    trades_executed_total.labels(symbol=symbol, action_type=action_type_str).inc()
+                elif action_type_str == "close":
+                    trades_executed_total.labels(symbol=symbol, action_type="close").inc()
+            
+            # Update equity and drawdown metrics
+            self._update_equity_metrics()
         except Exception as e:
             # Decode action for error message
             try:
@@ -615,3 +723,36 @@ class TradingController:
                 self.logger.error(
                     f"Error during position reconciliation: {e}", exc_info=True
                 )
+
+    def _update_equity_metrics(self):
+        """Update equity and drawdown metrics"""
+        if not self.account:
+            return
+        
+        try:
+            # Get current equity
+            current_equity = (
+                self.account.equity
+                if hasattr(self.account, "equity") and self.account.equity is not None
+                else self.account.balance
+            )
+            account_equity.set(current_equity)
+            
+            # Calculate drawdown if we have a peak equity
+            # For simplicity, we'll calculate drawdown from initial balance
+            # In production, you'd track peak equity over time
+            if hasattr(self.account, "initial_balance") and self.account.initial_balance:
+                peak_equity = max(
+                    current_equity,
+                    getattr(self.account, "peak_equity", self.account.initial_balance)
+                )
+                if peak_equity > 0:
+                    drawdown_pct = ((peak_equity - current_equity) / peak_equity) * 100
+                    current_drawdown_pct.set(drawdown_pct)
+            else:
+                # Fallback: use balance if no initial balance tracked
+                if hasattr(self.account, "balance") and self.account.balance:
+                    # Simple drawdown calculation
+                    current_drawdown_pct.set(0.0)  # Default to 0 if we can't calculate
+        except Exception as e:
+            self.logger.debug(f"Error updating equity metrics: {e}")

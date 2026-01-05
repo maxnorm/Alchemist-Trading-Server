@@ -36,6 +36,31 @@ def get_database_connection():
         return None
 
 
+def auto_version_export(output_path: str, metadata: dict) -> None:
+    """
+    Automatically version exported data with DVC.
+    
+    Args:
+        output_path: Path to the exported file
+        metadata: Metadata dictionary from export
+    """
+    try:
+        from mlops.data_versioner import DataVersioner
+        versioner = DataVersioner()
+        
+        if versioner._dvc_available:
+            # Add to DVC tracking
+            dvc_file = versioner.add(output_path)
+            print(f"Added to DVC tracking: {dvc_file}")
+            
+            # Optionally push to remote (commented out for now)
+            # versioner.push()
+        else:
+            print("DVC not available - skipping versioning")
+    except Exception as e:
+        print(f"Warning: Failed to version with DVC: {e}")
+
+
 def export_ticks(db, output_path: str, days: int = 30) -> dict:
     """
     Export tick data to parquet format.
@@ -108,6 +133,9 @@ def export_ticks(db, output_path: str, days: int = 30) -> dict:
     
     print(f"Exported {len(df)} rows to {output_path}")
     print(f"Metadata saved to {metadata_path}")
+    
+    # Auto-version with DVC
+    auto_version_export(str(output_path), metadata)
     
     return metadata
 
@@ -184,6 +212,9 @@ def export_calendar(db, output_path: str, days: int = 90) -> dict:
         json.dump(metadata, f, indent=2)
     
     print(f"Exported {len(df)} rows to {output_path}")
+    
+    # Auto-version with DVC
+    auto_version_export(str(output_path), metadata)
     
     return metadata
 

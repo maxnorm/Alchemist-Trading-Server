@@ -1,6 +1,7 @@
 /database/data
 /mt5-python_server/venv
 /drivers
+/docs/generated
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

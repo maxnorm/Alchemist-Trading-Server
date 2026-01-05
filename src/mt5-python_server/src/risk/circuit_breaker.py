@@ -19,6 +19,8 @@ import threading
 import logging
 import numpy as np
 
+from monitoring.metrics import circuit_breaker_state
+
 
 class CircuitBreakerState(Enum):
     """Circuit breaker states"""
@@ -119,6 +121,9 @@ class CircuitBreaker:
         self._lock = threading.RLock()
         self.database = database
         self.price_history_provider = price_history_provider
+        
+        # Initialize metrics
+        self._update_circuit_breaker_metrics()
 
         # Rolling windows for metrics
         self._trade_history: deque = deque(maxlen=1000)
@@ -168,6 +173,7 @@ class CircuitBreaker:
                 if self._should_attempt_recovery():
                     self._state = CircuitBreakerState.HALF_OPEN
                     self._half_open_trades = 0
+                    self._update_circuit_breaker_metrics()
                     self.logger.info("Circuit breaker entering HALF_OPEN state")
                 else:
                     return False, f"Circuit breaker OPEN: {self._metrics.trip_reason}"
@@ -407,6 +413,7 @@ class CircuitBreaker:
         self._state = CircuitBreakerState.OPEN
         self._metrics.trip_time = datetime.now()
         self._metrics.trip_reason = reason
+        self._update_circuit_breaker_metrics()
 
         # Determine breaker type from reason
         breaker_type = self._extract_breaker_type(reason)
@@ -428,6 +435,7 @@ class CircuitBreaker:
         self._metrics.trip_reason = None
         self._half_open_trades = 0
         self._last_trip_event_id = None
+        self._update_circuit_breaker_metrics()
         self.logger.info("Circuit breaker CLOSED - normal operation resumed")
 
     def _should_attempt_recovery(self) -> bool:
@@ -727,3 +735,14 @@ class CircuitBreaker:
                 exc_info=True,
             )
             # Don't raise - allow operation to continue
+    
+    def _update_circuit_breaker_metrics(self) -> None:
+        """Update circuit breaker state metrics"""
+        # Reset all state gauges to 0
+        circuit_breaker_state.labels(state="closed").set(0)
+        circuit_breaker_state.labels(state="open").set(0)
+        circuit_breaker_state.labels(state="half_open").set(0)
+        
+        # Set current state to 1
+        state_value = self._state.value
+        circuit_breaker_state.labels(state=state_value).set(1)

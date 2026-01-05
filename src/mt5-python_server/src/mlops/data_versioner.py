@@ -356,3 +356,119 @@ class DataVersioner:
             json.dump(metadata, f, indent=2)
 
         return str(metadata_path)
+
+    def get_all_data_versions(self) -> Dict[str, str]:
+        """
+        Get versions for all DVC-tracked data files.
+
+        Returns:
+            Dictionary mapping file paths to their version hashes
+        """
+        versions = {}
+        for file_path in self.list_files():
+            version = self.get_version(file_path)
+            if version:
+                versions[file_path] = version
+        return versions
+
+    def get_data_version_summary(self) -> Dict[str, Any]:
+        """
+        Get summary of all data versions for MLflow tagging.
+
+        Returns:
+            Dictionary with data version summary including all tracked files,
+            DVC repo root, availability status, and timestamp
+        """
+        versions = self.get_all_data_versions()
+        return {
+            "data_versions": versions,
+            "dvc_repo_root": str(self.repo_root),
+            "dvc_available": self._dvc_available,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def version_feature_code(
+        self,
+        feature_files: List[str],
+        version: str,
+        message: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Version feature computation code with DVC.
+
+        Args:
+            feature_files: List of file paths to feature computation code
+            version: Version tag/identifier
+            message: Optional commit message
+
+        Returns:
+            DVC commit hash or None if DVC not available
+        """
+        if not self._dvc_available:
+            self.logger.warning("DVC not available - cannot version feature code")
+            return None
+
+        if not feature_files:
+            self.logger.warning("No feature files provided for versioning")
+            return None
+
+        try:
+            # Add all feature files to DVC tracking
+            dvc_files = []
+            for file_path in feature_files:
+                # Convert to relative path if absolute
+                rel_path = Path(file_path)
+                if rel_path.is_absolute():
+                    try:
+                        rel_path = rel_path.relative_to(self.repo_root)
+                    except ValueError:
+                        # File is outside repo root, skip
+                        self.logger.warning(
+                            f"Feature file {file_path} is outside repo root, skipping"
+                        )
+                        continue
+
+                if not (self.repo_root / rel_path).exists():
+                    self.logger.warning(f"Feature file {rel_path} does not exist, skipping")
+                    continue
+
+                # Add to DVC if not already tracked
+                dvc_file = self.add(str(rel_path))
+                dvc_files.append(dvc_file)
+
+            if not dvc_files:
+                self.logger.warning("No feature files were successfully added to DVC")
+                return None
+
+            # Commit to git with version tag
+            commit_msg = message or f"Feature pipeline version {version} - {datetime.now().isoformat()}"
+
+            # Stage all .dvc files
+            for dvc_file in dvc_files:
+                self._run_command(["git", "add", dvc_file], check=False)
+
+            # Commit
+            self._run_command(
+                ["git", "commit", "-m", commit_msg],
+                check=False,  # Don't fail if nothing to commit
+            )
+
+            # Get current git commit hash (this is the DVC commit reference)
+            result = self._run_command(
+                ["git", "rev-parse", "HEAD"],
+                check=False,
+            )
+
+            if result.returncode == 0:
+                commit_hash = result.stdout.strip()
+                self.logger.info(
+                    f"Versioned feature code for version {version} (commit: {commit_hash})"
+                )
+                return commit_hash
+            else:
+                self.logger.warning("Failed to get git commit hash")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Error versioning feature code: {e}", exc_info=True)
+            return None

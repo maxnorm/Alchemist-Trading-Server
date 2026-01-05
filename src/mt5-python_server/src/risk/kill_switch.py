@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Protocol, Any
 from dataclasses import dataclass
 
+from monitoring.metrics import kill_switch_active
+
 
 class KillSwitchState(Enum):
     """Kill switch states"""
@@ -470,6 +472,7 @@ class KillSwitch:
                 return
 
             self._state = KillSwitchState.ARMED
+            kill_switch_active.set(0)  # Not active when armed
 
             for trigger in self._triggers:
                 trigger.start_monitoring()
@@ -483,6 +486,7 @@ class KillSwitch:
                 trigger.stop_monitoring()
 
             self._state = KillSwitchState.DISABLED
+            kill_switch_active.set(0)  # Not active when disarmed
             self.logger.info("Kill switch DISARMED")
 
     def is_active(self) -> bool:
@@ -503,6 +507,7 @@ class KillSwitch:
                 return
 
             self._state = KillSwitchState.TRIGGERED
+            kill_switch_active.set(1)  # Active when triggered
 
             self.logger.critical(
                 f"🚨 KILL SWITCH TRIGGERED: {reason} (via {trigger_type})"
@@ -604,6 +609,7 @@ class KillSwitch:
                 trigger.reset()
 
             self._state = KillSwitchState.ARMED
+            kill_switch_active.set(0)  # Not active after reset
             self._current_event = None
 
             self.logger.info(f"Kill switch RESET by {approver}")

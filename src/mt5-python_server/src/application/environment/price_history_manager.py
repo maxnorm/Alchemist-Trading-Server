@@ -4,46 +4,131 @@ Manages price history per currency pair
 """
 
 from typing import Dict, List, Optional
+from datetime import datetime
 import logging
 import time
+import threading
 
-from data_providers.price_provider import PriceDataProvider
+from connectors.base import IDataSourceConnector
 
 
 class PriceHistoryManager:
     """Manages price history per currency pair"""
 
-    def __init__(self, window_size: int, data_providers: List[PriceDataProvider]):
+    def __init__(self, window_size: int, connectors: List[IDataSourceConnector]):
         """
         Initialize price history manager
         :param window_size: Window size for price history
-        :param data_providers: List of data providers
+        :param connectors: List of data source connectors
         """
         self.window_size = window_size
         self.price_history_by_pair: Dict[str, List[float]] = {}
         self.last_update_time: Dict[str, float] = {}  # symbol -> timestamp
+        # New: track timestamps with prices for point-in-time filtering
+        self.price_timestamps: Dict[str, List[datetime]] = {}
+        
+        # Background threads for consuming connector streams
+        self._consumer_threads: List[threading.Thread] = []
+        self._shutdown_flag = threading.Event()
 
-        # Initialize for each provider
-        for provider in data_providers:
-            symbol = provider.currency_pair.symbol
+        # Initialize for each connector
+        for connector in connectors:
+            symbol = connector.config.symbol
             self.price_history_by_pair[symbol] = []
+            self.price_timestamps[symbol] = []
             self.last_update_time[symbol] = 0.0
-
-    def add_price(self, symbol: str, price: float):
+            
+            # Start consumer thread for this connector
+            thread = threading.Thread(
+                target=self._consume_connector,
+                args=(connector, symbol),
+                daemon=True
+            )
+            thread.start()
+            self._consumer_threads.append(thread)
+    
+    def _consume_connector(self, connector: IDataSourceConnector, symbol: str):
         """
-        Add price to history
+        Consume events from connector and update price history
+        
+        :param connector: Data source connector
+        :param symbol: Trading symbol
+        """
+        logger = logging.getLogger(__name__)
+        
+        # Connect to connector if not already connected
+        if not connector.is_connected():
+            if not connector.connect():
+                logger.error(f"Failed to connect to connector for {symbol}")
+                return
+        
+        try:
+            # Consume events from connector stream
+            for event in connector.stream():
+                if self._shutdown_flag.is_set():
+                    break
+                
+                # Extract price from normalized event
+                payload = event.get('payload', {})
+                bid = payload.get('bid', 0.0)
+                ask = payload.get('ask', 0.0)
+                mid_price = (bid + ask) / 2.0
+                
+                # Extract timestamp
+                timestamp = event.get('timestamp')
+                if timestamp:
+                    if isinstance(timestamp, str):
+                        try:
+                            timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        except ValueError:
+                            from utils.time_utils import get_utc_time
+                            timestamp = get_utc_time()
+                    elif not isinstance(timestamp, datetime):
+                        from utils.time_utils import get_utc_time
+                        timestamp = get_utc_time()
+                else:
+                    from utils.time_utils import get_utc_time
+                    timestamp = get_utc_time()
+                
+                # Add price to history
+                self.add_price(symbol, mid_price, timestamp)
+                
+        except Exception as e:
+            logger.error(
+                f"Error consuming connector stream for {symbol}: {e}",
+                exc_info=True
+            )
+    
+    def shutdown(self):
+        """Shutdown all consumer threads"""
+        self._shutdown_flag.set()
+        for thread in self._consumer_threads:
+            if thread.is_alive():
+                thread.join(timeout=2.0)
+
+    def add_price(self, symbol: str, price: float, timestamp: Optional[datetime] = None):
+        """
+        Add price to history with timestamp
         :param symbol: Currency pair symbol
         :param price: Price value
+        :param timestamp: Timestamp (defaults to current time if None)
         """
+        if timestamp is None:
+            from utils.time_utils import get_utc_time
+            timestamp = get_utc_time()
+        
         if symbol not in self.price_history_by_pair:
             self.price_history_by_pair[symbol] = []
+            self.price_timestamps[symbol] = []
 
         self.price_history_by_pair[symbol].append(price)
+        self.price_timestamps[symbol].append(timestamp)
         self.last_update_time[symbol] = time.time()
 
         # Prune if too long (keep more for indicators calculation)
         if len(self.price_history_by_pair[symbol]) > self.window_size * 2:
             self.price_history_by_pair[symbol].pop(0)
+            self.price_timestamps[symbol].pop(0)
 
         # Log when we reach sufficient data for first time
         if len(self.price_history_by_pair[symbol]) == self.window_size:
@@ -142,3 +227,27 @@ class PriceHistoryManager:
         if last_update == 0.0:
             return None
         return time.time() - last_update
+
+    def get_history_up_to(self, symbol: str, max_timestamp: datetime) -> List[float]:
+        """
+        Get price history filtered to only include prices <= max_timestamp
+        :param symbol: Currency pair symbol
+        :param max_timestamp: Maximum timestamp (point-in-time constraint)
+        :return: List of prices with timestamp <= max_timestamp
+        """
+        if symbol not in self.price_history_by_pair:
+            return []
+        
+        prices = self.price_history_by_pair[symbol]
+        timestamps = self.price_timestamps.get(symbol, [])
+        
+        # If no timestamps tracked, return all (backward compatibility)
+        if not timestamps or len(timestamps) != len(prices):
+            return prices
+        
+        # Filter by timestamp
+        filtered = [
+            price for price, ts in zip(prices, timestamps)
+            if ts <= max_timestamp
+        ]
+        return filtered

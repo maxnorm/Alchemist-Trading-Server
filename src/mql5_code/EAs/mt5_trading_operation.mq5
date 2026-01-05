@@ -1,10 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                        mt5_trading_operation.mq5 |
-//|                                                 Maxime Normandin |
-//|                                             https://www.mql5.com |
+//|                                                                  | 
+//| Expert Advisor for executing trading operations via socket       |
+//| connection. Handles account info requests, order opening/closing |
 //+------------------------------------------------------------------+
-#property copyright "Maxime Normandin"
-#property link      "https://www.mql5.com"
+#property copyright "Alchemist Capital Management"
+#property link      "https://github.com/maxnorm/Alchemist-AI"
 #property version   "1.00"
 
 #include <JAson.mqh>

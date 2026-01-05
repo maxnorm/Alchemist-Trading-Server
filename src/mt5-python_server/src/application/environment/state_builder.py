@@ -6,8 +6,9 @@ Builds state vectors from price data
 import numpy as np
 import logging
 from typing import Optional, List
+from datetime import datetime
 
-from data_providers.price_provider import PriceDataProvider
+from connectors.base import IDataSourceConnector
 from application.environment.price_history_manager import PriceHistoryManager
 from application.environment.feature_engine import FeatureEngine
 
@@ -20,32 +21,37 @@ class StateBuilder:
         price_history_manager: PriceHistoryManager,
         feature_engine: FeatureEngine,
         window_size: int,
-        data_providers: List[PriceDataProvider],
+        connectors: List[IDataSourceConnector],
     ):
         """
         Initialize state builder
         :param price_history_manager: Price history manager
         :param feature_engine: Feature engine
         :param window_size: Window size for state
-        :param data_providers: List of data providers
+        :param connectors: List of data source connectors
         """
         self.price_manager = price_history_manager
         self.feature_engine = feature_engine
         self.window_size = window_size
-        self.data_providers = data_providers
+        self.connectors = connectors
 
-    def build_state(self) -> Optional[np.ndarray]:
+    def build_state(self, current_time: Optional[datetime] = None) -> Optional[np.ndarray]:
         """
         Build state vector from current data
         Optimized with pre-allocation and vectorized operations
+        :param current_time: Current datetime for point-in-time constraint (defaults to now)
         :return: State array or None if insufficient data
         """
+        if current_time is None:
+            from utils.time_utils import get_utc_time
+            current_time = get_utc_time()
+        
         logger = logging.getLogger(__name__)
         max_staleness = 60  # seconds
 
         # Check data availability with staleness tolerance
-        for provider in self.data_providers:
-            symbol = provider.currency_pair.symbol
+        for connector in self.connectors:
+            symbol = connector.config.symbol
 
             if not self.price_manager.has_sufficient_data(symbol):
                 return None  # Still need sufficient data
@@ -57,12 +63,22 @@ class StateBuilder:
                 )
                 # Continue with stale data but log warning
 
-        # Get price histories
-        price_histories = self.price_manager.get_all_histories()
+        # Get price histories with point-in-time filtering
+        # Use get_history_up_to() if available to filter by timestamp
+        price_histories = {}
+        for connector in self.connectors:
+            symbol = connector.config.symbol
+            # Use get_history_up_to() for point-in-time filtering
+            filtered_history = self.price_manager.get_history_up_to(symbol, current_time)
+            if len(filtered_history) >= self.window_size:
+                price_histories[symbol] = filtered_history
+            else:
+                # Not enough filtered data
+                return None
 
         # Extract features for all pairs
         state = self.feature_engine.extract_features_for_all_pairs(
-            price_histories, self.data_providers
+            price_histories, self.connectors, current_time=current_time
         )
 
         if state is None:
@@ -100,11 +116,11 @@ class StateBuilder:
         Check if sufficient data for all pairs
         :return: True if sufficient data
         """
-        if not self.data_providers:
+        if not self.connectors:
             return False
 
-        for provider in self.data_providers:
-            symbol = provider.currency_pair.symbol
+        for connector in self.connectors:
+            symbol = connector.config.symbol
             if not self.price_manager.has_sufficient_data(symbol):
                 return False
 

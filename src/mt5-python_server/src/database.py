@@ -7,9 +7,34 @@ import time
 import threading
 import uuid
 import mariadb
+import json
 from datetime import datetime
 from typing import List, Dict
 from utils.time_utils import print_with_datetime, normalize_to_utc, ensure_utc_timezone
+
+# Helper function for debug logging
+def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data, timestamp=None):
+    """Write debug log entry"""
+    try:
+        if timestamp is None:
+            from utils.time_utils import get_utc_time
+            timestamp = int(get_utc_time().timestamp() * 1000)
+        # Calculate path relative to this file: go up 4 levels to project root, then .cursor/debug.log
+        current_file = __file__
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))
+        log_path = os.path.join(project_root, '.cursor', 'debug.log')
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({
+                "sessionId": session_id,
+                "runId": run_id,
+                "hypothesisId": hypothesis_id,
+                "location": location,
+                "message": message,
+                "data": data,
+                "timestamp": timestamp
+            }) + "\n")
+    except Exception:
+        pass  # Silently fail to not disrupt normal operation
 
 
 class Database:
@@ -273,12 +298,18 @@ class Database:
         :param ticks: List of tuples, each tuple contains (symbol, date_time, ask, bid)
         :return: Number of successfully inserted ticks, or -1 on error
         """
+        # #region agent log
+        _write_debug_log("debug-session", "run1", "F", "database.py:269", "insert_forex_ticks_batch called", {"tick_count": len(ticks) if ticks else 0})
+        # #endregion
         if not ticks:
             return 0
 
         conn = None
         try:
             conn = self.__get_connection()
+            # #region agent log
+            _write_debug_log("debug-session", "run1", "F", "database.py:281", "Database connection obtained", {"has_connection": conn is not None})
+            # #endregion
             cursor = conn.cursor()
 
             # Build bulk INSERT statement with VALUES clause
@@ -296,21 +327,59 @@ class Database:
                     (normalized_date_time, ask, bid, base_currency, quoted_currency)
                 )
 
-            # Use executemany with the optimized stored procedure
-            # For better performance, we'll use a direct INSERT with subquery
+            # Use direct INSERT instead of stored procedure for better error handling
+            # This allows us to verify inserts actually happened
             insert_count = 0
+            failed_symbols = set()
+            
             for date_time, ask, bid, base_currency, quoted_currency in tick_data:
                 try:
-                    cursor.callproc(
-                        "insert_tick_forex_optimized",
-                        (date_time, ask, bid, base_currency, quoted_currency),
-                    )
-                    insert_count += 1
+                    # Use direct INSERT with subquery to get pair_id
+                    # This way we can check if the pair exists and get feedback
+                    cursor.execute("""
+                        INSERT INTO ticks_forex (datetime, ask, bid, forex_pairs_id)
+                        SELECT ?, ?, ?, fp.id
+                        FROM currency c1
+                        CROSS JOIN currency c2
+                        INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
+                        WHERE c1.iso_code = ? AND c2.iso_code = ?
+                        LIMIT 1
+                    """, (date_time, ask, bid, base_currency, quoted_currency))
+                    
+                    # Check if a row was actually inserted
+                    # #region agent log
+                    symbol_check = base_currency + quoted_currency
+                    _write_debug_log("debug-session", "run1", "F", "database.py:319", "Insert attempt result", {"symbol": symbol_check, "rowcount": cursor.rowcount})
+                    # #endregion
+                    if cursor.rowcount > 0:
+                        insert_count += 1
+                    else:
+                        # No row inserted - pair doesn't exist
+                        symbol = base_currency + quoted_currency
+                        failed_symbols.add(symbol)
+                        if self.__verbose:
+                            print_with_datetime(
+                                f"WARNING: Currency pair {symbol} not found - tick not inserted"
+                            )
                 except mariadb.Error as e:
-                    print_with_datetime(f"Error inserting tick in batch: {e}")
+                    symbol = base_currency + quoted_currency
+                    failed_symbols.add(symbol)
+                    # #region agent log
+                    _write_debug_log("debug-session", "run1", "F", "database.py:357", "Database insert error", {"symbol": symbol, "error": str(e)})
+                    # #endregion
+                    print_with_datetime(f"Error inserting tick for {symbol}: {e}")
                     continue
 
+            if failed_symbols:
+                print_with_datetime(
+                    f"WARNING: Failed to insert ticks for {len(failed_symbols)} symbol(s): {', '.join(sorted(failed_symbols))}. "
+                    f"These currency pairs may not exist in the forex_pairs table."
+                )
+
             conn.commit()
+            # #region agent log
+            _write_debug_log("debug-session", "run1", "G", "database.py:341", "Transaction committed", {"insert_count": insert_count, "total_ticks": len(ticks), "failed_symbols": list(failed_symbols)})
+            # #endregion
             cursor.close()
 
             with self.__metrics_lock:
@@ -325,6 +394,16 @@ class Database:
 
             return insert_count
 
+        except Exception as e:
+            # #region agent log
+            try:
+                import json
+                from datetime import datetime
+                t = datetime.now()
+                with open(r'c:\Users\maxno\Desktop\Projet\1.1\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"database.py:400","message":"Database insert exception","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(t.timestamp()*1000)})+"\n")
+            except: pass
+            # #endregion
         except mariadb.Error as e:
             print_with_datetime(f"Error in batch insert: {e}")
             if conn:

@@ -6,12 +6,18 @@ Implements DQN with experience replay and Double DQN to reduce overestimation bi
 import numpy as np
 import os
 import json
+import time
 from collections import deque
 from typing import Optional, Tuple, Dict, List, Any, Union
 from tensorflow import keras
 from tensorflow.keras import layers
 
 from agents.sum_tree import SumTree
+from agents.learning_rate_scheduler import (
+    BaseLearningRateScheduler,
+    create_scheduler,
+)
+from monitoring.metrics import model_inference_latency
 
 
 class DQNAgent:
@@ -44,6 +50,8 @@ class DQNAgent:
         per_beta: float = 0.4,
         per_beta_increment: float = 0.001,
         architecture_config: Optional[Dict] = None,
+        learning_rate_scheduler: Optional[BaseLearningRateScheduler] = None,
+        scheduler_config: Optional[Dict] = None,
     ):
         """
         Initialize DQN Agent
@@ -63,6 +71,8 @@ class DQNAgent:
         :param per_alpha: Priority exponent (0 = uniform, 1 = full priority)
         :param per_beta: Importance sampling exponent (0 = no correction, 1 = full correction)
         :param per_beta_increment: Beta increment per step
+        :param learning_rate_scheduler: Optional learning rate scheduler instance
+        :param scheduler_config: Optional scheduler configuration dict (used if scheduler is None)
         """
         self.state_shape = state_shape
         self.action_size = action_size
@@ -85,6 +95,20 @@ class DQNAgent:
 
         # Architecture configuration
         self.architecture_config = architecture_config or {}
+
+        # Learning rate scheduler
+        if learning_rate_scheduler is not None:
+            self.learning_rate_scheduler = learning_rate_scheduler
+        elif scheduler_config is not None:
+            scheduler_type = scheduler_config.pop('type', 'reduce_on_plateau')
+            self.learning_rate_scheduler = create_scheduler(
+                scheduler_type=scheduler_type, **scheduler_config
+            )
+        else:
+            self.learning_rate_scheduler = None
+
+        # Learning rate history for monitoring
+        self.lr_history: List[float] = []
 
         # Batch prediction queue
         self.prediction_queue: List[Any] = []
@@ -218,8 +242,15 @@ class DQNAgent:
         # Reshape state for model input
         state = np.expand_dims(state, axis=0)
 
+        # Track inference latency
+        start_time = time.time()
+        
         # Get Q-values from network
         q_values = self.q_network.predict(state, verbose=0)[0]
+        
+        # Record inference latency
+        inference_time = time.time() - start_time
+        model_inference_latency.observe(inference_time)
 
         # Apply action mask: set invalid actions to negative infinity
         if action_mask is not None:
@@ -384,6 +415,10 @@ class DQNAgent:
 
         loss = history.history["loss"][0]
 
+        # Update learning rate if scheduler is configured
+        if self.learning_rate_scheduler is not None:
+            self.update_learning_rate(loss)
+
         # Update priorities in PER
         if self.use_per:
             # Calculate TD-errors for priority updates
@@ -481,6 +516,16 @@ class DQNAgent:
                 "memory_size": len(self.memory),
                 "epsilon": self.epsilon,
                 "per_beta": self.per_beta if self.use_per else None,
+                "learning_rate": self.learning_rate,
+                "learning_rate_history": self.lr_history[-100:] if self.lr_history else [],  # Last 100
+            },
+            "scheduler": {
+                "enabled": self.learning_rate_scheduler is not None,
+                "type": (
+                    type(self.learning_rate_scheduler).__name__
+                    if self.learning_rate_scheduler
+                    else None
+                ),
             },
         }
 
@@ -619,3 +664,24 @@ class DQNAgent:
                 actions.append(int(np.argmax(q_values_copy)))
 
         return actions
+
+    def update_learning_rate(self, metric_value: float):
+        """
+        Update learning rate using scheduler
+
+        :param metric_value: Current metric value (loss, reward, etc.)
+        """
+        if self.learning_rate_scheduler is not None:
+            optimizer = self.q_network.optimizer
+            new_lr = self.learning_rate_scheduler.step(metric_value, optimizer)
+            self.lr_history.append(new_lr)
+            # Also update learning_rate attribute for compatibility
+            self.learning_rate = new_lr
+
+    def get_learning_rate_history(self) -> List[float]:
+        """
+        Get learning rate history for monitoring
+
+        :return: List of learning rates over time
+        """
+        return self.lr_history.copy()

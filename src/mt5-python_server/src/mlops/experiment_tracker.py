@@ -11,6 +11,7 @@ import sys
 import json
 import hashlib
 import logging
+import threading
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Union
 
@@ -71,6 +72,9 @@ class ExperimentTracker:
                 "MLflow is not installed. Install with: pip install mlflow>=2.10.0"
             )
 
+        # Initialize logger early so it's available for all initialization code
+        self.logger = logging.getLogger(__name__)
+
         tracking_uri_value = tracking_uri or os.getenv(
             "MLFLOW_TRACKING_URI", "http://localhost:5000"
         )
@@ -84,19 +88,56 @@ class ExperimentTracker:
         # Configure MLflow
         mlflow.set_tracking_uri(self.tracking_uri)
 
-        # Get or create experiment
-        if create_experiment:
-            experiment = mlflow.get_experiment_by_name(experiment_name)
-            if experiment is None:
-                mlflow.create_experiment(experiment_name)
+        # Suppress urllib3 retry warnings for MLflow connections
+        # These are expected when MLflow server is not available
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 
-        mlflow.set_experiment(experiment_name)
-
-        self.client = MlflowClient(self.tracking_uri)
+        # Initialize MLflow components asynchronously to avoid blocking server startup
+        # All initialization happens in background threads without waiting
+        self.client = None
+        self._mlflow_initialized = False
+        
+        # Store logger reference for use in nested function
+        logger_ref = self.logger
+        
+        def _init_mlflow_async():
+            """Initialize MLflow components in background without blocking"""
+            try:
+                # Get or create experiment
+                if create_experiment:
+                    try:
+                        experiment = mlflow.get_experiment_by_name(experiment_name)
+                        if experiment is None:
+                            mlflow.create_experiment(experiment_name)
+                    except Exception as e:
+                        logger_ref.debug(f"Could not create MLflow experiment: {e}")
+                
+                # Set experiment
+                try:
+                    mlflow.set_experiment(experiment_name)
+                except Exception as e:
+                    logger_ref.debug(f"Could not set MLflow experiment: {e}")
+                
+                # Create client
+                try:
+                    self.client = MlflowClient(self.tracking_uri)
+                    self._mlflow_initialized = True
+                    logger_ref.info(f"MLflow initialized successfully at {self.tracking_uri}")
+                except Exception as e:
+                    logger_ref.debug(f"Could not create MLflow client: {e}")
+                    self.client = None
+            except Exception as e:
+                logger_ref.debug(f"MLflow initialization error: {e}")
+                self.client = None
+        
+        # Start initialization in background thread - don't wait for it
+        init_thread = threading.Thread(target=_init_mlflow_async, daemon=True)
+        init_thread.start()
+        # Don't join - let it run in background
         self.run: Optional[Any] = None
         self._run_id: Optional[str] = None
-
-        self.logger = logging.getLogger(__name__)
 
     @property
     def run_id(self) -> Optional[str]:
@@ -114,6 +155,8 @@ class ExperimentTracker:
         tags: Optional[Dict[str, str]] = None,
         description: Optional[str] = None,
         experiment_id: Optional[int] = None,
+        log_data_versions: bool = True,
+        log_reproducibility: bool = True,
     ) -> str:
         """
         Start a new experiment run.
@@ -123,6 +166,8 @@ class ExperimentTracker:
             tags: Additional tags for the run
             description: Description of the run
             experiment_id: Optional experiment ID to link this run to
+            log_data_versions: Whether to log DVC data versions (default: True)
+            log_reproducibility: Whether to log reproducibility metadata (default: True)
 
         Returns:
             run_id: The ID of the started run
@@ -153,6 +198,27 @@ class ExperimentTracker:
         if description:
             mlflow.set_tag("mlflow.note.content", description)
 
+        # Log data versions and reproducibility metadata if requested
+        data_versioner = None
+        if log_data_versions or log_reproducibility:
+            try:
+                from mlops.data_versioner import DataVersioner
+                data_versioner = DataVersioner()
+            except ImportError:
+                pass
+
+        if log_data_versions:
+            try:
+                self.log_data_versions(data_versioner)
+            except Exception as e:
+                self.logger.warning(f"Failed to log data versions: {e}")
+
+        if log_reproducibility:
+            try:
+                self.log_reproducibility_metadata(data_versioner)
+            except Exception as e:
+                self.logger.warning(f"Failed to log reproducibility metadata: {e}")
+
         self.logger.info(f"Started MLflow run: {run_name} (ID: {self._run_id})")
 
         return self._run_id if self._run_id is not None else ""
@@ -162,8 +228,8 @@ class ExperimentTracker:
         mlflow.log_param("python_version", sys.version.split()[0])
         mlflow.log_param("platform", sys.platform)
 
-        # Log git commit if available
-        git_commit = self._get_git_commit()
+        # Log git commit if available (short version for backward compatibility)
+        git_commit = self._get_git_commit(short=True)
         if git_commit:
             mlflow.log_param("git_commit", git_commit)
 
@@ -185,7 +251,97 @@ class ExperimentTracker:
         except ImportError:
             pass
 
-    def _get_git_commit(self) -> Optional[str]:
+    def _compute_config_hash(self, config_path: str = "params.yaml") -> Optional[str]:
+        """Compute hash of params.yaml for reproducibility"""
+        try:
+            from pathlib import Path
+            config_file = Path(config_path)
+            if not config_file.exists():
+                self.logger.warning(f"Config file not found: {config_path}")
+                return None
+
+            hasher = hashlib.sha256()
+            with open(config_file, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    hasher.update(chunk)
+            return hasher.hexdigest()[:16]
+        except Exception as e:
+            self.logger.warning(f"Failed to compute config hash: {e}")
+            return None
+
+    def _get_environment_id(self) -> Optional[str]:
+        """Get environment identifier (Docker image or conda env)"""
+        # Check for Docker
+        docker_image = os.getenv("DOCKER_IMAGE_TAG")
+        if docker_image:
+            return f"docker:{docker_image}"
+
+        # Check for conda
+        conda_env = os.getenv("CONDA_DEFAULT_ENV")
+        if conda_env:
+            return f"conda:{conda_env}"
+
+        # Check for virtualenv
+        venv = os.getenv("VIRTUAL_ENV")
+        if venv:
+            from pathlib import Path
+            venv_name = Path(venv).name
+            return f"venv:{venv_name}"
+
+        # Fallback to Python executable path hash
+        try:
+            python_path = sys.executable
+            hasher = hashlib.sha256(python_path.encode())
+            return f"python:{hasher.hexdigest()[:8]}"
+        except Exception:
+            return None
+
+    def log_reproducibility_metadata(self, data_versioner: Optional[Any] = None) -> None:
+        """
+        Log complete reproducibility checklist.
+
+        Args:
+            data_versioner: Optional DataVersioner instance for data version information.
+        """
+        if not self.is_run_active:
+            raise RuntimeError("No active run. Call start_run() first.")
+
+        reproducibility = {
+            "code_commit_hash": self._get_git_commit(short=False),
+            "code_commit_short": self._get_git_commit(short=True),
+            "config_hash": self._compute_config_hash(),
+            "config_path": "params.yaml",
+            "environment_id": self._get_environment_id(),
+            "python_version": sys.version.split()[0],
+            "platform": sys.platform,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # Add data versions if available
+        if data_versioner:
+            try:
+                summary = data_versioner.get_data_version_summary()
+                reproducibility["data_versions"] = summary.get("data_versions", {})
+                reproducibility["dvc_repo_root"] = summary.get("dvc_repo_root")
+            except Exception as e:
+                self.logger.warning(f"Failed to get data versions: {e}")
+
+        # Log as tags for easy filtering
+        mlflow.set_tag("reproducibility_code_commit", reproducibility["code_commit_hash"] or "unknown")
+        mlflow.set_tag("reproducibility_config_hash", reproducibility["config_hash"] or "unknown")
+        mlflow.set_tag("reproducibility_environment", reproducibility["environment_id"] or "unknown")
+
+        # Log as parameters
+        mlflow.log_param("reproducibility_code_commit", reproducibility["code_commit_hash"] or "unknown")
+        mlflow.log_param("reproducibility_config_hash", reproducibility["config_hash"] or "unknown")
+        mlflow.log_param("reproducibility_environment", reproducibility["environment_id"] or "unknown")
+
+        # Store complete metadata as JSON artifact
+        mlflow.log_dict(reproducibility, "reproducibility_metadata.json")
+
+        self.logger.info("Logged reproducibility metadata")
+
+    def _get_git_commit(self, short: bool = False) -> Optional[str]:
         """Get current git commit hash"""
         try:
             import subprocess
@@ -197,7 +353,8 @@ class ExperimentTracker:
                 cwd=os.getcwd(),
             )
             if result.returncode == 0:
-                return result.stdout.strip()[:8]
+                commit_hash = result.stdout.strip()
+                return commit_hash[:8] if short else commit_hash
         except Exception:
             pass
         return None
@@ -455,6 +612,54 @@ class ExperimentTracker:
             return runs[0]  # Use list indexing instead of .iloc
         return None
 
+    def get_reproducibility_report(self, run_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get reproducibility report for a run.
+
+        Args:
+            run_id: Run ID to get report for. If None, uses current run.
+
+        Returns:
+            Dictionary with reproducibility information
+        """
+        if run_id is None:
+            run_id = self._run_id
+
+        if run_id is None:
+            raise ValueError("No run ID provided")
+
+        run = self.get_run(run_id)
+        if run is None:
+            return {"error": "Run not found"}
+
+        # Extract reproducibility information from run
+        tags = run.data.tags
+        params = run.data.params
+
+        report = {
+            "run_id": run_id,
+            "code_commit": tags.get("reproducibility_code_commit") or params.get("reproducibility_code_commit"),
+            "config_hash": tags.get("reproducibility_config_hash") or params.get("reproducibility_config_hash"),
+            "environment": tags.get("reproducibility_environment") or params.get("reproducibility_environment"),
+            "python_version": params.get("python_version"),
+            "platform": params.get("platform"),
+            "start_time": params.get("start_time"),
+        }
+
+        # Try to get data versions from artifact
+        try:
+            artifacts = self.client.list_artifacts(run_id)
+            for artifact in artifacts:
+                if artifact.path == "reproducibility_metadata.json":
+                    artifact_data = self.client.download_artifacts(run_id, artifact.path)
+                    with open(artifact_data, 'r') as f:
+                        report["full_metadata"] = json.load(f)
+                    break
+        except Exception as e:
+            self.logger.warning(f"Failed to load full reproducibility metadata: {e}")
+
+        return report
+
     @staticmethod
     def compute_data_hash(file_path: str) -> str:
         """
@@ -475,6 +680,81 @@ class ExperimentTracker:
     def __enter__(self):
         """Context manager entry"""
         return self
+
+    def log_data_versions(self, data_versioner: Optional[Any] = None) -> None:
+        """
+        Log DVC data versions to MLflow tags.
+
+        Args:
+            data_versioner: Optional DataVersioner instance. If None, creates a new one.
+        """
+        if not self.is_run_active:
+            raise RuntimeError("No active run. Call start_run() first.")
+
+        if data_versioner is None:
+            try:
+                from mlops.data_versioner import DataVersioner
+                data_versioner = DataVersioner()
+            except ImportError:
+                self.logger.warning("DataVersioner not available - skipping data version logging")
+                mlflow.set_tag("dvc_available", "false")
+                return
+
+        if not data_versioner._dvc_available:
+            mlflow.set_tag("dvc_available", "false")
+            self.logger.warning("DVC not available - skipping data version logging")
+            return
+
+        # Get data version summary
+        summary = data_versioner.get_data_version_summary()
+
+        # Store as tags
+        mlflow.set_tag("dvc_available", "true")
+        mlflow.set_tag("dvc_repo_root", summary["dvc_repo_root"])
+
+        # Store individual data file versions
+        for file_path, version in summary["data_versions"].items():
+            tag_key = f"data_version_{file_path.replace('/', '_').replace('.', '_')}"
+            mlflow.set_tag(tag_key, version)
+
+        # Store summary as JSON artifact
+        mlflow.log_dict(summary, "data_versions.json")
+
+    def log_feature_pipeline(
+        self,
+        pipeline_version: str,
+        feature_list: List[str],
+        feature_metadata: Dict[str, Any],
+    ) -> None:
+        """
+        Log feature pipeline version and metadata to MLflow.
+
+        Args:
+            pipeline_version: Feature pipeline version string
+            feature_list: List of feature names
+            feature_metadata: Dictionary with feature definitions and metadata
+        """
+        if not self.is_run_active:
+            raise RuntimeError("No active run. Call start_run() first.")
+
+        # Set feature pipeline version as tag
+        mlflow.set_tag("feature_pipeline_version", pipeline_version)
+
+        # Log feature pipeline metadata as artifact
+        pipeline_data = {
+            "pipeline_version": pipeline_version,
+            "features": feature_list,
+            "metadata": feature_metadata,
+        }
+        mlflow.log_dict(pipeline_data, "feature_pipeline.json")
+
+        # Also log as parameters for easy querying
+        mlflow.log_param("feature_pipeline_version", pipeline_version)
+        mlflow.log_param("num_pipeline_features", len(feature_list))
+
+        self.logger.info(
+            f"Logged feature pipeline version {pipeline_version} with {len(feature_list)} features"
+        )
 
     def log_experiment_config(self, experiment) -> None:
         """
@@ -592,11 +872,18 @@ def get_experiment_tracker(
     """
     if MLFLOW_AVAILABLE:
         try:
-            return ExperimentTracker(
+            tracker = ExperimentTracker(
                 tracking_uri=tracking_uri, experiment_name=experiment_name
             )
+            return tracker
         except Exception as e:
-            logging.warning(f"Failed to create MLflow tracker: {e}")
+            # Log a concise error message (connection errors are expected if MLflow is not running)
+            error_msg = str(e)
+            if "Connection" in error_msg or "refused" in error_msg.lower():
+                logger = logging.getLogger(__name__)
+                logger.debug(f"MLflow server not available: {error_msg}")
+            else:
+                logging.warning(f"Failed to create MLflow tracker: {error_msg}")
             if allow_dummy:
                 return DummyExperimentTracker()
             raise

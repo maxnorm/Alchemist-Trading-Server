@@ -17,11 +17,11 @@ from mt5_connection.tick_streamer import MT5TickStreamer
 from mt5_connection.terminal import MT5Terminal
 from models.currency_pair import CurrencyPair
 from models.account import Account
-from data_providers.price_provider import PriceDataProvider
-from data_providers.indicator_provider import IndicatorProvider
-from data_providers.registry import DataProviderRegistry
+# DataProvider imports removed - using connectors instead
+# ConnectorRegistry is used instead of DataProviderRegistry
 from features.catalog import FeatureCatalog
 from environments.live_env import LiveTradingEnv
+from http_controller import HTTPController
 
 
 class Server:
@@ -38,19 +38,22 @@ class Server:
         self.__streamers = []
         self.__accounts = []
         self.__all_currency_pairs = {}
-        self.__price_data_providers = []
-        self.__indicator_providers = []
+        self._connectors = []  # Replaces __price_data_providers and __indicator_providers
         self.__environments = {}
 
         self.__stop_char = "\n"
 
         self.__console_lock = threading.Lock()
+        
+        # Initialize HTTP controller for handling HTTP requests (Prometheus metrics, etc.)
+        self.__http_controller = HTTPController(console_lock=self.__console_lock)
 
         # Use provided database or create new one
         self.__db = database if database is not None else Database()
 
-        # Initialize data provider registry and feature catalog
-        self.__provider_registry = DataProviderRegistry()
+        # Initialize connector registry and feature catalog
+        from connectors.registry import ConnectorRegistry
+        self._connector_registry = ConnectorRegistry()
         self.__feature_catalog = FeatureCatalog(self.__db)
 
         # Initialize experiment components (Phase 3)
@@ -68,8 +71,16 @@ class Server:
             self.__agent_factory = AgentFactory()
             self.__environment_factory = EnvironmentFactory()
 
-            # Initialize experiment tracker (MLflow)
-            self.__experiment_tracker = get_experiment_tracker(allow_dummy=True)
+            # Initialize experiment tracker (MLflow) - non-blocking
+            # MLflow initialization happens asynchronously to avoid blocking server startup
+            try:
+                self.__experiment_tracker = get_experiment_tracker(allow_dummy=True)
+            except Exception as e:
+                # If MLflow initialization fails, use dummy tracker and continue
+                with self.__console_lock:
+                    print_with_datetime(f"Warning: MLflow tracker initialization failed, using dummy tracker: {e}")
+                from mlops.experiment_tracker import DummyExperimentTracker
+                self.__experiment_tracker = DummyExperimentTracker()
 
             # Initialize experiment components
             self.__experiment_builder = ExperimentBuilder(
@@ -108,7 +119,7 @@ class Server:
             if self.__verbose:
                 with self.__console_lock:
                     print_with_datetime(
-                        "Initialized Experiment Management components (Phase 3)"
+                        "Initialized Experiment Management"
                     )
         except Exception as e:
             # Experiment components are optional - log warning but don't fail
@@ -140,7 +151,7 @@ class Server:
 
         server_ip = os.getenv("SERVER_IP")
         server_port = int(os.getenv("SERVER_PORT"))
-
+        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__socket.bind((server_ip, server_port))
 
         if self.__verbose:
@@ -156,7 +167,7 @@ class Server:
 
         if self.__verbose:
             with self.__console_lock:
-                print_with_datetime("Server now listening for MT5 EA")
+                print_with_datetime("Server now listening for incoming connections")
 
         threading.Thread(target=self.__collect_economic_calendar, args=(17, 10)).start()
 
@@ -196,16 +207,98 @@ class Server:
         Receive auth code from the newly connected socket
         and create a new instance of TickStreamer or MT5Terminal
         """
+        # Set socket timeout to prevent indefinite blocking (15 seconds for auth)
+        # MT5 EA might need time to send authentication after connecting
+        try:
+            client.settimeout(15.0)
+        except Exception:
+            pass  # Socket might already be configured
+        
         cum_data = ""
-        while True:
-            data = client.recv(1024).decode("utf-8")
+        max_attempts = 100  # Prevent infinite loop
+        attempt = 0
+        
+        while attempt < max_attempts:
+            attempt += 1
+            try:
+                # Peek at first byte to detect SSL handshake without consuming it
+                peek_data = client.recv(1, socket.MSG_PEEK)
+                if not peek_data:
+                    if attempt <= 3:
+                        import time
+                        wait_time = 0.2 * attempt
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        self.__invalid_auth(client, f"Empty authentication message received after {attempt} attempts. Is the MT5 EA configured correctly?")
+                        return
+                
+                # Check if this is an SSL handshake (first byte is 0x16)
+                is_ssl = len(peek_data) > 0 and peek_data[0] == 0x16
+                
+                # If SSL detected, let HTTP controller handle it (it will wrap the socket)
+                if is_ssl:
+                    if self.__http_controller.handle_request(client, peek_data):
+                        return
+                    # If controller couldn't handle it (SSL not configured), reject
+                    self.__invalid_auth(client, "HTTPS connection detected but SSL is not configured")
+                    return
+                
+                # Receive data normally (not SSL)
+                data_bytes = client.recv(1024)
+            except socket.timeout:
+                self.__invalid_auth(client, "Authentication timeout: client did not send data within 15 seconds. Check if MT5 EA is running and configured correctly.")
+                return
+            except Exception as e:
+                self.__invalid_auth(client, f"Socket error during authentication: {e}")
+                return
+
+            # Handle empty data (client disconnected or sent nothing)
+            if not data_bytes:
+                if attempt <= 3:
+                    # First few attempts with empty data - might be a timing issue, wait a bit
+                    # MT5 EA might need time to send authentication after connecting
+                    import time
+                    wait_time = 0.2 * attempt  # Progressive wait: 0.2s, 0.4s, 0.6s
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # After 3 attempts with empty data, give up
+                    self.__invalid_auth(client, f"Empty authentication message received after {attempt} attempts. Is the MT5 EA configured correctly?")
+                    return
+
+            # Detect HTTP requests (Prometheus metrics scraping, health checks, etc.)
+            # Use HTTP controller to handle HTTP requests (pass raw bytes for detection)
+            if self.__http_controller.handle_request(client, data_bytes):
+                # Request was handled as HTTP, return early
+                return
+            
+            # Decode bytes to string for MT5 authentication
+            try:
+                data = data_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                # If we can't decode, it's probably not valid MT5 data
+                self.__invalid_auth(client, f"Invalid data encoding received. Expected UTF-8 text.")
+                return
 
             cum_data += data
 
             if self.__stop_char in cum_data:
-
-                infos = cum_data[: cum_data.index(self.__stop_char)]
-                infos = json.loads(infos)
+                # Extract the message up to the stop character
+                infos_str = cum_data[: cum_data.index(self.__stop_char)].strip()
+                
+                # Check if we have actual content to parse
+                if not infos_str:
+                    self.__invalid_auth(client, "Empty JSON message received (only whitespace)")
+                    return
+                
+                try:
+                    infos = json.loads(infos_str)
+                except json.JSONDecodeError as e:
+                    self.__invalid_auth(
+                        client, f"Invalid JSON in authentication message: {e}. Received: {repr(infos_str[:100])}"
+                    )
+                    return
 
                 if self.__verbose:
                     with self.__console_lock:
@@ -214,7 +307,10 @@ class Server:
                 auth_code = infos["auth_code"]
 
                 if auth_code == Socket.STREAMER.value:
-                    self.__auth_streamer(client, infos)
+                    try:
+                        self.__auth_streamer(client, infos)
+                    except Exception as e:
+                        raise
                 elif auth_code == Socket.TERMINAL.value:
                     self.__auth_terminal(client, infos)
                 else:
@@ -222,6 +318,10 @@ class Server:
                         client, f"Invalid authentification code [{auth_code}]"
                     )
                 break
+        
+        # If we exit the loop without breaking, we've exceeded max attempts
+        if attempt >= max_attempts:
+            self.__invalid_auth(client, f"Authentication failed: exceeded maximum attempts ({max_attempts}) without receiving valid message")
 
     def __auth_streamer(self, client, infos):
         """
@@ -241,37 +341,53 @@ class Server:
         """
         if len(infos) == 3:
             data = {"auth_status": Socket.SUCCESSFUL_AUTH.value}
-
-            client.send(bytes(json.dumps(data) + "\n", "utf-8"))
+            try:
+                client.send(bytes(json.dumps(data) + "\n", "utf-8"))
+            except Exception as e:
+                raise
 
             pair = CurrencyPair(infos["symbol"], infos["digits"])
             self.__all_currency_pairs[infos["symbol"]] = pair
 
-            price_provider = PriceDataProvider(pair)
-            self.__price_data_providers.append(price_provider)
-
-            # Register price provider with registry
-            provider_name = f"price_{infos['symbol']}"
-            self.__provider_registry.register_provider(provider_name, price_provider)
-
-            # Create and register indicator provider
-            indicator_provider = IndicatorProvider(pair, window_size=100)
-            self.__indicator_providers.append(indicator_provider)
-            indicator_name = f"indicator_{infos['symbol']}"
-            self.__provider_registry.register_provider(
-                indicator_name, indicator_provider
+            # Create MT5PriceConnector instead of PriceDataProvider
+            from connectors.mt5_price_connector import MT5PriceConnector
+            from connectors.base import ConnectorConfig
+            from connectors.registry import ConnectorRegistry
+            
+            connector_config = ConnectorConfig(
+                source="mt5",
+                symbol=infos["symbol"],
+                extra_config={"digits": infos["digits"]},
             )
+            price_connector = MT5PriceConnector(
+                currency_pair=pair,
+                config=connector_config,
+            )
+            
+            # Connect the connector
+            price_connector.connect()
+            
+            # Store connector (replacing price_data_providers list)
+            if not hasattr(self, '_connectors'):
+                self._connectors = []
+            self._connectors.append(price_connector)
+            
+            # Register connector with registry (replacing provider_registry)
+            if not hasattr(self, '_connector_registry'):
+                self._connector_registry = ConnectorRegistry()
+            connector_name = f"price_{infos['symbol']}"
+            self._connector_registry.register_connector(connector_name, price_connector)
 
-            # Sync catalog with newly registered providers
+            # Sync catalog with newly registered connectors
             try:
-                self.__feature_catalog.sync_with_registry(self.__provider_registry)
+                self.__feature_catalog.sync_with_connector_registry(self._connector_registry)
                 if self.__verbose:
                     with self.__console_lock:
                         feature_count = len(
-                            self.__provider_registry.discover_features()
+                            self._connector_registry.discover_features()
                         )
                         print_with_datetime(
-                            f"Registered providers for {infos['symbol']}. "
+                            f"Registered connector for {infos['symbol']}. "
                             f"Total features discovered: {feature_count}"
                         )
             except Exception as e:
@@ -319,20 +435,23 @@ class Server:
 
             client.send(bytes(json.dumps(data) + "\n", "utf-8"))
 
+            # Create broker adapter from terminal
+            from trading.brokers.mt5_adapter import MT5BrokerAdapter
+            broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
+            
             for account in self.__accounts:
                 if account.login == infos["login"]:
-                    account.set_terminal(terminal)
+                    account.set_broker_adapter(broker_adapter)
                     return
 
-            account = Account(infos["login"], terminal)
+            account = Account(infos["login"], broker_adapter=broker_adapter)
             self.__accounts.append(account)
 
             if infos["login"] not in self.__environments:
 
-                # Create environment with all registered providers (price + indicators)
-                all_providers = self.__price_data_providers + self.__indicator_providers
+                # Create environment with all registered connectors
                 env = LiveTradingEnv(
-                    account=account, data_providers=all_providers, window_size=50
+                    account=account, connectors=self._connectors, window_size=50
                 )
                 self.__environments[infos["login"]] = env
 
@@ -366,8 +485,11 @@ class Server:
 
     @property
     def provider_registry(self):
-        """Get the data provider registry (for API access)"""
-        return self.__provider_registry
+        """
+        Get the connector registry (for API access)
+        Backward compatibility: returns connector registry instead of provider registry
+        """
+        return self._connector_registry
 
     @property
     def feature_catalog(self):

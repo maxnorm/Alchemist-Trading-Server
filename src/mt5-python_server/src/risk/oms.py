@@ -21,6 +21,8 @@ import json
 import logging
 from pathlib import Path
 
+from monitoring.metrics import oms_reconciliation_errors
+
 
 class OrderState(Enum):
     """Order lifecycle states"""
@@ -668,6 +670,10 @@ class OrderManagementSystem:
                     self.on_alert("position_mismatch", alert_data)
                 except Exception as e:
                     self.logger.error(f"Error in alert callback: {e}", exc_info=True)
+
+        # Increment reconciliation error counter if discrepancies found
+        if discrepancies:
+            oms_reconciliation_errors.inc()
 
         return discrepancies
 

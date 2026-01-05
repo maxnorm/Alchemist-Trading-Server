@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from environments.live_env import LiveTradingEnv
 from models.account import Account
-from data_providers.price_provider import PriceDataProvider
+from connectors.base import IDataSourceConnector
 from domain.constants import TradingConstants
 
 
@@ -29,20 +29,20 @@ class EnvironmentFactory:
     def create_environment(
         self,
         account: Account,
-        data_providers: List[PriceDataProvider],
+        connectors: List[IDataSourceConnector],
         window_size: Optional[int] = None,
     ) -> LiveTradingEnv:
         """
         Create a trading environment for an account
         :param account: Account instance
-        :param data_providers: List of price data providers
+        :param connectors: List of data source connectors
         :param window_size: Window size (uses default if not provided)
         :return: Created LiveTradingEnv instance
         """
         window_size = window_size or self.default_window_size
 
         env = LiveTradingEnv(
-            account=account, data_providers=data_providers, window_size=window_size
+            account=account, connectors=connectors, window_size=window_size
         )
 
         self.environments[account.login] = env

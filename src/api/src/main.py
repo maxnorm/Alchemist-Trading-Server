@@ -5,8 +5,9 @@ FastAPI application entry point
 from fastapi import FastAPI, Request, WebSocket, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import logging
 import sys
 
@@ -23,6 +24,7 @@ from routers import (
 from websocket.manager import websocket_manager
 from websocket import channels  # type: ignore[attr-defined]
 from services.database import init_db, close_db
+from middleware.metrics import MetricsMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -64,6 +66,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Add metrics middleware (before CORS)
+app.add_middleware(MetricsMiddleware)
 
 # Configure CORS
 app.add_middleware(
@@ -197,3 +202,12 @@ async def root():
         "docs": "/docs",
         "health": "/health",
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
