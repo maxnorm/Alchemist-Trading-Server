@@ -31,18 +31,20 @@ class EnvironmentFactory:
         account: Account,
         connectors: List[IDataSourceConnector],
         window_size: Optional[int] = None,
+        seed: Optional[int] = None,
     ) -> LiveTradingEnv:
         """
         Create a trading environment for an account
         :param account: Account instance
         :param connectors: List of data source connectors
         :param window_size: Window size (uses default if not provided)
+        :param seed: Random seed for reproducibility
         :return: Created LiveTradingEnv instance
         """
         window_size = window_size or self.default_window_size
 
         env = LiveTradingEnv(
-            account=account, connectors=connectors, window_size=window_size
+            account=account, connectors=connectors, window_size=window_size, seed=seed
         )
 
         self.environments[account.login] = env

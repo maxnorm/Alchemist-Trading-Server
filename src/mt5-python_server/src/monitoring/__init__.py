@@ -22,6 +22,9 @@ from .metrics import (
     kill_switch_active,
     circuit_breaker_state,
     oms_reconciliation_errors,
+    # Data Quality Metrics
+    quarantine_ticks_total,
+    quarantine_rate,
 )
 
 __all__ = [
@@ -40,4 +43,6 @@ __all__ = [
     "kill_switch_active",
     "circuit_breaker_state",
     "oms_reconciliation_errors",
+    "quarantine_ticks_total",
+    "quarantine_rate",
 ]

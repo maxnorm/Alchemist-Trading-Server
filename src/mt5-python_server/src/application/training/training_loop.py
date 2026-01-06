@@ -645,6 +645,13 @@ class TrainingLoop:
             return
 
         try:
+            # Extract seed from environment if available
+            seed = None
+            if hasattr(self.env, "get_seed"):
+                seed = self.env.get_seed()
+            elif hasattr(self.env, "_seed"):
+                seed = self.env._seed
+            
             params = {
                 # Agent hyperparameters
                 "learning_rate": self.agent.learning_rate,
@@ -667,6 +674,12 @@ class TrainingLoop:
                     len(self.env.data_providers) if self.env.data_providers else 0
                 ),
             }
+            
+            # Add seed if available
+            if seed is not None:
+                params["seed"] = seed
+                self.tracker.set_tag("seed", str(seed))
+            
             self.tracker.log_params(params)
         except Exception as e:
             self.logger.warning(f"Failed to log params to MLflow: {e}")

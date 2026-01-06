@@ -229,9 +229,14 @@ class ExperimentTracker:
         mlflow.log_param("platform", sys.platform)
 
         # Log git commit if available (short version for backward compatibility)
-        git_commit = self._get_git_commit(short=True)
-        if git_commit:
-            mlflow.log_param("git_commit", git_commit)
+        git_commit_short = self._get_git_commit(short=True)
+        git_commit_full = self._get_git_commit(short=False)
+        if git_commit_short:
+            mlflow.log_param("git_commit", git_commit_short)
+            # Also log as tags for easy filtering
+            mlflow.set_tag("git_commit_short", git_commit_short)
+        if git_commit_full:
+            mlflow.set_tag("git_commit", git_commit_full)
 
         # Log timestamp
         mlflow.log_param("start_time", datetime.now().isoformat())
@@ -267,6 +272,46 @@ class ExperimentTracker:
             return hasher.hexdigest()[:16]
         except Exception as e:
             self.logger.warning(f"Failed to compute config hash: {e}")
+            return None
+
+    def _compute_requirements_hash(self) -> Optional[Dict[str, str]]:
+        """
+        Compute hash of requirements.txt for reproducibility.
+        
+        Returns:
+            Dictionary with 'hash' and 'path' keys, or None if file not found
+        """
+        try:
+            from pathlib import Path
+            
+            # Try multiple possible locations
+            possible_paths = [
+                Path("requirements.txt"),  # Project root
+                Path("src/mt5-python_server/requirements.txt"),  # Server-specific
+                Path(__file__).parent.parent.parent.parent / "requirements.txt",  # Relative to this file
+            ]
+            
+            requirements_file = None
+            for path in possible_paths:
+                if path.exists():
+                    requirements_file = path
+                    break
+            
+            if not requirements_file:
+                self.logger.debug("requirements.txt not found in any expected location")
+                return None
+            
+            hasher = hashlib.sha256()
+            with open(requirements_file, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    hasher.update(chunk)
+            
+            return {
+                "hash": hasher.hexdigest(),
+                "path": str(requirements_file)
+            }
+        except Exception as e:
+            self.logger.warning(f"Failed to compute requirements hash: {e}")
             return None
 
     def _get_environment_id(self) -> Optional[str]:
@@ -306,6 +351,9 @@ class ExperimentTracker:
         if not self.is_run_active:
             raise RuntimeError("No active run. Call start_run() first.")
 
+        # Compute requirements hash
+        requirements_info = self._compute_requirements_hash()
+        
         reproducibility = {
             "code_commit_hash": self._get_git_commit(short=False),
             "code_commit_short": self._get_git_commit(short=True),
@@ -316,6 +364,11 @@ class ExperimentTracker:
             "platform": sys.platform,
             "timestamp": datetime.now().isoformat(),
         }
+        
+        # Add requirements hash if available
+        if requirements_info:
+            reproducibility["requirements_hash"] = requirements_info["hash"]
+            reproducibility["requirements_path"] = requirements_info["path"]
 
         # Add data versions if available
         if data_versioner:
@@ -330,16 +383,51 @@ class ExperimentTracker:
         mlflow.set_tag("reproducibility_code_commit", reproducibility["code_commit_hash"] or "unknown")
         mlflow.set_tag("reproducibility_config_hash", reproducibility["config_hash"] or "unknown")
         mlflow.set_tag("reproducibility_environment", reproducibility["environment_id"] or "unknown")
+        if requirements_info:
+            mlflow.set_tag("reproducibility_requirements_hash", requirements_info["hash"])
 
         # Log as parameters
         mlflow.log_param("reproducibility_code_commit", reproducibility["code_commit_hash"] or "unknown")
         mlflow.log_param("reproducibility_config_hash", reproducibility["config_hash"] or "unknown")
         mlflow.log_param("reproducibility_environment", reproducibility["environment_id"] or "unknown")
+        if requirements_info:
+            mlflow.log_param("requirements_hash", requirements_info["hash"])
 
         # Store complete metadata as JSON artifact
         mlflow.log_dict(reproducibility, "reproducibility_metadata.json")
 
         self.logger.info("Logged reproducibility metadata")
+
+    def enforce_random_seeds(self, seed: int) -> None:
+        """
+        Enforce random seeds for numpy, TensorFlow, and Python's random module.
+        
+        This ensures reproducibility by setting seeds for all random number generators
+        used in the training process.
+        
+        Args:
+            seed: Random seed value to use
+        """
+        import random
+        
+        # Seed Python's random module
+        random.seed(seed)
+        
+        # Seed numpy
+        try:
+            import numpy as np
+            np.random.seed(seed)
+        except ImportError:
+            self.logger.warning("NumPy not available - skipping numpy seed")
+        
+        # Seed TensorFlow if available
+        try:
+            import tensorflow as tf
+            tf.random.set_seed(seed)
+        except ImportError:
+            self.logger.debug("TensorFlow not available - skipping TensorFlow seed")
+        
+        self.logger.info(f"Enforced random seeds: numpy, tensorflow, python.random = {seed}")
 
     def _get_git_commit(self, short: bool = False) -> Optional[str]:
         """Get current git commit hash"""

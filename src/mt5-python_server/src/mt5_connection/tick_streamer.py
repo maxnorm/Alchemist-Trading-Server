@@ -852,6 +852,31 @@ class MT5TickStreamer:
                             _write_debug_log("debug-session", "run1", "A", "tick_streamer.py:679", "Quality gate validation result", {"symbol": symbol, "is_valid": is_valid, "rejection_reason": rejection_reason, "bid": bid, "ask": ask, "has_metadata": timestamp_metadata is not None}, int(current_time.timestamp() * 1000))
                             # #endregion
                             if not is_valid:
+                                # Insert into quarantine before skipping
+                                if hasattr(self, '_MT5TickStreamer__db') and self.__db:
+                                    try:
+                                        self.__db.insert_quarantine_tick(
+                                            symbol=symbol,
+                                            date_time=date_time,
+                                            ask=ask,
+                                            bid=bid,
+                                            rejection_reason=rejection_reason,
+                                            receive_time=receive_time
+                                        )
+                                    except Exception as e:
+                                        # Log but don't fail main flow if quarantine insert fails
+                                        if self._use_structured:
+                                            self.__logger.log_event(
+                                                event_type="quarantine_insert_failed",
+                                                message=f"Failed to insert rejected tick into quarantine: {e}",
+                                                symbol=symbol,
+                                                level="WARNING",
+                                            )
+                                        else:
+                                            self.__logger.warning(
+                                                f"Failed to insert rejected tick into quarantine for {symbol}: {e}"
+                                            )
+                                
                                 if self._use_structured:
                                     self.__logger.log_event(
                                         event_type="quality_gate_rejection",

@@ -46,3 +46,12 @@ groups:
         annotations:
           summary: "Service is down"
           description: "{{ $labels.job }} service is not responding"
+
+      - alert: HighQuarantineRate
+        expr: data_quarantine_rate > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High quarantine rate detected"
+          description: "Quarantine rate for {{ $labels.symbol }} is {{ $value }}%, exceeding 10% threshold"

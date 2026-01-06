@@ -20,6 +20,7 @@ from routers import (
     trading,
     performance,
     health,
+    data,
 )
 from websocket.manager import websocket_manager
 from websocket import channels  # type: ignore[attr-defined]
@@ -126,6 +127,7 @@ app.include_router(hyperparameters.router, prefix="/api/v1", tags=["Hyperparamet
 app.include_router(models.router, prefix="/api/v1", tags=["Models"])
 app.include_router(trading.router, prefix="/api/v1", tags=["Trading"])
 app.include_router(performance.router, prefix="/api/v1", tags=["Performance"])
+app.include_router(data.router, prefix="/api/v1", tags=["Data"])
 
 
 # WebSocket endpoints

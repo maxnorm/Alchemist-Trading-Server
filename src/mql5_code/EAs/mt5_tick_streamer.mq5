@@ -83,11 +83,30 @@ void OnTick()
    {
       CJAVal json;
       json["symbol"] = symbol;
+      
+      // Use tick.time_msc (milliseconds since epoch) for accurate timestamp
+      // This is more reliable than tick.time which can be stale
+      long time_msc = tick.time_msc;
+      datetime tick_time;
+      int milliseconds;
+      
+      // If time_msc is valid (non-zero), use it; otherwise fallback to current time
+      if(time_msc > 0)
+      {
+         // Convert milliseconds to datetime structure
+         tick_time = (datetime)(time_msc / 1000);
+         milliseconds = (int)(time_msc % 1000);
+      }
+      else
+      {
+         // Fallback: use current server time if tick.time_msc is invalid
+         tick_time = TimeCurrent();
+         milliseconds = 0;
+      }
+      
       // Format timestamp with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm"
-      datetime tick_time = tick.time;
-      long msc = tick.time_msc % 1000;  // Extract milliseconds (0-999)
       string time_str = TimeToString(tick_time, TIME_DATE|TIME_SECONDS);
-      json["date_time"] = StringFormat("%s.%03d", time_str, (int)msc);
+      json["date_time"] = StringFormat("%s.%03d", time_str, milliseconds);
       json["ask"] = tick.ask;
       json["bid"] = tick.bid;
 

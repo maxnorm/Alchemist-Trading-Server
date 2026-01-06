@@ -102,3 +102,16 @@ oms_reconciliation_errors = Counter(
     'oms_reconciliation_errors_total',
     'OMS reconciliation errors'
 )
+
+# Data Quality Metrics
+quarantine_ticks_total = Counter(
+    'data_quarantine_ticks_total',
+    'Total ticks quarantined',
+    ['symbol', 'rejection_category']
+)
+
+quarantine_rate = Gauge(
+    'data_quarantine_rate',
+    'Quarantine rate percentage',
+    ['symbol']
+)

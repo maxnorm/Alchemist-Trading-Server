@@ -27,6 +27,7 @@ class LiveTradingEnv(BaseTradingEnv):
         use_reward_normalization: bool = True,
         reward_monitor: Optional[RewardMonitor] = None,
         use_reward_monitoring: bool = True,
+        seed: Optional[int] = None,
     ):
         """
         Initialize the live trading environment
@@ -38,6 +39,7 @@ class LiveTradingEnv(BaseTradingEnv):
         :param use_reward_normalization: Whether to normalize rewards (default: True)
         :param reward_monitor: Optional reward monitor instance
         :param use_reward_monitoring: Whether to monitor rewards (default: True)
+        :param seed: Random seed for reproducibility
         """
         # Calculate number of pairs and features per pair
         n_pairs = len(connectors) if connectors else 1
@@ -56,7 +58,7 @@ class LiveTradingEnv(BaseTradingEnv):
         action_size = (n_pairs * 3) + 1
 
         super().__init__(
-            window_size, price_shape=total_features, action_size=action_size
+            window_size, price_shape=total_features, action_size=action_size, seed=seed
         )
         self.account = account
         self.connectors = connectors

@@ -121,11 +121,14 @@ class ExperimentRunner:
                     experiment.currency_pairs
                 )
                 window_size = experiment.hyperparameters.get("window_size", 50)
+                # Extract seed from hyperparameters (default: 42 for reproducibility)
+                seed = experiment.hyperparameters.get("seed", 42)
 
                 environment = self.environment_factory.create_environment(
                     account=account,
-                    data_providers=data_providers,
+                    connectors=data_providers,
                     window_size=window_size,
+                    seed=seed,
                 )
 
                 # Create agent
@@ -197,6 +200,30 @@ class ExperimentRunner:
 
                         # Log hyperparameters
                         self.experiment_tracker.log_params(experiment.hyperparameters)
+                        
+                        # Save complete experiment configuration as artifact
+                        experiment_config = {
+                            "hyperparameters": experiment.hyperparameters,
+                            "currency_pairs": experiment.currency_pairs,
+                            "features": experiment.features,
+                            "training_mode": experiment.training_mode,
+                            "name": experiment.name,
+                            "description": experiment.description,
+                            "experiment_id": experiment_id,
+                        }
+                        try:
+                            self.experiment_tracker.log_dict(experiment_config, "experiment_config.json")
+                        except Exception as e:
+                            logger.warning(f"Failed to save experiment config as artifact: {e}")
+                        
+                        # Log seed and enforce random seeds
+                        try:
+                            self.experiment_tracker.log_param("seed", seed)
+                            self.experiment_tracker.set_tag("seed", str(seed))
+                            # Enforce random seeds for reproducibility
+                            self.experiment_tracker.enforce_random_seeds(seed)
+                        except Exception as e:
+                            logger.warning(f"Failed to log/enforce random seeds: {e}")
 
                     except Exception as e:
                         logger.warning(f"Failed to start MLflow run: {e}")

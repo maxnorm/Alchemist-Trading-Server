@@ -10,6 +10,9 @@ import statistics
 import numpy as np
 import pytz
 
+# Import contract validation
+from .contracts import get_contract_registry
+
 
 class QualityGate:
     """
@@ -98,7 +101,15 @@ class QualityGate:
         """
         self.metrics['total_processed'] += 1
         
-        # Check 1: Missing Data
+        # Check 0: Schema Contract Validation (NEW)
+        # This validates structure, types, formats, and basic constraints
+        contract_registry = get_contract_registry()
+        contract_valid, contract_error = contract_registry.validate("tick", tick)
+        if not contract_valid:
+            self.metrics['missing_data_rejected'] += 1
+            return False, f"Schema contract violation: {contract_error}", None
+        
+        # Check 1: Missing Data (legacy check - may be redundant with contract validation)
         missing_reason = self._check_missing_data(tick, symbol)
         if missing_reason:
             self.metrics['missing_data_rejected'] += 1
