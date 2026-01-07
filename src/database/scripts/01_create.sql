@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS forex_pairs(
 );
 
 CREATE TABLE IF NOT EXISTS ticks_forex(
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL NOT NULL,
     datetime TIMESTAMP NOT NULL,
     ask DOUBLE PRECISION NOT NULL,
     bid DOUBLE PRECISION NOT NULL,
@@ -51,8 +51,11 @@ CREATE TABLE IF NOT EXISTS ticks_forex(
     updated_at TIMESTAMP NULL
 );
 
+-- Note: Unique index on id will be created after hypertable conversion
+-- (see 16_timescaledb_setup.sql) to avoid TimescaleDB constraints
+
 CREATE TABLE IF NOT EXISTS economic_calendar(
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL NOT NULL,
     datetime TIMESTAMP NOT NULL,
     event VARCHAR(250) NOT NULL,
     impact INT NOT NULL,
@@ -67,6 +70,9 @@ CREATE TABLE IF NOT EXISTS economic_calendar(
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NULL
 );
+
+-- Note: Unique index on id will be created after hypertable conversion
+-- (see 16_timescaledb_setup.sql) to avoid TimescaleDB constraints
 
 -- Add triggers for updated_at columns
 CREATE TRIGGER update_currency_updated_at

@@ -96,7 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_calculated_at ON performance_metrics(calculated_a
 
 -- Equity curve data points (for chart rendering)
 CREATE TABLE IF NOT EXISTS equity_curve (
-    id SERIAL PRIMARY KEY,
+    id SERIAL NOT NULL,
     model_id INT,  -- NULL for portfolio-level
     session_id INT,
     timestamp TIMESTAMP NOT NULL,
@@ -107,6 +107,9 @@ CREATE TABLE IF NOT EXISTS equity_curve (
     FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
     FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE
 );
+
+-- Note: Unique index on id will be created after hypertable conversion
+-- (see 16_timescaledb_setup.sql) to avoid TimescaleDB constraints
 
 CREATE INDEX IF NOT EXISTS idx_model_timestamp ON equity_curve(model_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_session_timestamp ON equity_curve(session_id, timestamp);
