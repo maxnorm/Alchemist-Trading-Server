@@ -13,13 +13,13 @@ logger = logging.getLogger(__name__)
 class ConnectionManager:
     """Manages WebSocket connections and channels"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Map channel -> set of WebSocket connections
         self.channels: Dict[str, Set[WebSocket]] = {}
         self.connections: Set[WebSocket] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, channel: str):
+    async def connect(self, websocket: WebSocket, channel: str) -> None:
         """Connect a WebSocket to a channel"""
         await websocket.accept()
 
