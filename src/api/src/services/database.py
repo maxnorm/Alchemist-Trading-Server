@@ -33,7 +33,7 @@ def init_db():
     # Add connection arguments for PostgreSQL
     connect_args = {
         "connect_timeout": 10,
-        "options": "-c statement_timeout=30000 -c client_encoding=utf8"
+        "options": "-c statement_timeout=30000 -c client_encoding=utf8",
     }
 
     _engine = create_engine(

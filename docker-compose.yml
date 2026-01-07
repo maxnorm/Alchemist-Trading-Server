@@ -172,7 +172,7 @@ services:
         # REMOVED: ports - access via gateway
         # UPDATED: Environment variables to use gateway paths
         environment:
-            VITE_API_URL: /api/v1
+            VITE_API_URL: ""
             VITE_WS_URL: /ws
         depends_on:
             api:

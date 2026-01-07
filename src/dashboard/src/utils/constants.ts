@@ -1,10 +1,16 @@
 // Use relative paths when behind gateway, absolute for dev
 const getBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_URL
-  if (envUrl) return envUrl
-  // In production (behind gateway), use relative path
-  // In development, fallback to localhost
-  return window.location.origin.includes('localhost') ? 'http://localhost:8000' : ''
+  // If env URL is explicitly set (including empty string), always use it (respects docker-compose configuration)
+  if (envUrl !== undefined) {
+    // Empty string means use relative paths (endpoints already include /api/v1/)
+    // If env URL is relative (starts with /), use it as-is for gateway
+    // If absolute, use it directly
+    return envUrl
+  }
+  // Fallback: In development, check if we're accessing via gateway (port 80) or directly (port 8000)
+  const isGateway = window.location.port === '' || window.location.port === '80'
+  return isGateway ? '' : 'http://localhost:8000'
 }
 
 const getWsUrl = () => {

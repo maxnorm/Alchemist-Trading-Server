@@ -20,6 +20,24 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split React Query into its own chunk
+          'react-query': ['@tanstack/react-query'],
+          // Split React Router
+          'react-router': ['react-router-dom'],
+          // Split chart libraries (large dependencies)
+          'charts': ['recharts', 'lightweight-charts'],
+          // Split UI libraries
+          'ui': ['lucide-react', 'react-hot-toast'],
+          // Split form libraries
+          'forms': ['react-hook-form', 'zod'],
+        },
+      },
+    },
+    // Increase chunk size warning limit since we're manually chunking
+    chunkSizeWarningLimit: 600,
   },
   test: {
     globals: true,

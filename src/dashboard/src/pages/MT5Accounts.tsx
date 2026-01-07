@@ -26,7 +26,11 @@ export default function MT5Accounts() {
   const { data: accounts, isLoading: accountsLoading } = useQuery({
     queryKey: ['mt5-accounts'],
     queryFn: () => api.getMT5Accounts(),
-    refetchInterval: 10000,
+    // Only refetch in background if data is stale (respects global staleTime: 30s)
+    // Remove aggressive refetchInterval - let React Query handle caching
+    refetchInterval: false,
+    // Refetch when window regains focus to keep data fresh
+    refetchOnWindowFocus: true,
   })
 
   const { data: models } = useQuery({
@@ -45,9 +49,7 @@ export default function MT5Accounts() {
     },
   })
 
-  if (accountsLoading) {
-    return <LoadingSpinner />
-  }
+  // Don't block entire page - show content progressively
 
   return (
     <div className="space-y-6">
@@ -56,14 +58,18 @@ export default function MT5Accounts() {
         <p className="text-muted-foreground">Manage MT5 account connections and model assignments</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {accounts?.map((account) => {
-          const isConnected = account.last_seen_at
-            ? new Date(account.last_seen_at).getTime() > Date.now() - 60000
-            : false
+      {accountsLoading && !accounts ? (
+        <LoadingSpinner />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {accounts && accounts.length > 0 ? (
+            accounts.map((account) => {
+              const isConnected = account.last_seen_at
+                ? new Date(account.last_seen_at).getTime() > Date.now() - 60000
+                : false
 
-          return (
-            <Card key={account.id}>
+              return (
+                <Card key={account.id}>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">
@@ -107,11 +113,19 @@ export default function MT5Accounts() {
                     Pause
                   </Button>
                 </div>
+                </CardContent>
+              </Card>
+              )
+            })
+          ) : (
+            <Card className="col-span-full">
+              <CardContent className="py-8 text-center">
+                <p className="text-muted-foreground">No MT5 accounts found</p>
               </CardContent>
             </Card>
-          )
-        })}
-      </div>
+          )}
+        </div>
+      )}
 
       {showDialog && assignAccountId && (
         <Card>

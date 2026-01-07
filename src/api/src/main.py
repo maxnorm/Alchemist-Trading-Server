@@ -66,7 +66,26 @@ app = FastAPI(
     description="REST API and WebSocket service for the Alchemist AI Forex Experimentation Platform",
     version="1.0.0",
     lifespan=lifespan,
+    # Configure docs to use /api/openapi.json
+    docs_url="/docs",
+    openapi_url="/api/openapi.json",
 )
+
+# Override openapi method to ensure it uses /api/openapi.json
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Add metrics middleware (before CORS)
 app.add_middleware(MetricsMiddleware)

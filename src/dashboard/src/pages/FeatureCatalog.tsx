@@ -51,11 +51,18 @@ export default function FeatureCatalog() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {isLoading && features.length === 0 ? (
         <LoadingSpinner />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature) => (
+          {features.length === 0 ? (
+            <Card className="col-span-full">
+              <CardContent className="py-8 text-center">
+                <p className="text-muted-foreground">No features found</p>
+              </CardContent>
+            </Card>
+          ) : (
+            features.map((feature) => (
             <Card key={feature.id}>
               <CardHeader>
                 <CardTitle className="text-lg">{feature.name}</CardTitle>
@@ -87,7 +94,8 @@ export default function FeatureCatalog() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            ))
+          )}
         </div>
       )}
     </div>

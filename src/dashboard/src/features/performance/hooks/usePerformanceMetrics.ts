@@ -19,7 +19,7 @@ export function usePerformanceMetrics(period: string = 'all_time', modelId?: num
     queryKey,
     queryFn: () =>
       modelId ? api.getModelMetrics(modelId, period) : api.getPortfolioMetrics(period),
-    refetchInterval: 30000,
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
   })
 
   // WebSocket subscription for real-time updates
@@ -37,14 +37,6 @@ export function usePerformanceMetrics(period: string = 'all_time', modelId?: num
     )
     return unsubscribe
   }, [subscribe, refetch, modelId])
-
-  // Auto-refresh every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refetch()
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [refetch])
 
   return {
     metrics: data as (PortfolioMetrics | ModelMetrics) | undefined,

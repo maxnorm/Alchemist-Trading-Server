@@ -170,5 +170,6 @@ export function useDashboardStats() {
     topModels,
     recentActivity,
     quickStats,
+    circuitBreaker,
   }
 }

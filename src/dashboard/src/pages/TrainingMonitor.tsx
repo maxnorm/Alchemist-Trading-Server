@@ -82,9 +82,7 @@ export default function TrainingMonitor() {
     },
   })
 
-  if (isLoading) {
-    return <LoadingSpinner />
-  }
+  // Don't block entire page - show content progressively
 
   return (
     <div className="space-y-6">
@@ -93,7 +91,9 @@ export default function TrainingMonitor() {
         <p className="text-muted-foreground">Monitor active training experiments in real-time</p>
       </div>
 
-      {activeExperiments.length === 0 ? (
+      {isLoading && !experiments ? (
+        <LoadingSpinner />
+      ) : activeExperiments.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             No active experiments. Create one from the Experiment Builder.

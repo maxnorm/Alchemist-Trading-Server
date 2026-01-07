@@ -1,8 +1,5 @@
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/services/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EquityCurveChart } from '@/components/charts/EquityCurveChart'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
@@ -25,12 +22,7 @@ export default function Dashboard() {
   const { positions } = useTradingPositions()
   const { metrics: portfolioMetrics, isLoading: metricsLoading } = usePerformanceMetrics('all_time')
   const { equityCurve } = useEquityCurve()
-  const { topModels, recentActivity, quickStats } = useDashboardStats()
-
-  const { data: circuitBreaker } = useQuery({
-    queryKey: ['circuit-breaker'],
-    queryFn: () => api.getCircuitBreakerStatus(),
-  })
+  const { topModels, recentActivity, quickStats, circuitBreaker } = useDashboardStats()
 
   // Filter equity curve to last 30 days for mini chart
   const recentEquityCurve = useMemo(() => {
@@ -39,18 +31,20 @@ export default function Dashboard() {
     return equityCurve.filter((point) => new Date(point.timestamp).getTime() > thirtyDaysAgo)
   }, [equityCurve])
 
-  if (metricsLoading && !portfolioMetrics) {
-    return <LoadingSpinner />
-  }
+  // Don't block entire page - show content progressively as it loads
+  // Components will handle their own loading states
 
   return (
     <div className="space-y-6">
       <DashboardHeader lastUpdated={new Date().toLocaleTimeString()} />
 
-      <PortfolioSummaryCards metrics={portfolioMetrics as PortfolioMetrics | undefined} />
+      <PortfolioSummaryCards 
+        metrics={portfolioMetrics as PortfolioMetrics | undefined} 
+        isLoading={metricsLoading}
+      />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <SystemStatus status={status} circuitBreaker={circuitBreaker || null} />
+        <SystemStatus status={status} circuitBreaker={circuitBreaker ?? null} />
         <ActivePositions positions={positions} />
       </div>
 

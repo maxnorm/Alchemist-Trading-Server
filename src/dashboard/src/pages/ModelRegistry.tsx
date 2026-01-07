@@ -58,9 +58,7 @@ export default function ModelRegistry() {
     enabled: !!selectedModel && selectedModel.stage === 'paper',
   })
 
-  if (isLoading) {
-    return <LoadingSpinner />
-  }
+  // Don't block entire page - show content progressively
 
   return (
     <div className="space-y-6">
@@ -89,8 +87,11 @@ export default function ModelRegistry() {
       </div>
 
       {/* Models Table */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredModels.map((model: Model) => {
+      {isLoading && filteredModels.length === 0 ? (
+        <LoadingSpinner />
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredModels.map((model: Model) => {
           const stageInfo = MODEL_STAGES[model.stage]
           const isSelected = selectedModel?.id === model.id
           const modelRunningSession = model.stage === 'paper' && selectedModel?.id === model.id 
@@ -224,7 +225,8 @@ export default function ModelRegistry() {
             </Card>
           )
         })}
-      </div>
+        </div>
+      )}
 
       {/* Model Details Modal */}
       {selectedModel && (

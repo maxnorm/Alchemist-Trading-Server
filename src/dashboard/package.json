@@ -51,6 +51,7 @@
     "@testing-library/jest-dom": "^6.1.0",
     "@testing-library/user-event": "^14.5.1",
     "@vitest/ui": "^1.0.0",
-    "jsdom": "^23.0.0"
+    "jsdom": "^23.0.0",
+    "@tanstack/react-query-devtools": "^5.12.0"
   }
 }
