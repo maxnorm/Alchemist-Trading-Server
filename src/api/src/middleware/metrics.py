@@ -3,13 +3,10 @@ Middleware for tracking API metrics
 """
 
 import time
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
-
-if TYPE_CHECKING:
-    from prometheus_client import Histogram, Counter
 
 logger = logging.getLogger(__name__)
 

@@ -602,11 +602,7 @@ class LiveTrainer:
                 connector = self.env.connectors[pair_index]
                 pair = getattr(connector, "currency_pair", None)
             else:
-                connector = (
-                    self.env.connectors[0]
-                    if self.env.connectors
-                    else None
-                )
+                connector = self.env.connectors[0] if self.env.connectors else None
                 pair = getattr(connector, "currency_pair", None) if connector else None
 
             if pair:

@@ -87,7 +87,9 @@ class TrainingLoop:
                 "divergence_threshold": self.config.divergence_threshold,
                 "gradient_norm_threshold": self.config.gradient_norm_threshold,
             }
-            self.health_monitor: Optional[TrainingHealthMonitor] = TrainingHealthMonitor(health_config)
+            self.health_monitor: Optional[TrainingHealthMonitor] = (
+                TrainingHealthMonitor(health_config)
+            )
         else:
             self.health_monitor = None
 
@@ -508,7 +510,7 @@ class TrainingLoop:
                     preserve_initial_norm=self.config.gradient_norm_preservation_enabled,
                 ),
             ]
-            
+
             # Add value overestimation check only if q_values is available
             if q_values is not None:
                 checks.append(
@@ -516,7 +518,7 @@ class TrainingLoop:
                         q_values, threshold=self.config.value_overestimation_threshold
                     )
                 )
-            
+
             checks.append(
                 self.health_monitor.check_update_to_data_ratio(
                     update_count=self.metrics_tracker.total_steps,
@@ -538,7 +540,9 @@ class TrainingLoop:
 
                 if is_diverged:
                     # Convert reason to string if needed
-                    reason_str = str(reason) if reason is not None else "Unknown divergence"
+                    reason_str = (
+                        str(reason) if reason is not None else "Unknown divergence"
+                    )
                     self.logger.error(f"Training divergence detected: {reason_str}")
                     if pre_training_checkpoint:
                         self._handle_divergence(pre_training_checkpoint, reason_str)
@@ -595,7 +599,9 @@ class TrainingLoop:
                 and pair_index < len(self.env.connectors)
                 else None
             )
-            currency_pair = getattr(connector, "currency_pair", None) if connector else None
+            currency_pair = (
+                getattr(connector, "currency_pair", None) if connector else None
+            )
             pair_symbol = currency_pair.symbol if currency_pair else "UNKNOWN"
             action_name = action_names.get(
                 action_type.value if hasattr(action_type, "value") else action_type,
@@ -787,9 +793,7 @@ class TrainingLoop:
                 "min_experiences": self.config.min_experiences_before_training,
                 # Environment
                 "window_size": self.env.window_size,
-                "n_pairs": (
-                    len(self.env.connectors) if self.env.connectors else 0
-                ),
+                "n_pairs": (len(self.env.connectors) if self.env.connectors else 0),
             }
 
             # Add seed if available

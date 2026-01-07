@@ -519,7 +519,11 @@ class TradingController:
                             if pair_index < len(self.env.connectors)
                             else None
                         )
-                        pair = getattr(connector, "currency_pair", None) if connector else None
+                        pair = (
+                            getattr(connector, "currency_pair", None)
+                            if connector
+                            else None
+                        )
                         if pair:
                             symbol = pair.symbol
                     if action_type:
@@ -618,10 +622,14 @@ class TradingController:
                 else:
                     connector = (
                         self.env.connectors[pair_index]
-                        if self.env.connectors and pair_index is not None and pair_index < len(self.env.connectors)
+                        if self.env.connectors
+                        and pair_index is not None
+                        and pair_index < len(self.env.connectors)
                         else None
                     )
-                    pair = getattr(connector, "currency_pair", None) if connector else None
+                    pair = (
+                        getattr(connector, "currency_pair", None) if connector else None
+                    )
                     symbol = pair.symbol if pair else "UNKNOWN"
                     action_type_str = str(action_type)
             except Exception:

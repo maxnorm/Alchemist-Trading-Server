@@ -88,9 +88,11 @@ class LiveTradingEnv(BaseTradingEnv):
             db = Database()
             symbols = (
                 [
-                    getattr(getattr(connector, "config", None), "symbol", "unknown")
-                    if getattr(connector, "config", None)
-                    else "unknown"
+                    (
+                        getattr(getattr(connector, "config", None), "symbol", "unknown")
+                        if getattr(connector, "config", None)
+                        else "unknown"
+                    )
                     for connector in connectors
                 ]
                 if connectors

@@ -30,8 +30,8 @@ account_equity = Gauge("trading_account_equity", "Current account equity")
 current_drawdown_pct = Gauge("trading_drawdown_pct", "Current drawdown percentage")
 
 win_rate = Gauge(
-    "trading_win_rate", "Win rate", ["period"]  # period: '24h', '7d', '30d'
-)
+    "trading_win_rate", "Win rate", ["period"]
+)  # period: '24h', '7d', '30d'
 
 # System Metrics
 api_request_duration = Histogram(

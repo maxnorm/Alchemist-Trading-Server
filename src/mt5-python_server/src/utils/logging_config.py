@@ -74,8 +74,8 @@ def setup_logger(name: str, log_file: str, level=logging.INFO) -> logging.Logger
 
     # File handler with rotation (10MB max, keep 5 backups)
     file_handler = RotatingFileHandler(
-        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"  # 10MB
-    )
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )  # 10MB
     file_handler.setLevel(level)
 
     # Console handler
@@ -189,8 +189,8 @@ def setup_structured_logger(
 
     # File handler with rotation (10MB max, keep 5 backups)
     file_handler = RotatingFileHandler(
-        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"  # 10MB
-    )
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )  # 10MB
     file_handler.setLevel(level)
 
     # Console handler
