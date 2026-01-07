@@ -8,7 +8,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 
-if TYPE_CHECKING:l
+if TYPE_CHECKING:
     from prometheus_client import Histogram, Counter
 
 logger = logging.getLogger(__name__)
