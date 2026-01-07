@@ -91,6 +91,7 @@ class ExperimentTracker:
         # Suppress urllib3 retry warnings for MLflow connections
         # These are expected when MLflow server is not available
         import urllib3
+
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 
@@ -98,10 +99,10 @@ class ExperimentTracker:
         # All initialization happens in background threads without waiting
         self.client = None
         self._mlflow_initialized = False
-        
+
         # Store logger reference for use in nested function
         logger_ref = self.logger
-        
+
         def _init_mlflow_async():
             """Initialize MLflow components in background without blocking"""
             try:
@@ -113,25 +114,27 @@ class ExperimentTracker:
                             mlflow.create_experiment(experiment_name)
                     except Exception as e:
                         logger_ref.debug(f"Could not create MLflow experiment: {e}")
-                
+
                 # Set experiment
                 try:
                     mlflow.set_experiment(experiment_name)
                 except Exception as e:
                     logger_ref.debug(f"Could not set MLflow experiment: {e}")
-                
+
                 # Create client
                 try:
                     self.client = MlflowClient(self.tracking_uri)
                     self._mlflow_initialized = True
-                    logger_ref.info(f"MLflow initialized successfully at {self.tracking_uri}")
+                    logger_ref.info(
+                        f"MLflow initialized successfully at {self.tracking_uri}"
+                    )
                 except Exception as e:
                     logger_ref.debug(f"Could not create MLflow client: {e}")
                     self.client = None
             except Exception as e:
                 logger_ref.debug(f"MLflow initialization error: {e}")
                 self.client = None
-        
+
         # Start initialization in background thread - don't wait for it
         init_thread = threading.Thread(target=_init_mlflow_async, daemon=True)
         init_thread.start()
@@ -203,6 +206,7 @@ class ExperimentTracker:
         if log_data_versions or log_reproducibility:
             try:
                 from mlops.data_versioner import DataVersioner
+
                 data_versioner = DataVersioner()
             except ImportError:
                 pass
@@ -260,13 +264,14 @@ class ExperimentTracker:
         """Compute hash of params.yaml for reproducibility"""
         try:
             from pathlib import Path
+
             config_file = Path(config_path)
             if not config_file.exists():
                 self.logger.warning(f"Config file not found: {config_path}")
                 return None
 
             hasher = hashlib.sha256()
-            with open(config_file, 'rb') as f:
+            with open(config_file, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
                     hasher.update(chunk)
             return hasher.hexdigest()[:16]
@@ -277,39 +282,37 @@ class ExperimentTracker:
     def _compute_requirements_hash(self) -> Optional[Dict[str, str]]:
         """
         Compute hash of requirements.txt for reproducibility.
-        
+
         Returns:
             Dictionary with 'hash' and 'path' keys, or None if file not found
         """
         try:
             from pathlib import Path
-            
+
             # Try multiple possible locations
             possible_paths = [
                 Path("requirements.txt"),  # Project root
                 Path("src/mt5-python_server/requirements.txt"),  # Server-specific
-                Path(__file__).parent.parent.parent.parent / "requirements.txt",  # Relative to this file
+                Path(__file__).parent.parent.parent.parent
+                / "requirements.txt",  # Relative to this file
             ]
-            
+
             requirements_file = None
             for path in possible_paths:
                 if path.exists():
                     requirements_file = path
                     break
-            
+
             if not requirements_file:
                 self.logger.debug("requirements.txt not found in any expected location")
                 return None
-            
+
             hasher = hashlib.sha256()
-            with open(requirements_file, 'rb') as f:
+            with open(requirements_file, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
                     hasher.update(chunk)
-            
-            return {
-                "hash": hasher.hexdigest(),
-                "path": str(requirements_file)
-            }
+
+            return {"hash": hasher.hexdigest(), "path": str(requirements_file)}
         except Exception as e:
             self.logger.warning(f"Failed to compute requirements hash: {e}")
             return None
@@ -330,6 +333,7 @@ class ExperimentTracker:
         venv = os.getenv("VIRTUAL_ENV")
         if venv:
             from pathlib import Path
+
             venv_name = Path(venv).name
             return f"venv:{venv_name}"
 
@@ -341,7 +345,9 @@ class ExperimentTracker:
         except Exception:
             return None
 
-    def log_reproducibility_metadata(self, data_versioner: Optional[Any] = None) -> None:
+    def log_reproducibility_metadata(
+        self, data_versioner: Optional[Any] = None
+    ) -> None:
         """
         Log complete reproducibility checklist.
 
@@ -353,7 +359,7 @@ class ExperimentTracker:
 
         # Compute requirements hash
         requirements_info = self._compute_requirements_hash()
-        
+
         reproducibility = {
             "code_commit_hash": self._get_git_commit(short=False),
             "code_commit_short": self._get_git_commit(short=True),
@@ -364,7 +370,7 @@ class ExperimentTracker:
             "platform": sys.platform,
             "timestamp": datetime.now().isoformat(),
         }
-        
+
         # Add requirements hash if available
         if requirements_info:
             reproducibility["requirements_hash"] = requirements_info["hash"]
@@ -380,16 +386,34 @@ class ExperimentTracker:
                 self.logger.warning(f"Failed to get data versions: {e}")
 
         # Log as tags for easy filtering
-        mlflow.set_tag("reproducibility_code_commit", reproducibility["code_commit_hash"] or "unknown")
-        mlflow.set_tag("reproducibility_config_hash", reproducibility["config_hash"] or "unknown")
-        mlflow.set_tag("reproducibility_environment", reproducibility["environment_id"] or "unknown")
+        mlflow.set_tag(
+            "reproducibility_code_commit",
+            reproducibility["code_commit_hash"] or "unknown",
+        )
+        mlflow.set_tag(
+            "reproducibility_config_hash", reproducibility["config_hash"] or "unknown"
+        )
+        mlflow.set_tag(
+            "reproducibility_environment",
+            reproducibility["environment_id"] or "unknown",
+        )
         if requirements_info:
-            mlflow.set_tag("reproducibility_requirements_hash", requirements_info["hash"])
+            mlflow.set_tag(
+                "reproducibility_requirements_hash", requirements_info["hash"]
+            )
 
         # Log as parameters
-        mlflow.log_param("reproducibility_code_commit", reproducibility["code_commit_hash"] or "unknown")
-        mlflow.log_param("reproducibility_config_hash", reproducibility["config_hash"] or "unknown")
-        mlflow.log_param("reproducibility_environment", reproducibility["environment_id"] or "unknown")
+        mlflow.log_param(
+            "reproducibility_code_commit",
+            reproducibility["code_commit_hash"] or "unknown",
+        )
+        mlflow.log_param(
+            "reproducibility_config_hash", reproducibility["config_hash"] or "unknown"
+        )
+        mlflow.log_param(
+            "reproducibility_environment",
+            reproducibility["environment_id"] or "unknown",
+        )
         if requirements_info:
             mlflow.log_param("requirements_hash", requirements_info["hash"])
 
@@ -401,33 +425,37 @@ class ExperimentTracker:
     def enforce_random_seeds(self, seed: int) -> None:
         """
         Enforce random seeds for numpy, TensorFlow, and Python's random module.
-        
+
         This ensures reproducibility by setting seeds for all random number generators
         used in the training process.
-        
+
         Args:
             seed: Random seed value to use
         """
         import random
-        
+
         # Seed Python's random module
         random.seed(seed)
-        
+
         # Seed numpy
         try:
             import numpy as np
+
             np.random.seed(seed)
         except ImportError:
             self.logger.warning("NumPy not available - skipping numpy seed")
-        
+
         # Seed TensorFlow if available
         try:
             import tensorflow as tf
+
             tf.random.set_seed(seed)
         except ImportError:
             self.logger.debug("TensorFlow not available - skipping TensorFlow seed")
-        
-        self.logger.info(f"Enforced random seeds: numpy, tensorflow, python.random = {seed}")
+
+        self.logger.info(
+            f"Enforced random seeds: numpy, tensorflow, python.random = {seed}"
+        )
 
     def _get_git_commit(self, short: bool = False) -> Optional[str]:
         """Get current git commit hash"""
@@ -646,6 +674,9 @@ class ExperimentTracker:
 
     def get_run(self, run_id: str) -> Optional[Any]:
         """Get run information by ID"""
+        if self.client is None:
+            self.logger.warning("MLflow client not initialized")
+            return None
         try:
             return self.client.get_run(run_id)
         except Exception as e:
@@ -700,7 +731,9 @@ class ExperimentTracker:
             return runs[0]  # Use list indexing instead of .iloc
         return None
 
-    def get_reproducibility_report(self, run_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_reproducibility_report(
+        self, run_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Get reproducibility report for a run.
 
@@ -726,25 +759,33 @@ class ExperimentTracker:
 
         report = {
             "run_id": run_id,
-            "code_commit": tags.get("reproducibility_code_commit") or params.get("reproducibility_code_commit"),
-            "config_hash": tags.get("reproducibility_config_hash") or params.get("reproducibility_config_hash"),
-            "environment": tags.get("reproducibility_environment") or params.get("reproducibility_environment"),
+            "code_commit": tags.get("reproducibility_code_commit")
+            or params.get("reproducibility_code_commit"),
+            "config_hash": tags.get("reproducibility_config_hash")
+            or params.get("reproducibility_config_hash"),
+            "environment": tags.get("reproducibility_environment")
+            or params.get("reproducibility_environment"),
             "python_version": params.get("python_version"),
             "platform": params.get("platform"),
             "start_time": params.get("start_time"),
         }
 
         # Try to get data versions from artifact
-        try:
-            artifacts = self.client.list_artifacts(run_id)
-            for artifact in artifacts:
-                if artifact.path == "reproducibility_metadata.json":
-                    artifact_data = self.client.download_artifacts(run_id, artifact.path)
-                    with open(artifact_data, 'r') as f:
-                        report["full_metadata"] = json.load(f)
-                    break
-        except Exception as e:
-            self.logger.warning(f"Failed to load full reproducibility metadata: {e}")
+        if self.client is not None:
+            try:
+                artifacts = self.client.list_artifacts(run_id)
+                for artifact in artifacts:
+                    if artifact.path == "reproducibility_metadata.json":
+                        artifact_data = self.client.download_artifacts(
+                            run_id, artifact.path
+                        )
+                        with open(artifact_data, "r") as f:
+                            report["full_metadata"] = json.load(f)
+                        break
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to load full reproducibility metadata: {e}"
+                )
 
         return report
 
@@ -782,9 +823,12 @@ class ExperimentTracker:
         if data_versioner is None:
             try:
                 from mlops.data_versioner import DataVersioner
+
                 data_versioner = DataVersioner()
             except ImportError:
-                self.logger.warning("DataVersioner not available - skipping data version logging")
+                self.logger.warning(
+                    "DataVersioner not available - skipping data version logging"
+                )
                 mlflow.set_tag("dvc_available", "false")
                 return
 

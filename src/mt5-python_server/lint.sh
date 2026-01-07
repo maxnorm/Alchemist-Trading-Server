@@ -100,7 +100,7 @@ echo ""
 
 # Step 3: MyPy type checking
 echo -e "${YELLOW}📋 Step 3/3: Running MyPy type checker...${NC}"
-if $PYTHON_CMD -m mypy src/ --ignore-missing-imports; then
+if $PYTHON_CMD -m mypy src/ --ignore-missing-imports --explicit-package-bases; then
     echo -e "${GREEN}✅ MyPy: No type errors found${NC}"
 else
     echo -e "${RED}❌ MyPy: Type errors found${NC}"

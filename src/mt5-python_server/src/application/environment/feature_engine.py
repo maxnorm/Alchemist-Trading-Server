@@ -49,19 +49,22 @@ class FeatureEngine:
 
         # Economic calendar database (optional)
         self.database = database
-        
+
         # Feature versioning
         self.feature_registry = feature_registry
         self.auto_register = auto_register
         self.pipeline_version: Optional[str] = None
         self.feature_list: List[str] = []
         self._feature_definitions: Optional[Dict[str, Any]] = None
-        
+
         # Initialize version tracking
         self._initialize_versioning()
 
     def extract_features(
-        self, price_history: List[float], symbol: str, current_time: Optional[datetime] = None
+        self,
+        price_history: List[float],
+        symbol: str,
+        current_time: Optional[datetime] = None,
     ) -> Optional[np.ndarray]:
         """
         Extract features from price history for a single pair
@@ -71,10 +74,10 @@ class FeatureEngine:
         :return: Feature matrix or None if insufficient data
         """
         start_time = time.time()
-        
+
         if len(price_history) < self.window_size:
             return None
-        
+
         # Point-in-time constraint: filter price_history to only include data <= current_time
         # Note: The actual filtering happens in PriceHistoryManager.get_history_up_to()
         # This parameter is for explicit point-in-time awareness and defensive checks
@@ -135,13 +138,13 @@ class FeatureEngine:
             # Record feature extraction duration
             duration = time.time() - start_time
             feature_extraction_duration.observe(duration)
-            
+
             return pair_feature_matrix
 
         # Record duration even if extraction failed
         duration = time.time() - start_time
         feature_extraction_duration.observe(duration)
-        
+
         return None
 
     def set_database(self, database):
@@ -154,11 +157,12 @@ class FeatureEngine:
         if self.feature_registry is None and database is not None:
             try:
                 from mlops.feature_registry import FeatureRegistry
+
                 self.feature_registry = FeatureRegistry(database)
                 self._initialize_versioning()
             except Exception as e:
                 logger.warning(f"Failed to initialize feature registry: {e}")
-    
+
     def _initialize_versioning(self):
         """
         Initialize feature pipeline versioning.
@@ -167,13 +171,16 @@ class FeatureEngine:
         try:
             # Get feature computation code files
             feature_files = self._get_feature_code_files()
-            
+
             # Compute pipeline hash
             if self.feature_registry:
-                pipeline_hash = self.feature_registry.compute_pipeline_hash(feature_files)
+                pipeline_hash = self.feature_registry.compute_pipeline_hash(
+                    feature_files
+                )
             else:
                 # Fallback: compute hash directly
                 import hashlib
+
                 hasher = hashlib.sha256()
                 for file_path in sorted(feature_files):
                     try:
@@ -182,19 +189,23 @@ class FeatureEngine:
                     except FileNotFoundError:
                         hasher.update(file_path.encode())
                 pipeline_hash = hasher.hexdigest()
-            
+
             # Generate feature list from technical indicators
             self.feature_list = self._generate_feature_list()
-            
+
             # Generate feature definitions
             self._feature_definitions = self._get_feature_definitions()
-            
+
             # Check if this pipeline version already exists
             if self.feature_registry:
-                existing_version = self.feature_registry.get_pipeline_by_hash(pipeline_hash)
+                existing_version = self.feature_registry.get_pipeline_by_hash(
+                    pipeline_hash
+                )
                 if existing_version:
                     self.pipeline_version = existing_version.version
-                    logger.info(f"Using existing pipeline version: {self.pipeline_version}")
+                    logger.info(
+                        f"Using existing pipeline version: {self.pipeline_version}"
+                    )
                 elif self.auto_register:
                     # Auto-register new version
                     code_commit = self.feature_registry.get_git_commit()
@@ -203,7 +214,7 @@ class FeatureEngine:
                     if latest:
                         # Increment patch version
                         try:
-                            version_parts = latest.version.lstrip('v').split('.')
+                            version_parts = latest.version.lstrip("v").split(".")
                             if len(version_parts) == 3:
                                 major, minor, patch = map(int, version_parts)
                                 new_version = f"v{major}.{minor}.{patch + 1}"
@@ -213,7 +224,7 @@ class FeatureEngine:
                             new_version = "v1.0.0"
                     else:
                         new_version = "v1.0.0"
-                    
+
                     registered = self.feature_registry.register_pipeline(
                         version=new_version,
                         pipeline_hash=pipeline_hash,
@@ -222,56 +233,70 @@ class FeatureEngine:
                         code_commit=code_commit,
                     )
                     self.pipeline_version = registered.version
-                    logger.info(f"Auto-registered new pipeline version: {self.pipeline_version}")
+                    logger.info(
+                        f"Auto-registered new pipeline version: {self.pipeline_version}"
+                    )
             else:
                 # No registry, use hash as version
                 self.pipeline_version = f"hash_{pipeline_hash[:8]}"
-                logger.debug(f"Using hash-based version (no registry): {self.pipeline_version}")
-                
+                logger.debug(
+                    f"Using hash-based version (no registry): {self.pipeline_version}"
+                )
+
         except Exception as e:
-            logger.warning(f"Failed to initialize feature versioning: {e}", exc_info=True)
+            logger.warning(
+                f"Failed to initialize feature versioning: {e}", exc_info=True
+            )
             # Fallback to hash-based version
             self.pipeline_version = "unknown"
-    
+
     def _get_feature_code_files(self) -> List[str]:
         """
         Get list of feature computation code files for hashing.
-        
+
         :return: List of file paths
         """
         # Get the base directory (assuming we're in src/mt5-python_server/src)
         base_dir = Path(__file__).parent.parent.parent
-        
+
         feature_files = [
             str(base_dir / "application" / "environment" / "feature_engine.py"),
             str(base_dir / "utils" / "technical_indicators.py"),
             str(base_dir / "utils" / "feature_engineering.py"),
         ]
-        
+
         # Filter to only existing files
         return [f for f in feature_files if os.path.exists(f)]
-    
+
     def _generate_feature_list(self) -> List[str]:
         """
         Generate list of feature names computed by this pipeline.
-        
+
         :return: List of feature names
         """
         # Get features from technical indicators
         features = ["price"]  # Base price feature
-        
+
         # Add technical indicator features
         # These match what TechnicalIndicators.calculate_all_indicators returns
         indicator_features = [
-            "sma_20", "sma_50",
-            "ema_12", "ema_26",
+            "sma_20",
+            "sma_50",
+            "ema_12",
+            "ema_26",
             "rsi",
-            "macd", "macd_signal", "macd_histogram",
-            "bb_upper", "bb_middle", "bb_lower", "bb_width",
-            "price_change", "price_change_pct",
+            "macd",
+            "macd_signal",
+            "macd_histogram",
+            "bb_upper",
+            "bb_middle",
+            "bb_lower",
+            "bb_width",
+            "price_change",
+            "price_change_pct",
         ]
         features.extend(indicator_features)
-        
+
         # Add economic calendar features (if database is available)
         if self.database is not None:
             economic_features = [
@@ -283,13 +308,13 @@ class FeatureEngine:
                 "next_event_impact",
             ]
             features.extend(economic_features)
-        
+
         return features
-    
+
     def _get_feature_definitions(self) -> Dict[str, Any]:
         """
         Get feature definitions and metadata.
-        
+
         :return: Dictionary of feature metadata
         """
         definitions = {
@@ -309,13 +334,13 @@ class FeatureEngine:
                 "latency_buffer_minutes": 5,
             },
         }
-        
+
         return definitions
-    
+
     def get_pipeline_metadata(self) -> Dict[str, Any]:
         """
         Export feature pipeline metadata for versioning.
-        
+
         :return: Dictionary with pipeline metadata
         """
         return {
@@ -326,7 +351,8 @@ class FeatureEngine:
                 "features_per_pair": self.features_per_pair,
                 "normalization_method": self.feature_engineer.normalization_method,
             },
-            "feature_definitions": self._feature_definitions or self._get_feature_definitions(),
+            "feature_definitions": self._feature_definitions
+            or self._get_feature_definitions(),
         }
 
     def extract_economic_features(
@@ -353,15 +379,17 @@ class FeatureEngine:
             # Apply latency buffer: only use events published at least 5 minutes ago
             LATENCY_BUFFER_MINUTES = 5
             from datetime import timedelta
+
             effective_time = current_time - timedelta(minutes=LATENCY_BUFFER_MINUTES)
-            
+
             # Get events for next 24 hours
             events = self.database.get_upcoming_events(hours_ahead=24)
-            
+
             # Filter events to only include those published before effective_time
             # This prevents look-ahead bias by only using events that would have been available
             available_events = [
-                e for e in events
+                e
+                for e in events
                 if self._parse_event_datetime(e.get("datetime")) < effective_time
             ]
 
@@ -425,13 +453,13 @@ class FeatureEngine:
     def _parse_event_datetime(self, dt_value: Any) -> datetime:
         """
         Parse event datetime from various formats
-        
+
         :param dt_value: Datetime value (string or datetime object)
         :return: Parsed datetime
         """
         if isinstance(dt_value, datetime):
             return dt_value
-        
+
         if isinstance(dt_value, str):
             # Try ISO format
             try:
@@ -443,12 +471,15 @@ class FeatureEngine:
                 return datetime.strptime(dt_value, "%Y-%m-%d %H:%M:%S")
             except ValueError:
                 pass
-        
+
         # Fallback: return current time if parsing fails
         return datetime.utcnow()
 
     def extract_features_for_all_pairs(
-        self, price_histories: Dict[str, List[float]], connectors, current_time: Optional[datetime] = None
+        self,
+        price_histories: Dict[str, List[float]],
+        connectors,
+        current_time: Optional[datetime] = None,
     ) -> Optional[np.ndarray]:
         """
         Extract features for all pairs
@@ -477,7 +508,9 @@ class FeatureEngine:
                 return None
 
             # Extract features for this pair (includes indicator calculation)
-            pair_features = self.extract_features(price_history, symbol, current_time=current_time)
+            pair_features = self.extract_features(
+                price_history, symbol, current_time=current_time
+            )
             if pair_features is None:
                 return None
 

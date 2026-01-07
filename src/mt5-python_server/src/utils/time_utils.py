@@ -54,7 +54,7 @@ def normalize_to_utc(
         # Try to parse common formats
         try:
             # MT5 format with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm" (23 chars)
-            if "." in dt and len(dt) == 23 and dt[19] == '.':
+            if "." in dt and len(dt) == 23 and dt[19] == ".":
                 parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S.%f")
             # MT5 format without milliseconds: "YYYY.MM.DD HH:MM:SS" (19 chars)
             elif "." in dt and len(dt) == 19:
@@ -97,7 +97,7 @@ def normalize_to_est(
     if isinstance(dt, str):
         try:
             # MT5 format with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm" (23 chars)
-            if "." in dt and len(dt) == 23 and dt[19] == '.':
+            if "." in dt and len(dt) == 23 and dt[19] == ".":
                 parsed_dt = datetime.strptime(dt, "%Y.%m.%d %H:%M:%S.%f")
             # MT5 format without milliseconds: "YYYY.MM.DD HH:MM:SS" (19 chars)
             elif "." in dt and len(dt) == 19:
@@ -136,7 +136,7 @@ def parse_mt5_timestamp(
     """
     try:
         # Try parsing with milliseconds first (23 chars: "YYYY.MM.DD HH:MM:SS.mmm")
-        if len(timestamp_str) == 23 and timestamp_str[19] == '.':
+        if len(timestamp_str) == 23 and timestamp_str[19] == ".":
             dt = datetime.strptime(timestamp_str, "%Y.%m.%d %H:%M:%S.%f")
         # Fallback to seconds-only format (19 chars: "YYYY.MM.DD HH:MM:SS")
         else:

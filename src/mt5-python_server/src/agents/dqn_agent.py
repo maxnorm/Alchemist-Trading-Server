@@ -100,7 +100,7 @@ class DQNAgent:
         if learning_rate_scheduler is not None:
             self.learning_rate_scheduler = learning_rate_scheduler
         elif scheduler_config is not None:
-            scheduler_type = scheduler_config.pop('type', 'reduce_on_plateau')
+            scheduler_type = scheduler_config.pop("type", "reduce_on_plateau")
             self.learning_rate_scheduler = create_scheduler(
                 scheduler_type=scheduler_type, **scheduler_config
             )
@@ -244,10 +244,10 @@ class DQNAgent:
 
         # Track inference latency
         start_time = time.time()
-        
+
         # Get Q-values from network
         q_values = self.q_network.predict(state, verbose=0)[0]
-        
+
         # Record inference latency
         inference_time = time.time() - start_time
         model_inference_latency.observe(inference_time)
@@ -517,7 +517,9 @@ class DQNAgent:
                 "epsilon": self.epsilon,
                 "per_beta": self.per_beta if self.use_per else None,
                 "learning_rate": self.learning_rate,
-                "learning_rate_history": self.lr_history[-100:] if self.lr_history else [],  # Last 100
+                "learning_rate_history": (
+                    self.lr_history[-100:] if self.lr_history else []
+                ),  # Last 100
             },
             "scheduler": {
                 "enabled": self.learning_rate_scheduler is not None,

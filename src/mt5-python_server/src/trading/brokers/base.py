@@ -14,7 +14,7 @@ class OrderStatus:
     """
     Standardized order status across all brokers
     """
-    
+
     def __init__(
         self,
         order_id: str,
@@ -27,7 +27,7 @@ class OrderStatus:
     ):
         """
         Initialize order status
-        
+
         :param order_id: Internal order ID
         :param state: Order state
         :param filled_quantity: Quantity filled so far
@@ -43,7 +43,7 @@ class OrderStatus:
         self.broker_order_id = broker_order_id
         self.reject_reason = reject_reason
         self.timestamp = timestamp or datetime.utcnow()
-    
+
     def to_dict(self) -> Dict:
         """Convert to dictionary"""
         return {
@@ -61,19 +61,19 @@ class IBrokerAdapter(ABC):
     """
     Unified interface for broker adapters
     All brokers must implement this interface to enable plug-and-play broker support
-    
+
     This interface provides a broker-agnostic way to:
     - Submit orders with idempotency support
     - Get positions and account information
     - Reconcile positions
     - Cancel orders
     """
-    
+
     @abstractmethod
     def submit_order(self, order: Order, idempotency_key: str) -> OrderStatus:
         """
         Submit an order to the broker with idempotency support
-        
+
         :param order: Order object to submit
         :param idempotency_key: Unique key for idempotency (same key = same order)
         :return: OrderStatus object with order state and fill information
@@ -81,59 +81,57 @@ class IBrokerAdapter(ABC):
         :raises ConnectionError: If broker connection fails
         """
         pass
-    
+
     @abstractmethod
     def get_positions(self) -> List[Position]:
         """
         Get all open positions from the broker
-        
+
         :return: List of Position objects
         :raises ConnectionError: If broker connection fails
         """
         pass
-    
+
     @abstractmethod
-    def reconcile(
-        self, expected_positions: Dict[str, float]
-    ) -> List[Discrepancy]:
+    def reconcile(self, expected_positions: Dict[str, float]) -> List[Discrepancy]:
         """
         Reconcile expected positions with actual broker positions
-        
+
         :param expected_positions: Dictionary mapping symbol -> expected quantity
         :return: List of Discrepancy objects for any mismatches
         :raises ConnectionError: If broker connection fails
         """
         pass
-    
+
     @abstractmethod
     def get_order_status(self, order_id: str) -> OrderStatus:
         """
         Get current status of an order
-        
+
         :param order_id: Order ID (internal or broker-specific)
         :return: OrderStatus object
         :raises ValueError: If order_id not found
         :raises ConnectionError: If broker connection fails
         """
         pass
-    
+
     @abstractmethod
     def cancel_order(self, order_id: str) -> bool:
         """
         Cancel an order
-        
+
         :param order_id: Order ID to cancel
         :return: True if cancellation successful, False otherwise
         :raises ValueError: If order_id not found
         :raises ConnectionError: If broker connection fails
         """
         pass
-    
+
     @abstractmethod
     def get_account_info(self) -> AccountInfo:
         """
         Get account information from broker
-        
+
         :return: AccountInfo object
         :raises ConnectionError: If broker connection fails
         """

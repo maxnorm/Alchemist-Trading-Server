@@ -353,7 +353,7 @@ class FeatureCatalog:
             logger.info(f"Synced {len(features)} features from registry to catalog")
         except Exception as e:
             logger.error(f"Error syncing registry with catalog: {e}", exc_info=True)
-    
+
     def sync_with_connector_registry(self, connector_registry) -> None:
         """
         Sync catalog with features discovered from connector registry.
@@ -363,10 +363,14 @@ class FeatureCatalog:
         try:
             features = connector_registry.discover_features()
             self.store_features(features)
-            logger.info(f"Synced {len(features)} features from connector registry to catalog")
+            logger.info(
+                f"Synced {len(features)} features from connector registry to catalog"
+            )
         except Exception as e:
-            logger.error(f"Error syncing connector registry with catalog: {e}", exc_info=True)
-    
+            logger.error(
+                f"Error syncing connector registry with catalog: {e}", exc_info=True
+            )
+
     def get_features_by_pipeline_version(self, pipeline_version: str) -> List[Feature]:
         """
         Get features for a specific pipeline version.
@@ -416,7 +420,7 @@ class FeatureCatalog:
         finally:
             if conn:
                 conn.close()
-    
+
     def get_feature_history(self, feature_name: str) -> List[Dict[str, Any]]:
         """
         Track feature changes across pipeline versions.
@@ -445,12 +449,14 @@ class FeatureCatalog:
 
             for row in rows:
                 pipeline_version, first_seen_version, created_at, updated_at = row
-                history.append({
-                    "pipeline_version": pipeline_version,
-                    "first_seen_version": first_seen_version,
-                    "created_at": created_at.isoformat() if created_at else None,
-                    "updated_at": updated_at.isoformat() if updated_at else None,
-                })
+                history.append(
+                    {
+                        "pipeline_version": pipeline_version,
+                        "first_seen_version": first_seen_version,
+                        "created_at": created_at.isoformat() if created_at else None,
+                        "updated_at": updated_at.isoformat() if updated_at else None,
+                    }
+                )
 
             cursor.close()
             return history
@@ -463,10 +469,8 @@ class FeatureCatalog:
         finally:
             if conn:
                 conn.close()
-    
-    def compare_versions(
-        self, version1: str, version2: str
-    ) -> Dict[str, Any]:
+
+    def compare_versions(self, version1: str, version2: str) -> Dict[str, Any]:
         """
         Compare feature sets between two pipeline versions.
 
@@ -493,7 +497,7 @@ class FeatureCatalog:
             "removed_count": len(removed),
             "common_count": len(common),
         }
-    
+
     def update_feature_pipeline_version(
         self, feature_name: str, pipeline_version: str
     ) -> None:
@@ -566,9 +570,7 @@ class FeatureCatalog:
                 f"Updated feature '{feature_name}' to pipeline version {pipeline_version}"
             )
         except Exception as e:
-            logger.error(
-                f"Error updating feature pipeline version: {e}", exc_info=True
-            )
+            logger.error(f"Error updating feature pipeline version: {e}", exc_info=True)
             if conn:
                 conn.rollback()
         finally:

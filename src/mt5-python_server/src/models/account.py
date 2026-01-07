@@ -1,4 +1,3 @@
-import asyncio
 from typing import Dict, Any, Optional
 
 from trading.brokers.base import IBrokerAdapter
@@ -13,26 +12,32 @@ class Account:
     Class for an account
     """
 
-    def __init__(self, login, broker_adapter: Optional[IBrokerAdapter] = None, terminal: Optional[MT5Terminal] = None):
+    def __init__(
+        self,
+        login,
+        broker_adapter: Optional[IBrokerAdapter] = None,
+        terminal: Optional[MT5Terminal] = None,
+    ):
         """
         Initialize account
-        
+
         :param login: Account login ID
         :param broker_adapter: IBrokerAdapter instance (preferred)
         :param terminal: MT5Terminal instance (for backward compatibility)
         """
         self.login = login
-        
+
         # Use broker_adapter if provided, otherwise create from terminal
         if broker_adapter:
             self.broker_adapter = broker_adapter
         elif terminal:
             # Create adapter from terminal for backward compatibility
             from trading.brokers.mt5_adapter import MT5BrokerAdapter
+
             self.broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
         else:
             raise ValueError("Either broker_adapter or terminal must be provided")
-        
+
         self.trade_executor = TradeExecutor(broker_adapter=self.broker_adapter)
         self.current_trade: Dict[str, Any] = {}
 
@@ -46,10 +51,11 @@ class Account:
         :param terminal: Terminal to set
         """
         from trading.brokers.mt5_adapter import MT5BrokerAdapter
+
         self.broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
         self.trade_executor = TradeExecutor(broker_adapter=self.broker_adapter)
         self.update_info()
-    
+
     def set_broker_adapter(self, broker_adapter: IBrokerAdapter):
         """
         Set the broker adapter for the account
@@ -116,7 +122,11 @@ class Account:
         """
         account_info = self.broker_adapter.get_account_info()
         # Ensure login matches
-        return account_info.update(login=self.login) if account_info.login != self.login else account_info
+        return (
+            account_info.update(login=self.login)
+            if account_info.login != self.login
+            else account_info
+        )
 
     def _update_from_dict(self, infos: dict):
         """

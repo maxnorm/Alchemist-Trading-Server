@@ -42,7 +42,9 @@ class RewardNormalizer:
         self.count = 0
 
         # Window-based statistics (if enabled)
-        self.reward_window: Optional[deque] = deque(maxlen=self.window_size) if use_window else None
+        self.reward_window: Optional[deque] = (
+            deque(maxlen=self.window_size) if use_window else None
+        )
 
         # Statistics history for monitoring
         self.mean_history: List[float] = []
@@ -121,12 +123,12 @@ class RewardNormalizer:
         :return: Dictionary with mean, std, count, and other statistics
         """
         return {
-            'mean': self.reward_mean,
-            'std': self.reward_std,
-            'variance': self.reward_variance,
-            'count': self.count,
-            'min': float(np.min(self.mean_history)) if self.mean_history else 0.0,
-            'max': float(np.max(self.mean_history)) if self.mean_history else 0.0,
+            "mean": self.reward_mean,
+            "std": self.reward_std,
+            "variance": self.reward_variance,
+            "count": self.count,
+            "min": float(np.min(self.mean_history)) if self.mean_history else 0.0,
+            "max": float(np.max(self.mean_history)) if self.mean_history else 0.0,
         }
 
     def reset(self):
@@ -156,9 +158,7 @@ class RewardNormalizer:
 
         # Compare recent window to previous window
         recent_means = np.array(self.mean_history[-window_size:])
-        previous_means = np.array(
-            self.mean_history[-window_size * 2 : -window_size]
-        )
+        previous_means = np.array(self.mean_history[-window_size * 2 : -window_size])
 
         recent_mean = np.mean(recent_means)
         previous_mean = np.mean(previous_means)

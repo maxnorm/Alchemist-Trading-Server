@@ -6,7 +6,7 @@ Manages tick streamer connections
 import json
 import socket
 import threading
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from codes.socket_code import Socket
 from models.currency_pair import CurrencyPair
@@ -91,19 +91,19 @@ class StreamerManager:
     def get_currency_pairs(self) -> Dict[str, CurrencyPair]:
         """Get all currency pairs"""
         return self.currency_pairs.copy()
-    
+
     def get_connectors(self) -> List[IDataSourceConnector]:
         """
         Get all data source connectors
-        
+
         :return: List of connector instances
         """
         return list(self.connectors.values())
-    
+
     def get_connector(self, symbol: str) -> Optional[IDataSourceConnector]:
         """
         Get connector for a specific symbol
-        
+
         :param symbol: Trading symbol
         :return: Connector instance or None if not found
         """

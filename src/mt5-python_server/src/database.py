@@ -12,32 +12,44 @@ from datetime import datetime
 from typing import List, Dict
 from utils.time_utils import print_with_datetime, normalize_to_utc, ensure_utc_timezone
 
+
 # Helper function for debug logging
-def _write_debug_log(session_id, run_id, hypothesis_id, location, message, data, timestamp=None):
+def _write_debug_log(
+    session_id, run_id, hypothesis_id, location, message, data, timestamp=None
+):
     """Write debug log entry"""
     try:
         if timestamp is None:
             from utils.time_utils import get_utc_time
+
             timestamp = int(get_utc_time().timestamp() * 1000)
         # Use absolute path from system reminder - calculate dynamically
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_dir)))
-        log_path = os.path.join(project_root, '.cursor', 'debug.log')
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(current_file_dir))
+        )
+        log_path = os.path.join(project_root, ".cursor", "debug.log")
         # Ensure directory exists
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": session_id,
-                "runId": run_id,
-                "hypothesisId": hypothesis_id,
-                "location": location,
-                "message": message,
-                "data": data,
-                "timestamp": timestamp
-            }) + "\n")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "sessionId": session_id,
+                        "runId": run_id,
+                        "hypothesisId": hypothesis_id,
+                        "location": location,
+                        "message": message,
+                        "data": data,
+                        "timestamp": timestamp,
+                    }
+                )
+                + "\n"
+            )
     except Exception as e:
         # Log to stderr for debugging instrumentation issues
         import sys
+
         sys.stderr.write(f"Debug log write failed: {e}\n")
 
 
@@ -251,7 +263,7 @@ class Database:
             # Try to parse with microseconds if present
             try:
                 # Try standard format with microseconds: "YYYY-MM-DD HH:MM:SS.microseconds"
-                if len(date_time) > 19 and '.' in date_time:
+                if len(date_time) > 19 and "." in date_time:
                     try:
                         # Try parsing with microseconds (up to 6 digits)
                         dt = datetime.strptime(date_time[:26], "%Y-%m-%d %H:%M:%S.%f")
@@ -270,18 +282,18 @@ class Database:
             return normalize_to_utc(str(date_time))
 
     def insert_forex_tick(
-        self, 
-        symbol, 
-        date_time, 
-        ask, 
+        self,
+        symbol,
+        date_time,
+        ask,
         bid,
         receive_time=None,
         latency_seconds=None,
         is_stale=False,
         stale_age_seconds=None,
-        timestamp_source='event',
-        schema_version='1.0.0',
-        schema_type='tick'
+        timestamp_source="event",
+        schema_version="1.0.0",
+        schema_type="tick",
     ):
         """
         Insert a tick to the database with bitemporal timestamps
@@ -306,10 +318,12 @@ class Database:
             normalized_receive_time = None
             if receive_time is not None:
                 normalized_receive_time = self._normalize_timestamp(receive_time)
-            
+
             # Calculate latency if not provided and both timestamps available
             if latency_seconds is None and normalized_receive_time is not None:
-                latency_seconds = int((normalized_receive_time - normalized_date_time).total_seconds())
+                latency_seconds = int(
+                    (normalized_receive_time - normalized_date_time).total_seconds()
+                )
 
             conn = self.__get_connection()
             cursor = conn.cursor()
@@ -320,7 +334,7 @@ class Database:
             symbol_upper = symbol.upper().strip()
             base_currency = symbol_upper[:3]
             quoted_currency = symbol_upper[3:]
-            
+
             # Validate symbol format
             if len(symbol_upper) != 6:
                 print_with_datetime(
@@ -329,11 +343,12 @@ class Database:
                 with self.__metrics_lock:
                     self.__metrics["insert_failures"] += 1
                 return False
-            
-            cursor.execute("""
+
+            cursor.execute(
+                """
                 INSERT INTO ticks_forex (
                     datetime, ask, bid, forex_pairs_id,
-                    receive_time, latency_seconds, is_stale, 
+                    receive_time, latency_seconds, is_stale,
                     stale_age_seconds, timestamp_source,
                     schema_version, schema_type
                 )
@@ -343,22 +358,33 @@ class Database:
                 INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
                 WHERE c1.iso_code = ? AND c2.iso_code = ?
                 LIMIT 1
-            """, (
-                normalized_date_time, ask, bid,
-                normalized_receive_time, latency_seconds, is_stale,
-                stale_age_seconds, timestamp_source,
-                schema_version, schema_type,
-                base_currency, quoted_currency
-            ))
-            
+            """,
+                (
+                    normalized_date_time,
+                    ask,
+                    bid,
+                    normalized_receive_time,
+                    latency_seconds,
+                    is_stale,
+                    stale_age_seconds,
+                    timestamp_source,
+                    schema_version,
+                    schema_type,
+                    base_currency,
+                    quoted_currency,
+                ),
+            )
+
             conn.commit()
 
             # Check if a row was actually inserted
             if cursor.rowcount == 0:
                 # No row inserted - currency pair not found or lookup failed
                 print_with_datetime(
-                    f"WARNING: Currency pair '{symbol}' (normalized: '{symbol_upper}', base: '{base_currency}', quote: '{quoted_currency}') not found in database - tick not inserted. "
-                    f"Please verify the symbol exists in the forex_pairs table."
+                    f"WARNING: Currency pair '{symbol}' (normalized: '{symbol_upper}', "
+                    f"base: '{base_currency}', quote: '{quoted_currency}') not found in "
+                    f"database - tick not inserted. Please verify the symbol exists in "
+                    f"the forex_pairs table."
                 )
                 cursor.close()
                 with self.__metrics_lock:
@@ -381,7 +407,7 @@ class Database:
     def _categorize_rejection_reason(self, rejection_reason: str) -> str:
         """
         Categorize rejection reason into predefined categories
-        
+
         :param rejection_reason: Detailed rejection reason string
         :return: Category string (outlier, duplicate, stale, missing_data, invalid_spread)
         """
@@ -406,11 +432,11 @@ class Database:
         ask: float,
         bid: float,
         rejection_reason: str,
-        receive_time=None
+        receive_time=None,
     ) -> bool:
         """
         Insert a rejected tick into the quarantine table
-        
+
         :param symbol: Currency pair symbol
         :param date_time: Event time (datetime object or string, will be normalized to UTC)
         :param ask: Ask price
@@ -426,45 +452,50 @@ class Database:
             normalized_receive_time = None
             if receive_time is not None:
                 normalized_receive_time = self._normalize_timestamp(receive_time)
-            
+
             # Categorize rejection reason
             rejection_category = self._categorize_rejection_reason(rejection_reason)
-            
+
             conn = self.__get_connection()
             cursor = conn.cursor()
-            
+
             # Insert into quarantine_ticks table
-            cursor.execute("""
-                INSERT INTO quarantine_ticks 
+            cursor.execute(
+                """
+                INSERT INTO quarantine_ticks
                 (symbol, datetime, receive_time, bid, ask, rejection_reason, rejection_category)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                symbol,
-                normalized_date_time,
-                normalized_receive_time,
-                bid,
-                ask,
-                rejection_reason,
-                rejection_category
-            ))
-            
+            """,
+                (
+                    symbol,
+                    normalized_date_time,
+                    normalized_receive_time,
+                    bid,
+                    ask,
+                    rejection_reason,
+                    rejection_category,
+                ),
+            )
+
             conn.commit()
             cursor.close()
-            
+
             with self.__metrics_lock:
                 self.__metrics["quarantine_insert_success"] += 1
-            
+
             # Update Prometheus metrics
             try:
                 from monitoring.metrics import quarantine_ticks_total
+
                 quarantine_ticks_total.labels(
-                    symbol=symbol,
-                    rejection_category=rejection_category
+                    symbol=symbol, rejection_category=rejection_category
                 ).inc()
             except Exception as e:
                 # Don't fail if metrics update fails
-                print_with_datetime(f"Warning: Failed to update quarantine metrics: {e}")
-            
+                print_with_datetime(
+                    f"Warning: Failed to update quarantine metrics: {e}"
+                )
+
             return True
         except mariadb.Error as e:
             print_with_datetime(f"Error inserting quarantine tick: {e}")
@@ -488,7 +519,14 @@ class Database:
         :return: Number of successfully inserted ticks, or -1 on error
         """
         # #region agent log
-        _write_debug_log("debug-session", "run1", "F", "database.py:269", "insert_forex_ticks_batch called", {"tick_count": len(ticks) if ticks else 0})
+        _write_debug_log(
+            "debug-session",
+            "run1",
+            "F",
+            "database.py:269",
+            "insert_forex_ticks_batch called",
+            {"tick_count": len(ticks) if ticks else 0},
+        )
         # #endregion
         if not ticks:
             return 0
@@ -497,7 +535,14 @@ class Database:
         try:
             conn = self.__get_connection()
             # #region agent log
-            _write_debug_log("debug-session", "run1", "F", "database.py:281", "Database connection obtained", {"has_connection": conn is not None})
+            _write_debug_log(
+                "debug-session",
+                "run1",
+                "F",
+                "database.py:281",
+                "Database connection obtained",
+                {"has_connection": conn is not None},
+            )
             # #endregion
             cursor = conn.cursor()
 
@@ -513,7 +558,8 @@ class Database:
                 symbol_upper = symbol.upper().strip()
                 if len(symbol_upper) != 6:
                     print_with_datetime(
-                        f"WARNING: Skipping invalid symbol format '{symbol}' (expected 6 characters, got {len(symbol_upper)})"
+                        f"WARNING: Skipping invalid symbol format '{symbol}' "
+                        f"(expected 6 characters, got {len(symbol_upper)})"
                     )
                     continue
                 base_currency = symbol_upper[:3]
@@ -521,19 +567,34 @@ class Database:
                 # Normalize returns datetime object (preserves microseconds)
                 normalized_date_time = self._normalize_timestamp(date_time)
                 tick_data.append(
-                    (normalized_date_time, ask, bid, base_currency, quoted_currency, symbol_upper)
+                    (
+                        normalized_date_time,
+                        ask,
+                        bid,
+                        base_currency,
+                        quoted_currency,
+                        symbol_upper,
+                    )
                 )
 
             # Use direct INSERT instead of stored procedure for better error handling
             # This allows us to verify inserts actually happened
             insert_count = 0
             failed_symbols = set()
-            
-            for date_time, ask, bid, base_currency, quoted_currency, symbol_upper in tick_data:
+
+            for (
+                date_time,
+                ask,
+                bid,
+                base_currency,
+                quoted_currency,
+                symbol_upper,
+            ) in tick_data:
                 try:
                     # Use direct INSERT with subquery to get pair_id
                     # This way we can check if the pair exists and get feedback
-                    cursor.execute("""
+                    cursor.execute(
+                        """
                         INSERT INTO ticks_forex (datetime, ask, bid, forex_pairs_id)
                         SELECT ?, ?, ?, fp.id
                         FROM currency c1
@@ -541,11 +602,20 @@ class Database:
                         INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
                         WHERE c1.iso_code = ? AND c2.iso_code = ?
                         LIMIT 1
-                    """, (date_time, ask, bid, base_currency, quoted_currency))
-                    
+                    """,
+                        (date_time, ask, bid, base_currency, quoted_currency),
+                    )
+
                     # Check if a row was actually inserted
                     # #region agent log
-                    _write_debug_log("debug-session", "run1", "F", "database.py:319", "Insert attempt result", {"symbol": symbol_upper, "rowcount": cursor.rowcount})
+                    _write_debug_log(
+                        "debug-session",
+                        "run1",
+                        "F",
+                        "database.py:319",
+                        "Insert attempt result",
+                        {"symbol": symbol_upper, "rowcount": cursor.rowcount},
+                    )
                     # #endregion
                     if cursor.rowcount > 0:
                         insert_count += 1
@@ -554,26 +624,47 @@ class Database:
                         failed_symbols.add(symbol_upper)
                         if self.__verbose:
                             print_with_datetime(
-                                f"WARNING: Currency pair {symbol_upper} (base: {base_currency}, quote: {quoted_currency}) not found in database - tick not inserted"
+                                f"WARNING: Currency pair {symbol_upper} "
+                                f"(base: {base_currency}, quote: {quoted_currency}) "
+                                f"not found in database - tick not inserted"
                             )
                 except mariadb.Error as e:
                     symbol = base_currency + quoted_currency
                     failed_symbols.add(symbol)
                     # #region agent log
-                    _write_debug_log("debug-session", "run1", "F", "database.py:357", "Database insert error", {"symbol": symbol, "error": str(e)})
+                    _write_debug_log(
+                        "debug-session",
+                        "run1",
+                        "F",
+                        "database.py:357",
+                        "Database insert error",
+                        {"symbol": symbol, "error": str(e)},
+                    )
                     # #endregion
                     print_with_datetime(f"Error inserting tick for {symbol}: {e}")
                     continue
 
             if failed_symbols:
                 print_with_datetime(
-                    f"WARNING: Failed to insert ticks for {len(failed_symbols)} symbol(s): {', '.join(sorted(failed_symbols))}. "
+                    f"WARNING: Failed to insert ticks for {len(failed_symbols)} "
+                    f"symbol(s): {', '.join(sorted(failed_symbols))}. "
                     f"These currency pairs may not exist in the forex_pairs table."
                 )
 
             conn.commit()
             # #region agent log
-            _write_debug_log("debug-session", "run1", "G", "database.py:341", "Transaction committed", {"insert_count": insert_count, "total_ticks": len(ticks), "failed_symbols": list(failed_symbols)})
+            _write_debug_log(
+                "debug-session",
+                "run1",
+                "G",
+                "database.py:341",
+                "Transaction committed",
+                {
+                    "insert_count": insert_count,
+                    "total_ticks": len(ticks),
+                    "failed_symbols": list(failed_symbols),
+                },
+            )
             # #endregion
             cursor.close()
 
@@ -591,7 +682,14 @@ class Database:
 
         except Exception as e:
             # #region agent log
-            _write_debug_log("debug-session", "run1", "F", "database.py:400", "Database insert exception", {"error": str(e), "error_type": type(e).__name__})
+            _write_debug_log(
+                "debug-session",
+                "run1",
+                "F",
+                "database.py:400",
+                "Database insert exception",
+                {"error": str(e), "error_type": type(e).__name__},
+            )
             # #endregion
         except mariadb.Error as e:
             print_with_datetime(f"Error in batch insert: {e}")
@@ -643,11 +741,11 @@ class Database:
                 conn.close()  # Return connection to pool
 
     def get_recent_ticks(
-        self, 
-        symbol: str, 
-        limit: int = 100, 
+        self,
+        symbol: str,
+        limit: int = 100,
         hours: int = 24,
-        query_by: str = 'event_time'
+        query_by: str = "event_time",
     ):
         """
         Get recent tick data for a symbol with bitemporal information
@@ -668,17 +766,17 @@ class Database:
             cursor = conn.cursor()
 
             # Determine which timestamp column to use for filtering and ordering
-            if query_by == 'receive_time':
+            if query_by == "receive_time":
                 # Query by receive_time (transaction time) for point-in-time training
-                time_column = 'COALESCE(tf.receive_time, tf.datetime)'  # Fallback to datetime if receive_time is NULL
-                order_by = 'COALESCE(tf.receive_time, tf.datetime)'
+                time_column = "COALESCE(tf.receive_time, tf.datetime)"  # Fallback to datetime if receive_time is NULL
+                order_by = "COALESCE(tf.receive_time, tf.datetime)"
             else:
                 # Query by event_time (datetime) for pattern learning
-                time_column = 'tf.datetime'
-                order_by = 'tf.datetime'
+                time_column = "tf.datetime"
+                order_by = "tf.datetime"
 
             query = f"""
-                SELECT 
+                SELECT
                     tf.datetime as event_time,
                     tf.receive_time,
                     (tf.ask + tf.bid) / 2 as mid_price,
@@ -703,17 +801,19 @@ class Database:
 
             ticks = []
             for row in results:
-                ticks.append({
-                    "event_time": row[0],
-                    "receive_time": row[1],
-                    "mid_price": float(row[2]),
-                    "ask": float(row[3]),
-                    "bid": float(row[4]),
-                    "latency_seconds": row[5],
-                    "is_stale": bool(row[6]) if row[6] is not None else False,
-                    "stale_age_seconds": row[7],
-                    "timestamp_source": row[8],
-                })
+                ticks.append(
+                    {
+                        "event_time": row[0],
+                        "receive_time": row[1],
+                        "mid_price": float(row[2]),
+                        "ask": float(row[3]),
+                        "bid": float(row[4]),
+                        "latency_seconds": row[5],
+                        "is_stale": bool(row[6]) if row[6] is not None else False,
+                        "stale_age_seconds": row[7],
+                        "timestamp_source": row[8],
+                    }
+                )
 
             cursor.close()
             return ticks

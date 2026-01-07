@@ -384,9 +384,9 @@ class DataVersioner:
             "data_versions": versions,
             "dvc_repo_root": str(self.repo_root),
             "dvc_available": self._dvc_available,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     def version_feature_code(
         self,
         feature_files: List[str],
@@ -429,7 +429,9 @@ class DataVersioner:
                         continue
 
                 if not (self.repo_root / rel_path).exists():
-                    self.logger.warning(f"Feature file {rel_path} does not exist, skipping")
+                    self.logger.warning(
+                        f"Feature file {rel_path} does not exist, skipping"
+                    )
                     continue
 
                 # Add to DVC if not already tracked
@@ -441,7 +443,10 @@ class DataVersioner:
                 return None
 
             # Commit to git with version tag
-            commit_msg = message or f"Feature pipeline version {version} - {datetime.now().isoformat()}"
+            commit_msg = (
+                message
+                or f"Feature pipeline version {version} - {datetime.now().isoformat()}"
+            )
 
             # Stage all .dvc files
             for dvc_file in dvc_files:

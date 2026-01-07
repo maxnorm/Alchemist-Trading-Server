@@ -4,7 +4,7 @@ Implements various scheduling strategies for DRL training in non-stationary mark
 """
 
 import numpy as np
-from typing import Optional, Dict, List, Any
+from typing import Optional, List
 from abc import ABC, abstractmethod
 from tensorflow import keras
 
@@ -39,9 +39,9 @@ class BaseLearningRateScheduler(ABC):
         :param optimizer: Keras optimizer
         :return: Current learning rate
         """
-        if hasattr(optimizer, 'learning_rate'):
+        if hasattr(optimizer, "learning_rate"):
             lr = optimizer.learning_rate
-            if hasattr(lr, 'numpy'):
+            if hasattr(lr, "numpy"):
                 return float(lr.numpy())
             return float(lr)
         return 0.0
@@ -69,8 +69,8 @@ class ReduceLROnPlateauScheduler(BaseLearningRateScheduler):
         factor: float = 0.5,
         patience: int = 10,
         min_lr: float = 1e-6,
-        monitor: str = 'loss',
-        mode: str = 'min',
+        monitor: str = "loss",
+        mode: str = "min",
     ):
         """
         Initialize ReduceLROnPlateau scheduler
@@ -86,7 +86,7 @@ class ReduceLROnPlateauScheduler(BaseLearningRateScheduler):
         self.patience = patience
         self.monitor = monitor
         self.mode = mode
-        self.best_metric = None
+        self.best_metric: Optional[float] = None
         self.wait_count = 0
 
     def step(self, metric_value: float, optimizer: keras.optimizers.Optimizer) -> float:
@@ -106,7 +106,7 @@ class ReduceLROnPlateauScheduler(BaseLearningRateScheduler):
             return current_lr
 
         # Check if metric improved
-        if self.mode == 'min':
+        if self.mode == "min":
             improved = metric_value < self.best_metric
         else:  # mode == 'max'
             improved = metric_value > self.best_metric
@@ -185,7 +185,7 @@ class AdaptiveScheduler(BaseLearningRateScheduler):
         self,
         reduce_on_plateau: Optional[ReduceLROnPlateauScheduler] = None,
         cosine_annealing: Optional[CosineAnnealingScheduler] = None,
-        primary_strategy: str = 'plateau',
+        primary_strategy: str = "plateau",
         min_lr: float = 1e-6,
     ):
         """
@@ -209,7 +209,7 @@ class AdaptiveScheduler(BaseLearningRateScheduler):
         :param optimizer: Keras optimizer
         :return: New learning rate
         """
-        if self.primary_strategy == 'plateau':
+        if self.primary_strategy == "plateau":
             # Use reduce on plateau as primary, cosine as secondary
             lr = self.reduce_on_plateau.step(metric_value, optimizer)
             # Apply cosine annealing on top
@@ -224,8 +224,7 @@ class AdaptiveScheduler(BaseLearningRateScheduler):
 
 
 def create_scheduler(
-    scheduler_type: str = 'reduce_on_plateau',
-    **kwargs
+    scheduler_type: str = "reduce_on_plateau", **kwargs
 ) -> BaseLearningRateScheduler:
     """
     Factory function to create learning rate schedulers
@@ -234,11 +233,11 @@ def create_scheduler(
     :param kwargs: Additional arguments for scheduler initialization
     :return: Scheduler instance
     """
-    if scheduler_type == 'reduce_on_plateau':
+    if scheduler_type == "reduce_on_plateau":
         return ReduceLROnPlateauScheduler(**kwargs)
-    elif scheduler_type == 'cosine_annealing':
+    elif scheduler_type == "cosine_annealing":
         return CosineAnnealingScheduler(**kwargs)
-    elif scheduler_type == 'adaptive':
+    elif scheduler_type == "adaptive":
         return AdaptiveScheduler(**kwargs)
     else:
         raise ValueError(f"Unknown scheduler type: {scheduler_type}")

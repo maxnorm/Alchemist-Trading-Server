@@ -130,12 +130,12 @@ class VolumeBasedSlippage(SlippageModel):
         volume: Optional[float] = None,
         volatility: Optional[float] = None,  # NEW: Add volatility parameter
         volatility_multiplier: float = 1.0,  # NEW: Volatility adjustment strength
-        baseline_volatility: float = 0.01,   # NEW: Normal volatility level
+        baseline_volatility: float = 0.01,  # NEW: Normal volatility level
         **kwargs,
     ) -> float:
         """
         Apply volume-based slippage with optional volatility adjustment.
-        
+
         Args:
             volume: Market volume (required for accurate calculation)
             volatility: Current volatility (optional, for enhanced realism)
@@ -150,7 +150,7 @@ class VolumeBasedSlippage(SlippageModel):
 
         # Square-root market impact
         impact = self.impact_coefficient * np.sqrt(participation_rate)
-        
+
         # NEW: Volatility adjustment (if volatility provided)
         if volatility and volatility > 0:
             vol_ratio = volatility / baseline_volatility
@@ -323,12 +323,12 @@ class MarketImpactSlippage(SlippageModel):
     - Square-root model for order size impact
     - Volatility adjustment factor
     - Market depth consideration
-    
+
     Based on Almgren & Chriss (2000) square-root model with enhancements.
-    
+
     Formula: impact = base_impact * sqrt(quantity/market_depth) * volatility_factor
     """
-    
+
     def __init__(
         self,
         base_impact: float = 0.0001,  # 1 pip base impact
@@ -340,7 +340,7 @@ class MarketImpactSlippage(SlippageModel):
     ):
         """
         Initialize market impact slippage model.
-        
+
         Args:
             base_impact: Base impact coefficient (1 pip = 0.0001 for forex)
             market_depth: Typical market depth (liquidity available)
@@ -355,7 +355,7 @@ class MarketImpactSlippage(SlippageModel):
         self.baseline_volatility = baseline_volatility
         self.min_impact = min_impact
         self.max_impact = max_impact
-    
+
     def apply(
         self,
         price: float,
@@ -367,35 +367,37 @@ class MarketImpactSlippage(SlippageModel):
     ) -> float:
         """
         Apply market impact slippage.
-        
+
         Args:
             market_depth: Current market depth (overrides default)
             volatility: Current volatility (for adjustment)
         """
         # Use provided market depth or default
         depth = market_depth if market_depth and market_depth > 0 else self.market_depth
-        
+
         # Calculate size factor using square-root model
         participation_rate = min(quantity / depth, 1.0)  # Cap at 1.0
         size_factor = np.sqrt(participation_rate)
-        
+
         # Volatility adjustment
-        current_vol = volatility if volatility and volatility > 0 else self.baseline_volatility
+        current_vol = (
+            volatility if volatility and volatility > 0 else self.baseline_volatility
+        )
         vol_ratio = current_vol / self.baseline_volatility
         vol_factor = 1.0 + self.volatility_multiplier * (vol_ratio - 1.0)
         vol_factor = max(0.1, vol_factor)  # Prevent negative or zero factors
-        
+
         # Calculate total impact
         impact = self.base_impact * size_factor * vol_factor
-        
+
         # Clamp to min/max bounds
         impact = max(self.min_impact, min(self.max_impact, impact))
-        
+
         if is_buy:
             return price * (1 + impact)
         else:
             return price * (1 - impact)
-    
+
     def get_description(self) -> str:
         return f"Market impact slippage (base={self.base_impact:.4%}, depth={self.market_depth})"
 

@@ -128,5 +128,3 @@ class WebScraperMyfxbook:
 
         login_btn = driver.find_element(By.ID, "login-btn")
         login_btn.click()
-
-

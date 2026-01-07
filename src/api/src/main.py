@@ -209,7 +209,4 @@ async def root():
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint"""
-    return Response(
-        content=generate_latest(),
-        media_type=CONTENT_TYPE_LATEST
-    )
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -31,7 +31,10 @@ class ConnectorRegistry:
         )  # Connector metadata (version, description, etc.)
 
     def register_connector(
-        self, name: str, connector: IDataSourceConnector, metadata: Optional[Dict] = None
+        self,
+        name: str,
+        connector: IDataSourceConnector,
+        metadata: Optional[Dict] = None,
     ) -> None:
         """
         Register a data source connector instance.
@@ -107,23 +110,23 @@ class ConnectorRegistry:
         :return: List of Feature objects
         """
         features = []
-        
+
         # Get symbol from connector config
-        symbol = getattr(connector.config, 'symbol', 'unknown')
-        source = schema.get('source', connector_name)
-        data_type = schema.get('data_type', 'unknown')
-        
+        symbol = getattr(connector.config, "symbol", "unknown")
+        source = schema.get("source", connector_name)
+        data_type = schema.get("data_type", "unknown")
+
         # Extract fields from schema
-        fields = schema.get('fields', {})
+        fields = schema.get("fields", {})
         if isinstance(fields, dict):
             for field_name, field_type in fields.items():
                 # Skip timestamp and symbol fields (they're metadata, not features)
-                if field_name in ['timestamp', 'symbol', 'datetime']:
+                if field_name in ["timestamp", "symbol", "datetime"]:
                     continue
-                
+
                 # Map schema types to Python types
                 python_type = self._map_schema_type_to_python(field_type)
-                
+
                 feature = Feature(
                     name=f"{field_name}_{symbol}",
                     data_type=python_type,
@@ -132,7 +135,7 @@ class ConnectorRegistry:
                     category=data_type,
                 )
                 features.append(feature)
-        
+
         return features
 
     def _map_schema_type_to_python(self, schema_type: str) -> type:
@@ -150,17 +153,19 @@ class ConnectorRegistry:
             "datetime": str,  # Datetime stored as string in features
             "datetime (UTC)": str,
         }
-        
+
         # Handle case-insensitive matching
         schema_type_lower = str(schema_type).lower()
         for key, python_type in type_mapping.items():
             if key in schema_type_lower:
                 return python_type
-        
+
         # Default to float for numeric types
-        if any(keyword in schema_type_lower for keyword in ['number', 'numeric', 'decimal']):
+        if any(
+            keyword in schema_type_lower for keyword in ["number", "numeric", "decimal"]
+        ):
             return float
-        
+
         # Default to string
         return str
 
@@ -206,7 +211,11 @@ class ConnectorRegistry:
 
         with self._lock:
             if name:
-                connectors_to_check = {name: self._connectors.get(name)} if name in self._connectors else {}
+                connectors_to_check = (
+                    {name: self._connectors.get(name)}
+                    if name in self._connectors
+                    else {}
+                )
             else:
                 connectors_to_check = dict(self._connectors)
 
@@ -214,17 +223,17 @@ class ConnectorRegistry:
             if connector is None:
                 health_status[connector_name] = False
                 continue
-                
+
             try:
                 # Check if connector is connected
-                if hasattr(connector, 'is_connected'):
+                if hasattr(connector, "is_connected"):
                     is_connected = connector.is_connected()
                     if not is_connected:
                         health_status[connector_name] = False
                         continue
-                
+
                 # Check if data is stale (if connector supports it)
-                if hasattr(connector, 'is_stale'):
+                if hasattr(connector, "is_stale"):
                     is_stale = connector.is_stale(max_age_seconds=60.0)
                     health_status[connector_name] = not is_stale
                 else:
@@ -250,17 +259,19 @@ class ConnectorRegistry:
                 # Disconnect connector before removing
                 connector = self._connectors[name]
                 try:
-                    if hasattr(connector, 'disconnect'):
+                    if hasattr(connector, "disconnect"):
                         connector.disconnect()
                 except Exception as e:
                     logger.warning(f"Error disconnecting connector '{name}': {e}")
-                
+
                 del self._connectors[name]
                 if name in self._metadata:
                     del self._metadata[name]
                 logger.info(f"Unregistered connector: {name}")
             else:
-                logger.warning(f"Attempted to unregister non-existent connector: {name}")
+                logger.warning(
+                    f"Attempted to unregister non-existent connector: {name}"
+                )
 
     def get_connector_count(self) -> int:
         """

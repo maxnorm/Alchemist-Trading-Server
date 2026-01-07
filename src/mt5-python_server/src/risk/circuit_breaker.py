@@ -121,7 +121,7 @@ class CircuitBreaker:
         self._lock = threading.RLock()
         self.database = database
         self.price_history_provider = price_history_provider
-        
+
         # Initialize metrics
         self._update_circuit_breaker_metrics()
 
@@ -735,14 +735,14 @@ class CircuitBreaker:
                 exc_info=True,
             )
             # Don't raise - allow operation to continue
-    
+
     def _update_circuit_breaker_metrics(self) -> None:
         """Update circuit breaker state metrics"""
         # Reset all state gauges to 0
         circuit_breaker_state.labels(state="closed").set(0)
         circuit_breaker_state.labels(state="open").set(0)
         circuit_breaker_state.labels(state="half_open").set(0)
-        
+
         # Set current state to 1
         state_value = self._state.value
         circuit_breaker_state.labels(state=state_value).set(1)

@@ -22,6 +22,7 @@ from application.services.action_executor import ActionExecutor
 from application.training.metrics_tracker import MetricsTracker
 from application.training.checkpoint_manager import CheckpointManager
 from application.training.episode_manager import EpisodeManager
+from application.training.health_monitor import TrainingHealthMonitor
 from domain.config.training_config import TrainingConfig
 
 if TYPE_CHECKING:
@@ -80,6 +81,16 @@ class TrainingLoop:
         self.is_running = False
         self.previous_state = None
 
+        # Initialize health monitor for divergence detection
+        if self.config.divergence_detection_enabled:
+            health_config = {
+                "divergence_threshold": self.config.divergence_threshold,
+                "gradient_norm_threshold": self.config.gradient_norm_threshold,
+            }
+            self.health_monitor = TrainingHealthMonitor(health_config)
+        else:
+            self.health_monitor = None
+
     def run(self):
         """Run the training loop with MLflow tracking"""
         self.is_running = True
@@ -128,7 +139,7 @@ class TrainingLoop:
                     )
 
                 # Get next state with latency awareness (training mode for point-in-time constraint)
-                next_state = self.env.get_state(mode='training', include_latency=True)
+                next_state = self.env.get_state(mode="training", include_latency=True)
 
                 # Check if episode should end
                 done = self.episode_manager.should_end_episode()
@@ -220,7 +231,7 @@ class TrainingLoop:
 
     def _wait_for_state(self) -> Optional[np.ndarray]:
         """Wait for sufficient data and return state with latency awareness"""
-        state = self.env.get_state(mode='training', include_latency=True)
+        state = self.env.get_state(mode="training", include_latency=True)
 
         if state is None or state.shape[0] < self.env.window_size:
             # Log detailed data availability per pair
@@ -434,28 +445,115 @@ class TrainingLoop:
         self.agent.remember(state, action, reward, next_state, done)
 
     def _train_if_ready(self) -> Optional[float]:
-        """Train agent if enough experiences"""
-        if len(self.agent.memory) >= self.config.min_experiences_before_training:
-            loss = self.agent.replay()
-            if loss > 0:
-                if self.metrics_tracker.total_steps % 10 == 0:
-                    if hasattr(self.logger, "log_event"):
-                        self.logger.log_event(
-                            event_type="training_step",
-                            message="Training step completed",
-                            metrics={
-                                "loss": loss,
-                                "memory_size": len(self.agent.memory),
-                                "step": self.metrics_tracker.total_steps,
-                            },
-                            level="DEBUG",
-                        )
-                    else:
-                        self.logger.debug(
-                            f"Training step completed | Loss: {loss:.6f} | Memory size: {len(self.agent.memory)}"
-                        )
-                return loss
-        return None
+        """
+        Train agent if enough experiences, with pre-checkpointing
+
+        Implements rollback-augmented training based on research:
+        - arXiv:2510.14503 (Rollback-Augmented RL)
+        - arXiv:1910.03732 (Ctrl-Z: Recovering from Instability)
+        """
+        if len(self.agent.memory) < self.config.min_experiences_before_training:
+            return None
+
+        # Save checkpoint BEFORE training (safety net - research-validated approach)
+        pre_training_checkpoint = None
+        if self.config.divergence_detection_enabled:
+            pre_training_checkpoint = (
+                self.checkpoint_manager.save_pre_training_checkpoint(
+                    agent=self.agent,
+                    step=self.metrics_tracker.total_steps,
+                    episode=self.episode_manager.current_episode,
+                    metrics=self.metrics_tracker.get_metrics(),
+                    logger=self.logger,
+                )
+            )
+
+        # Perform training
+        loss = self.agent.replay()
+
+        # Skip health checks if divergence detection disabled or loss invalid
+        if not self.config.divergence_detection_enabled or loss <= 0:
+            if loss > 0 and self.metrics_tracker.total_steps % 10 == 0:
+                if hasattr(self.logger, "log_event"):
+                    self.logger.log_event(
+                        event_type="training_step",
+                        message="Training step completed",
+                        metrics={
+                            "loss": loss,
+                            "memory_size": len(self.agent.memory),
+                            "step": self.metrics_tracker.total_steps,
+                        },
+                        level="DEBUG",
+                    )
+                else:
+                    self.logger.debug(
+                        f"Training step completed | Loss: {loss:.6f} | Memory size: {len(self.agent.memory)}"
+                    )
+            return loss if loss > 0 else None
+
+        # Get model state for health checks
+        model_weights = self.agent.q_network.get_weights()
+        gradients = self._get_gradients()  # Extract gradients from last training step
+        q_values = self._get_current_q_values()  # For value overestimation check
+
+        # Comprehensive health checks (research-validated)
+        checks = [
+            self.health_monitor.check_loss_trend(loss),
+            self.health_monitor.check_nan(loss, model_weights),
+            self.health_monitor.check_gradient_norm(
+                gradients,
+                preserve_initial_norm=self.config.gradient_norm_preservation_enabled,
+            ),
+            self.health_monitor.check_value_overestimation(
+                q_values, threshold=self.config.value_overestimation_threshold
+            ),
+            self.health_monitor.check_update_to_data_ratio(
+                update_count=self.metrics_tracker.total_steps,
+                data_count=len(self.agent.memory),
+                max_ratio=self.config.update_to_data_ratio_threshold,
+            ),
+        ]
+
+        # Check if any divergence detected
+        for check_result in checks:
+            if len(check_result) == 3:  # gradient_norm returns 3 values
+                is_diverged, reason, grad_norm = check_result
+            else:
+                is_diverged, reason = check_result
+
+            if is_diverged:
+                self.logger.error(f"Training divergence detected: {reason}")
+                if pre_training_checkpoint:
+                    self._handle_divergence(pre_training_checkpoint, reason)
+                return None  # Don't record this loss
+
+        # Apply gradient norm preservation (if suggested)
+        if (
+            self.config.adaptive_learning_rate_on_norm_deviation
+            and hasattr(self.health_monitor, "adaptive_lr_factor")
+            and self.health_monitor.adaptive_lr_factor < 1.0
+        ):
+            self._adjust_learning_rate(self.health_monitor.adaptive_lr_factor)
+
+        # Log successful training step
+        if self.metrics_tracker.total_steps % 10 == 0:
+            if hasattr(self.logger, "log_event"):
+                self.logger.log_event(
+                    event_type="training_step",
+                    message="Training step completed",
+                    metrics={
+                        "loss": loss,
+                        "memory_size": len(self.agent.memory),
+                        "step": self.metrics_tracker.total_steps,
+                    },
+                    level="DEBUG",
+                )
+            else:
+                self.logger.debug(
+                    f"Training step completed | Loss: {loss:.6f} | Memory size: {len(self.agent.memory)}"
+                )
+
+        return loss
 
     def _update_and_log_metrics(
         self,
@@ -651,7 +749,7 @@ class TrainingLoop:
                 seed = self.env.get_seed()
             elif hasattr(self.env, "_seed"):
                 seed = self.env._seed
-            
+
             params = {
                 # Agent hyperparameters
                 "learning_rate": self.agent.learning_rate,
@@ -674,12 +772,12 @@ class TrainingLoop:
                     len(self.env.data_providers) if self.env.data_providers else 0
                 ),
             }
-            
+
             # Add seed if available
             if seed is not None:
                 params["seed"] = seed
                 self.tracker.set_tag("seed", str(seed))
-            
+
             self.tracker.log_params(params)
         except Exception as e:
             self.logger.warning(f"Failed to log params to MLflow: {e}")
@@ -738,3 +836,154 @@ class TrainingLoop:
             self.tracker.log_dict(summary, "training_summary.json")
         except Exception as e:
             self.logger.warning(f"Failed to log final metrics to MLflow: {e}")
+
+    def _get_gradients(self) -> Optional[list]:
+        """
+        Extract gradients from TensorFlow model after training step
+
+        :return: List of gradient tensors or None
+        """
+        try:
+            # Get gradients from the optimizer
+            optimizer = self.agent.q_network.optimizer
+            if hasattr(optimizer, "get_gradients"):
+                # For TensorFlow/Keras optimizers
+                variables = self.agent.q_network.trainable_variables
+                gradients = []
+                for var in variables:
+                    grad = optimizer.get_gradients(None, var)
+                    if grad:
+                        gradients.append(
+                            grad[0].numpy() if hasattr(grad[0], "numpy") else grad[0]
+                        )
+                return gradients if gradients else None
+            return None
+        except Exception as e:
+            self.logger.debug(f"Could not extract gradients: {e}")
+            return None
+
+    def _get_current_q_values(self) -> Optional[np.ndarray]:
+        """
+        Get current Q-values from the model for value overestimation check
+
+        :return: Q-values array or None
+        """
+        try:
+            if self.previous_state is not None:
+                # Use previous state to get Q-values
+                q_values = self.agent.get_q_values(self.previous_state)
+                return q_values
+            return None
+        except Exception as e:
+            self.logger.debug(f"Could not extract Q-values: {e}")
+            return None
+
+    def _handle_divergence(self, checkpoint_path: str, reason: str):
+        """
+        Handle training divergence: rollback and alert
+
+        Implements selective rollback operation from research:
+        - arXiv:2510.14503: Interrupts suboptimal high-risk trajectories
+        - Prevents catastrophic steps that lead to model corruption
+        :param checkpoint_path: Path to pre-training checkpoint
+        :param reason: Reason for divergence
+        """
+        # Rollback to pre-training checkpoint (research-validated approach)
+        success = self.checkpoint_manager.rollback_to_checkpoint(
+            checkpoint_path=checkpoint_path, agent=self.agent, logger=self.logger
+        )
+
+        if success:
+            self.logger.error(
+                f"Training divergence detected and rolled back: {reason}",
+                extra={
+                    "event_type": "training_divergence",
+                    "reason": reason,
+                    "checkpoint": checkpoint_path,
+                    "step": self.metrics_tracker.total_steps,
+                    "research_based": True,  # Indicate research-validated approach
+                },
+            )
+
+            # Send alert (integrate with monitoring system)
+            self._send_divergence_alert(reason, checkpoint_path)
+
+            # Optionally pause training for investigation
+            if self.config.auto_pause_on_divergence:
+                self.logger.warning("Auto-pausing training due to divergence")
+                self.is_running = False
+        else:
+            # Critical: rollback failed (research shows this requires emergency stop)
+            self.logger.critical(
+                f"CRITICAL: Training divergence AND rollback failed: {reason}",
+                extra={"event_type": "training_divergence_rollback_failed"},
+            )
+            # Trigger kill switch or emergency stop
+            self._emergency_stop()
+
+    def _send_divergence_alert(self, reason: str, checkpoint_path: str):
+        """
+        Send divergence alert to monitoring system
+
+        :param reason: Reason for divergence
+        :param checkpoint_path: Checkpoint path used for rollback
+        """
+        # Log alert event
+        if hasattr(self.logger, "log_event"):
+            self.logger.log_event(
+                event_type="training_divergence_alert",
+                message=f"Training divergence alert: {reason}",
+                metrics={
+                    "reason": reason,
+                    "checkpoint": checkpoint_path,
+                    "step": self.metrics_tracker.total_steps,
+                },
+                level="ERROR",
+            )
+        else:
+            self.logger.error(
+                f"Training divergence alert: {reason} (checkpoint: {checkpoint_path})"
+            )
+
+    def _adjust_learning_rate(self, factor: float):
+        """
+        Adjust learning rate based on gradient norm preservation
+
+        :param factor: Learning rate adjustment factor (0.0 to 1.0)
+        """
+        try:
+            current_lr = self.agent.learning_rate
+            new_lr = current_lr * factor
+
+            # Update optimizer learning rate
+            self.agent.q_network.optimizer.learning_rate.assign(new_lr)
+            self.agent.learning_rate = new_lr
+
+            if hasattr(self.logger, "log_event"):
+                self.logger.log_event(
+                    event_type="learning_rate_adjusted",
+                    message=f"Learning rate adjusted: {current_lr:.6f} -> {new_lr:.6f} (factor: {factor:.3f})",
+                    metrics={
+                        "old_lr": current_lr,
+                        "new_lr": new_lr,
+                        "factor": factor,
+                    },
+                    level="INFO",
+                )
+            else:
+                self.logger.info(
+                    f"Learning rate adjusted: {current_lr:.6f} -> {new_lr:.6f} (factor: {factor:.3f})"
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to adjust learning rate: {e}")
+
+    def _emergency_stop(self):
+        """
+        Emergency stop when rollback fails
+
+        Stops training immediately to prevent further damage
+        """
+        self.logger.critical(
+            "EMERGENCY STOP: Training halted due to divergence and rollback failure"
+        )
+        self.is_running = False

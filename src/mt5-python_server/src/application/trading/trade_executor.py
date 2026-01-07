@@ -11,7 +11,7 @@ from models.currency_pair import CurrencyPair
 from trading.brokers.base import IBrokerAdapter
 from mt5_connection.terminal import MT5Terminal  # Keep for backward compatibility
 from models.trade import Trade
-from risk.oms import Order, OrderSide
+from risk.oms import Order
 from utils.time_utils import print_with_datetime
 from utils.market_utils import check_if_market_open
 import uuid
@@ -20,7 +20,11 @@ import uuid
 class TradeExecutor:
     """Executes trades via broker adapter"""
 
-    def __init__(self, broker_adapter: Optional[IBrokerAdapter] = None, terminal: Optional[MT5Terminal] = None):
+    def __init__(
+        self,
+        broker_adapter: Optional[IBrokerAdapter] = None,
+        terminal: Optional[MT5Terminal] = None,
+    ):
         """
         Initialize trade executor
         :param broker_adapter: IBrokerAdapter instance (preferred)
@@ -31,12 +35,17 @@ class TradeExecutor:
         elif terminal:
             # Create adapter from terminal for backward compatibility
             from trading.brokers.mt5_adapter import MT5BrokerAdapter
+
             self.broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
         else:
             raise ValueError("Either broker_adapter or terminal must be provided")
-        
+
         # Keep terminal reference for backward compatibility
-        self.terminal = getattr(self.broker_adapter, 'terminal', None) if hasattr(self.broker_adapter, 'terminal') else terminal
+        self.terminal = (
+            getattr(self.broker_adapter, "terminal", None)
+            if hasattr(self.broker_adapter, "terminal")
+            else terminal
+        )
 
     def send_order(
         self,
@@ -64,7 +73,7 @@ class TradeExecutor:
                 f"[ORDER:{order_type}|PAIR:{pair.symbol}|LOTSIZE:{lotsize}]"
             )
             return None
-        
+
         # Convert to Order model and use broker adapter
         try:
             order_side = "BUY" if order_type == OrderType.BUY else "SELL"
@@ -79,15 +88,19 @@ class TradeExecutor:
                 stop_loss=sl,
                 take_profit=tp,
             )
-            
+
             # Submit order via broker adapter
             idempotency_key = order.client_order_id
             order_status = self.broker_adapter.submit_order(order, idempotency_key)
-            
+
             # Convert OrderStatus back to Trade for backward compatibility
             if order_status.state.value in ["filled", "partially_filled"]:
                 trade = Trade(
-                    ticket=int(order_status.broker_order_id) if order_status.broker_order_id else 0,
+                    ticket=(
+                        int(order_status.broker_order_id)
+                        if order_status.broker_order_id
+                        else 0
+                    ),
                     ordertype=order_type,
                     pair=pair,
                     lotsize=order_status.filled_quantity,
@@ -152,13 +165,15 @@ class TradeExecutor:
             # Use broker adapter to cancel order
             order_id = str(trade.ticket)
             success = self.broker_adapter.cancel_order(order_id)
-            
+
             if success:
                 # Return result in expected format for backward compatibility
                 return {
                     "order": {
                         "ticket": trade.ticket,
-                        "lotsize": trade.lotsize - lotsize if lotsize < trade.lotsize else 0,
+                        "lotsize": (
+                            trade.lotsize - lotsize if lotsize < trade.lotsize else 0
+                        ),
                         "close_price": trade.open_price,  # Approximate
                     }
                 }

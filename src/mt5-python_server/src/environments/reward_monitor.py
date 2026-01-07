@@ -5,7 +5,7 @@ Tracks reward components and detects anomalies (reward hacking, distribution shi
 
 import numpy as np
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 from collections import deque
 from datetime import datetime
 
@@ -39,11 +39,11 @@ class RewardMonitor:
 
         # Component tracking
         self.component_history: Dict[str, deque] = {
-            'sharpe_reward': deque(maxlen=component_window_size),
-            'drawdown_penalty': deque(maxlen=component_window_size),
-            'volatility_penalty': deque(maxlen=component_window_size),
-            'transaction_penalty': deque(maxlen=component_window_size),
-            'action_penalty': deque(maxlen=component_window_size),
+            "sharpe_reward": deque(maxlen=component_window_size),
+            "drawdown_penalty": deque(maxlen=component_window_size),
+            "volatility_penalty": deque(maxlen=component_window_size),
+            "transaction_penalty": deque(maxlen=component_window_size),
+            "action_penalty": deque(maxlen=component_window_size),
         }
 
         # Statistics
@@ -128,9 +128,7 @@ class RewardMonitor:
         )
 
         if components:
-            component_str = ", ".join(
-                [f"{k}={v:.4f}" for k, v in components.items()]
-            )
+            component_str = ", ".join([f"{k}={v:.4f}" for k, v in components.items()])
             message += f", components=[{component_str}]"
 
         self.logger.warning(message)
@@ -230,23 +228,21 @@ class RewardMonitor:
             if len(component_values) > 0:
                 component_array = np.array(component_values)
                 component_stats[component_name] = {
-                    'mean': float(np.mean(component_array)),
-                    'std': float(np.std(component_array)),
-                    'min': float(np.min(component_array)),
-                    'max': float(np.max(component_array)),
+                    "mean": float(np.mean(component_array)),
+                    "std": float(np.std(component_array)),
+                    "min": float(np.min(component_array)),
+                    "max": float(np.max(component_array)),
                 }
 
         return {
-            'reward_mean': self.reward_mean,
-            'reward_std': self.reward_std,
-            'reward_count': len(self.reward_history),
-            'anomaly_count': self.anomaly_count,
-            'last_anomaly_time': (
-                self.last_anomaly_time.isoformat()
-                if self.last_anomaly_time
-                else None
+            "reward_mean": self.reward_mean,
+            "reward_std": self.reward_std,
+            "reward_count": len(self.reward_history),
+            "anomaly_count": self.anomaly_count,
+            "last_anomaly_time": (
+                self.last_anomaly_time.isoformat() if self.last_anomaly_time else None
             ),
-            'component_stats': component_stats,
+            "component_stats": component_stats,
         }
 
     def reset(self):

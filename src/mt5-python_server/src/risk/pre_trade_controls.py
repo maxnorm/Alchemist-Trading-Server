@@ -7,7 +7,7 @@ market hours, and feed quality checks.
 """
 
 from typing import Dict, Any, Optional, Tuple, List
-from datetime import datetime, timedelta
+from datetime import datetime
 from models.account import Account
 from utils.risk_management import RiskManager
 
@@ -80,9 +80,7 @@ class PreTradeControls:
                 entry_price = pair.ask if action_type == "BUY" else pair.bid
 
             # Calculate position size that would be used
-            lot_size = risk_manager.calculate_position_size(
-                account, pair, entry_price
-            )
+            lot_size = risk_manager.calculate_position_size(account, pair, entry_price)
 
             if lot_size <= 0:
                 return False, "Calculated position size is zero or negative"
@@ -120,12 +118,15 @@ class PreTradeControls:
         current_exposure = 0.0
         for trade in current_positions.values():
             # Get position value: volume * entry_price * contract_size
-            volume = getattr(trade, "lotsize", None) or getattr(
-                trade, "volume", 0.0
-            )
+            volume = getattr(trade, "lotsize", None) or getattr(trade, "volume", 0.0)
             entry_price = getattr(trade, "open_price", None) or getattr(
                 trade, "entry_price", 0.0
             )
+            # Ensure volume and entry_price are not None
+            if volume is None:
+                volume = 0.0
+            if entry_price is None:
+                entry_price = 0.0
             contract_size = 100000  # Standard lot
             current_exposure += volume * entry_price * contract_size
 
@@ -151,14 +152,12 @@ class PreTradeControls:
 
         # Clean old timestamps (older than 1 hour)
         self.trade_timestamps = [
-            ts for ts in self.trade_timestamps
-            if (now - ts[0]).total_seconds() < 3600
+            ts for ts in self.trade_timestamps if (now - ts[0]).total_seconds() < 3600
         ]
 
         # Check per-minute limit
         recent_minute = [
-            ts for ts in self.trade_timestamps
-            if (now - ts[0]).total_seconds() < 60
+            ts for ts in self.trade_timestamps if (now - ts[0]).total_seconds() < 60
         ]
         if len(recent_minute) >= self.max_trades_per_minute:
             return False, (

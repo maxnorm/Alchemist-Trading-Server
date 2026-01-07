@@ -11,12 +11,12 @@ from .news_contract import NewsContractValidator
 from .economic_contract import EconomicContractValidator
 
 __all__ = [
-    'IContractValidator',
-    'ContractValidationError',
-    'ContractRegistry',
-    'get_contract_registry',
-    'TickContractValidator',
-    'BarContractValidator',
-    'NewsContractValidator',
-    'EconomicContractValidator',
+    "IContractValidator",
+    "ContractValidationError",
+    "ContractRegistry",
+    "get_contract_registry",
+    "TickContractValidator",
+    "BarContractValidator",
+    "NewsContractValidator",
+    "EconomicContractValidator",
 ]

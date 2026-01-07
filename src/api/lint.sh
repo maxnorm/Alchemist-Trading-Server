@@ -53,28 +53,39 @@ if [ -z "$VENV_PYTHON" ]; then
     fi
 fi
 
-if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ]; then
+# Function to check if Python has required tools
+check_python_tools() {
+    local py_cmd="$1"
+    if command -v "$py_cmd" &> /dev/null && \
+       "$py_cmd" -c "import sys; sys.exit(0)" 2>/dev/null && \
+       "$py_cmd" -c "import black, flake8, mypy" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Try to find Python with required tools installed
+if [ -n "$VENV_PYTHON" ] && [ -f "$VENV_PYTHON" ] && check_python_tools "$VENV_PYTHON"; then
     PYTHON_CMD="$VENV_PYTHON"
     echo -e "${YELLOW}ℹ️  Using virtual environment: $(dirname "$(dirname "$VENV_PYTHON")")${NC}"
-elif command -v python &> /dev/null && python -c "import sys; sys.exit(0)" 2>/dev/null; then
-    # Prefer 'python' (usually Windows Python or venv) - verify it works
+elif check_python_tools "python"; then
+    # Prefer 'python' (usually Windows Python or venv) - verify it works and has tools
     PYTHON_CMD="python"
-elif command -v python3 &> /dev/null && python3 -c "import sys; sys.exit(0)" 2>/dev/null; then
-    # Fallback to python3 - verify it works
+elif check_python_tools "python.exe"; then
+    # Windows: try python.exe explicitly
+    PYTHON_CMD="python.exe"
+elif check_python_tools "python3"; then
+    # Fallback to python3 - verify it works and has tools
     PYTHON_CMD="python3"
 else
-    echo -e "${RED}❌ Error: Python not found. Please install Python 3.11+${NC}"
-    exit 1
-fi
-
-# Verify Python is accessible and has the required modules
-echo -e "${YELLOW}ℹ️  Using Python: $PYTHON_CMD${NC}"
-if ! $PYTHON_CMD -c "import black, flake8, mypy" 2>/dev/null; then
-    echo -e "${RED}❌ Error: Required linting tools not found${NC}"
-    echo -e "${YELLOW}💡 Please install them with: $PYTHON_CMD -m pip install black flake8 mypy${NC}"
+    echo -e "${RED}❌ Error: Python not found or required linting tools not installed${NC}"
+    echo -e "${YELLOW}💡 Please install them with: python -m pip install black flake8 mypy${NC}"
     echo -e "${YELLOW}💡 Or activate your virtual environment first${NC}"
     exit 1
 fi
+
+# Verify Python is accessible
+echo -e "${YELLOW}ℹ️  Using Python: $PYTHON_CMD${NC}"
 echo ""
 
 # Step 1: Black formatting check

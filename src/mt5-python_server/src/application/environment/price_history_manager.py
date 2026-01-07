@@ -10,6 +10,7 @@ import time
 import threading
 
 from connectors.base import IDataSourceConnector
+from utils.time_utils import get_utc_time
 
 
 class PriceHistoryManager:
@@ -26,7 +27,7 @@ class PriceHistoryManager:
         self.last_update_time: Dict[str, float] = {}  # symbol -> timestamp
         # Track bitemporal timestamps: (event_time, receive_time) tuples
         self.price_timestamps: Dict[str, List[tuple[datetime, Optional[datetime]]]] = {}
-        
+
         # Background threads for consuming connector streams
         self._consumer_threads: List[threading.Thread] = []
         self._shutdown_flag = threading.Event()
@@ -37,83 +38,87 @@ class PriceHistoryManager:
             self.price_history_by_pair[symbol] = []
             self.price_timestamps[symbol] = []
             self.last_update_time[symbol] = 0.0
-            
+
             # Start consumer thread for this connector
             thread = threading.Thread(
-                target=self._consume_connector,
-                args=(connector, symbol),
-                daemon=True
+                target=self._consume_connector, args=(connector, symbol), daemon=True
             )
             thread.start()
             self._consumer_threads.append(thread)
-    
+
     def _consume_connector(self, connector: IDataSourceConnector, symbol: str):
         """
         Consume events from connector and update price history
-        
+
         :param connector: Data source connector
         :param symbol: Trading symbol
         """
         logger = logging.getLogger(__name__)
-        
+
         # Connect to connector if not already connected
         if not connector.is_connected():
             if not connector.connect():
                 logger.error(f"Failed to connect to connector for {symbol}")
                 return
-        
+
         try:
             # Consume events from connector stream
             for event in connector.stream():
                 if self._shutdown_flag.is_set():
                     break
-                
+
                 # Extract price from normalized event
-                payload = event.get('payload', {})
-                bid = payload.get('bid', 0.0)
-                ask = payload.get('ask', 0.0)
+                payload = event.get("payload", {})
+                bid = payload.get("bid", 0.0)
+                ask = payload.get("ask", 0.0)
                 mid_price = (bid + ask) / 2.0
-                
+
                 # Extract event_time (timestamp) and receive_time
-                event_time = event.get('timestamp')
-                receive_time = event.get('receive_time')
-                
+                event_time = event.get("timestamp")
+                receive_time = event.get("receive_time")
+
                 # Parse event_time
                 if event_time:
                     if isinstance(event_time, str):
                         try:
-                            event_time = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+                            event_time = datetime.fromisoformat(
+                                event_time.replace("Z", "+00:00")
+                            )
                         except ValueError:
                             from utils.time_utils import get_utc_time
+
                             event_time = get_utc_time()
                     elif not isinstance(event_time, datetime):
                         from utils.time_utils import get_utc_time
+
                         event_time = get_utc_time()
                 else:
                     from utils.time_utils import get_utc_time
+
                     event_time = get_utc_time()
-                
+
                 # Parse receive_time if present
                 if receive_time:
                     if isinstance(receive_time, str):
                         try:
-                            receive_time = datetime.fromisoformat(receive_time.replace("Z", "+00:00"))
+                            receive_time = datetime.fromisoformat(
+                                receive_time.replace("Z", "+00:00")
+                            )
                         except ValueError:
                             receive_time = None
                     elif not isinstance(receive_time, datetime):
                         receive_time = None
                 else:
                     receive_time = None
-                
+
                 # Add price to history with bitemporal timestamps
                 self.add_price(symbol, mid_price, event_time, receive_time)
-                
+
         except Exception as e:
             logger.error(
-                f"Error consuming connector stream for {symbol}: {e}",
-                exc_info=True
+                f"Error consuming connector stream for {symbol}: {e}", exc_info=True
             )
-    
+
     def shutdown(self):
         """Shutdown all consumer threads"""
         self._shutdown_flag.set()
@@ -122,11 +127,11 @@ class PriceHistoryManager:
                 thread.join(timeout=2.0)
 
     def add_price(
-        self, 
-        symbol: str, 
-        price: float, 
+        self,
+        symbol: str,
+        price: float,
         timestamp: Optional[datetime] = None,
-        receive_time: Optional[datetime] = None
+        receive_time: Optional[datetime] = None,
     ):
         """
         Add price to history with bitemporal timestamps
@@ -137,8 +142,9 @@ class PriceHistoryManager:
         """
         if timestamp is None:
             from utils.time_utils import get_utc_time
+
             timestamp = get_utc_time()
-        
+
         if symbol not in self.price_history_by_pair:
             self.price_history_by_pair[symbol] = []
             self.price_timestamps[symbol] = []
@@ -255,10 +261,7 @@ class PriceHistoryManager:
         return time.time() - last_update
 
     def get_history_up_to(
-        self, 
-        symbol: str, 
-        max_timestamp: datetime,
-        query_by: str = 'receive_time'
+        self, symbol: str, max_timestamp: datetime, query_by: str = "receive_time"
     ) -> List[tuple[datetime, float, Optional[datetime]]]:
         """
         Get price history filtered to only include prices <= max_timestamp (point-in-time)
@@ -269,20 +272,22 @@ class PriceHistoryManager:
         """
         if symbol not in self.price_history_by_pair:
             return []
-        
+
         prices = self.price_history_by_pair[symbol]
         timestamps = self.price_timestamps.get(symbol, [])
-        
+
         # If no timestamps tracked, return all (backward compatibility)
         if not timestamps or len(timestamps) != len(prices):
             # Backward compatibility: return prices only
-            return [(get_utc_time() if timestamp is None else timestamp, price, None) 
-                    for price, timestamp in zip(prices, [None] * len(prices))]
-        
+            return [
+                (get_utc_time() if timestamp is None else timestamp, price, None)
+                for price, timestamp in zip(prices, [None] * len(prices))
+            ]
+
         # Filter by point-in-time constraint
         filtered = []
         for price, (event_time, receive_time) in zip(prices, timestamps):
-            if query_by == 'receive_time':
+            if query_by == "receive_time":
                 # Filter by receive_time (transaction time) for point-in-time training
                 filter_time = receive_time if receive_time is not None else event_time
                 if filter_time <= max_timestamp:
@@ -291,5 +296,5 @@ class PriceHistoryManager:
                 # Filter by event_time (valid time) for pattern learning
                 if event_time <= max_timestamp:
                     filtered.append((event_time, price, receive_time))
-        
+
         return filtered

@@ -109,11 +109,12 @@ class LiveTradingEnv(BaseTradingEnv):
         # Initialize feature engine with database for versioning
         try:
             from mlops.feature_registry import FeatureRegistry
+
             feature_registry = FeatureRegistry(db) if db else None
         except Exception as e:
             logger.warning(f"Failed to create feature registry: {e}")
             feature_registry = None
-        
+
         self.feature_engine = FeatureEngine(
             feature_engineer=self.feature_engineer,
             window_size=window_size,
@@ -141,7 +142,9 @@ class LiveTradingEnv(BaseTradingEnv):
         if reward_normalizer is not None:
             self.reward_normalizer = reward_normalizer
         elif use_reward_normalization:
-            self.reward_normalizer = RewardNormalizer(alpha=0.99, clip_range=(-3.0, 3.0))
+            self.reward_normalizer = RewardNormalizer(
+                alpha=0.99, clip_range=(-3.0, 3.0)
+            )
         else:
             self.reward_normalizer = None
 
@@ -177,22 +180,23 @@ class LiveTradingEnv(BaseTradingEnv):
                     timestamp = data["timestamp"]
                 elif "datetime" in data:
                     timestamp = data["datetime"]
-                self.price_history_manager.add_price(symbol, data["mid"], timestamp=timestamp)
+                self.price_history_manager.add_price(
+                    symbol, data["mid"], timestamp=timestamp
+                )
 
-    def get_state(self, mode: str = 'live', include_latency: bool = True):
+    def get_state(self, mode: str = "live", include_latency: bool = True):
         """
         Get current state from all data sources - delegates to StateBuilder
-        
+
         :param mode: 'training' (point-in-time) or 'live' (real-time)
         :param include_latency: Include latency features in state
         :return: State array with latency features
         """
         from utils.time_utils import get_utc_time
+
         current_time = get_utc_time()
         return self.state_builder.build_state(
-            current_time=current_time,
-            mode=mode,
-            include_latency=include_latency
+            current_time=current_time, mode=mode, include_latency=include_latency
         )
 
     # Property for backward compatibility
@@ -340,15 +344,14 @@ class LiveTradingEnv(BaseTradingEnv):
 
         # Track reward components for monitoring
         reward_components = {
-            'sharpe_reward': sharpe_reward,
-            'drawdown_penalty': drawdown_penalty,
-            'volatility_penalty': volatility_penalty,
-            'transaction_penalty': transaction_penalty,
-            'action_penalty': action_penalty,
+            "sharpe_reward": sharpe_reward,
+            "drawdown_penalty": drawdown_penalty,
+            "volatility_penalty": volatility_penalty,
+            "transaction_penalty": transaction_penalty,
+            "action_penalty": action_penalty,
         }
 
         # Normalize reward if normalizer is configured
-        raw_reward = reward
         if self.reward_normalizer is not None and self.use_reward_normalization:
             reward = self.reward_normalizer.normalize(reward)
 
@@ -386,9 +389,9 @@ class LiveTradingEnv(BaseTradingEnv):
         """
         stats = {}
         if self.reward_normalizer is not None:
-            stats['normalizer'] = self.reward_normalizer.get_statistics()
+            stats["normalizer"] = self.reward_normalizer.get_statistics()
         if self.reward_monitor is not None:
-            stats['monitor'] = self.reward_monitor.get_statistics()
+            stats["monitor"] = self.reward_monitor.get_statistics()
         return stats
 
     def _save_feature_engineer(self):

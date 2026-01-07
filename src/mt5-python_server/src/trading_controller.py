@@ -125,7 +125,7 @@ class TradingController:
             risk_config = RiskConfig.from_env()
         except Exception:
             risk_config = RiskConfig.default()
-        
+
         self.pre_trade_controls = PreTradeControls(
             max_total_exposure_pct=risk_config.max_total_exposure_pct,
             max_trades_per_minute=risk_config.max_trades_per_minute,
@@ -509,7 +509,7 @@ class TradingController:
             pair = None
             action_type = None
             pair_index = None
-            
+
             if action != 0:
                 try:
                     pair_index, action_type = self.env.decode_action(action)
@@ -522,7 +522,9 @@ class TradingController:
                         if pair:
                             symbol = pair.symbol
                     if action_type:
-                        action_type_str = str(action_type).lower().replace("actiontype.", "")
+                        action_type_str = (
+                            str(action_type).lower().replace("actiontype.", "")
+                        )
                 except Exception:
                     pass
 
@@ -532,10 +534,10 @@ class TradingController:
                 feed_status = get_market_feed_status(
                     self.env.data_providers, self.feed_stale_threshold
                 )
-                
+
                 # Convert action_type to string for validation
                 action_type_name = action_type_str.upper()
-                
+
                 # Validate action before execution
                 is_valid, reason = self.pre_trade_controls.validate_action(
                     account=self.account,
@@ -545,7 +547,7 @@ class TradingController:
                     current_positions=self.account.current_trade,
                     feed_status=feed_status,
                 )
-                
+
                 if not is_valid:
                     if hasattr(self.logger, "log_event"):
                         self.logger.log_event(
@@ -569,7 +571,7 @@ class TradingController:
 
             # Track trade execution latency
             start_time = time.time()
-            
+
             # Use ActionExecutor to execute the action
             previous_balance = self.account.balance
             self.action_executor.execute(
@@ -583,22 +585,26 @@ class TradingController:
                 session_id=self.session_id,
                 trade_logger=self.trade_logger,
             )
-            
+
             # Record trade for throttle tracking (only for BUY/SELL actions)
             if action != 0 and action_type_str in ["buy", "sell"]:
                 self.pre_trade_controls.record_trade(action_type_name)
-            
+
             # Record metrics for non-HOLD actions
             if action != 0 and action_type_str != "hold":
                 execution_time = time.time() - start_time
                 trade_latency_seconds.labels(symbol=symbol).observe(execution_time)
-                
+
                 # Increment trade counter
                 if action_type_str in ["buy", "sell"]:
-                    trades_executed_total.labels(symbol=symbol, action_type=action_type_str).inc()
+                    trades_executed_total.labels(
+                        symbol=symbol, action_type=action_type_str
+                    ).inc()
                 elif action_type_str == "close":
-                    trades_executed_total.labels(symbol=symbol, action_type="close").inc()
-            
+                    trades_executed_total.labels(
+                        symbol=symbol, action_type="close"
+                    ).inc()
+
             # Update equity and drawdown metrics
             self._update_equity_metrics()
         except Exception as e:
@@ -728,7 +734,7 @@ class TradingController:
         """Update equity and drawdown metrics"""
         if not self.account:
             return
-        
+
         try:
             # Get current equity
             current_equity = (
@@ -737,14 +743,17 @@ class TradingController:
                 else self.account.balance
             )
             account_equity.set(current_equity)
-            
+
             # Calculate drawdown if we have a peak equity
             # For simplicity, we'll calculate drawdown from initial balance
             # In production, you'd track peak equity over time
-            if hasattr(self.account, "initial_balance") and self.account.initial_balance:
+            if (
+                hasattr(self.account, "initial_balance")
+                and self.account.initial_balance
+            ):
                 peak_equity = max(
                     current_equity,
-                    getattr(self.account, "peak_equity", self.account.initial_balance)
+                    getattr(self.account, "peak_equity", self.account.initial_balance),
                 )
                 if peak_equity > 0:
                     drawdown_pct = ((peak_equity - current_equity) / peak_equity) * 100
