@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 class MetricsTracker:
     """Tracks training metrics"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics tracker"""
         self.total_steps = 0
         self.total_reward = 0.0

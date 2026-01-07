@@ -59,7 +59,8 @@ class StateBuilder:
 
         # Check data availability with staleness tolerance
         for connector in self.connectors:
-            symbol = connector.config.symbol
+            config = getattr(connector, "config", None)
+            symbol = getattr(config, "symbol", "unknown") if config else "unknown"
 
             if not self.price_manager.has_sufficient_data(symbol):
                 return None  # Still need sufficient data
@@ -76,7 +77,8 @@ class StateBuilder:
         query_by = "receive_time" if mode == "training" else "receive_time"
         price_histories = {}
         for connector in self.connectors:
-            symbol = connector.config.symbol
+            config = getattr(connector, "config", None)
+            symbol = getattr(config, "symbol", "unknown") if config else "unknown"
             # Use get_history_up_to() for point-in-time filtering
             filtered_history = self.price_manager.get_history_up_to(
                 symbol, current_time, query_by=query_by
@@ -103,7 +105,8 @@ class StateBuilder:
             # Get full history with timestamps for latency calculation
             full_histories = {}
             for connector in self.connectors:
-                symbol = connector.config.symbol
+                config = getattr(connector, "config", None)
+                symbol = getattr(config, "symbol", "unknown") if config else "unknown"
                 full_histories[symbol] = self.price_manager.get_history_up_to(
                     symbol, current_time, query_by=query_by
                 )
@@ -137,7 +140,8 @@ class StateBuilder:
         latency_features = []
 
         for connector in self.connectors:
-            symbol = connector.config.symbol
+            config = getattr(connector, "config", None)
+            symbol = getattr(config, "symbol", "unknown") if config else "unknown"
             history = price_histories.get(symbol, [])
 
             if not history:
@@ -203,7 +207,8 @@ class StateBuilder:
             return False
 
         for connector in self.connectors:
-            symbol = connector.config.symbol
+            config = getattr(connector, "config", None)
+            symbol = getattr(config, "symbol", "unknown") if config else "unknown"
             if not self.price_manager.has_sufficient_data(symbol):
                 return False
 

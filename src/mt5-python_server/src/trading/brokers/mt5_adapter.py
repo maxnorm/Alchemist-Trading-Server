@@ -136,8 +136,8 @@ class MT5BrokerAdapter(IBrokerAdapter):
                     discrepancies.append(
                         Discrepancy(
                             symbol=symbol,
-                            expected_quantity=expected_quantity,
-                            actual_quantity=actual_quantity,
+                            local_quantity=expected_quantity,
+                            broker_quantity=actual_quantity,
                             difference=actual_quantity - expected_quantity,
                         )
                     )

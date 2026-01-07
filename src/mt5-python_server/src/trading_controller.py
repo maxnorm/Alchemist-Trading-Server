@@ -267,7 +267,7 @@ class TradingController:
                         continue
 
                 status = get_market_feed_status(
-                    self.env.data_providers, self.feed_stale_threshold
+                    self.env.connectors, self.feed_stale_threshold
                 )
                 ready = status["ready"]
 
@@ -468,13 +468,13 @@ class TradingController:
         Build action mask based on current state
         :return: Binary mask array (1=valid, 0=invalid) for each action
         """
-        if not self.env.data_providers:
-            # If no data providers, only HOLD is valid
+        if not self.env.connectors:
+            # If no connectors, only HOLD is valid
             mask = np.zeros(self.agent.action_size, dtype=np.int32)
             mask[0] = 1  # HOLD is always valid
             return mask
 
-        n_pairs = len(self.env.data_providers)
+        n_pairs = len(self.env.connectors)
         action_mask = np.ones((n_pairs * 3) + 1, dtype=np.int32)  # +1 for global HOLD
 
         # Action 0 (HOLD) is always valid
@@ -513,12 +513,13 @@ class TradingController:
             if action != 0:
                 try:
                     pair_index, action_type = self.env.decode_action(action)
-                    if pair_index is not None and self.env.data_providers:
-                        pair = (
-                            self.env.data_providers[pair_index].currency_pair
-                            if pair_index < len(self.env.data_providers)
+                    if pair_index is not None and self.env.connectors:
+                        connector = (
+                            self.env.connectors[pair_index]
+                            if pair_index < len(self.env.connectors)
                             else None
                         )
+                        pair = getattr(connector, "currency_pair", None) if connector else None
                         if pair:
                             symbol = pair.symbol
                     if action_type:
@@ -532,7 +533,7 @@ class TradingController:
             if action != 0 and pair is not None and action_type is not None:
                 # Get feed status
                 feed_status = get_market_feed_status(
-                    self.env.data_providers, self.feed_stale_threshold
+                    self.env.connectors, self.feed_stale_threshold
                 )
 
                 # Convert action_type to string for validation
@@ -615,11 +616,12 @@ class TradingController:
                     symbol = "N/A"
                     action_type_str = "HOLD"
                 else:
-                    pair = (
-                        self.env.data_providers[pair_index].currency_pair
-                        if self.env.data_providers and pair_index is not None
+                    connector = (
+                        self.env.connectors[pair_index]
+                        if self.env.connectors and pair_index is not None and pair_index < len(self.env.connectors)
                         else None
                     )
+                    pair = getattr(connector, "currency_pair", None) if connector else None
                     symbol = pair.symbol if pair else "UNKNOWN"
                     action_type_str = str(action_type)
             except Exception:

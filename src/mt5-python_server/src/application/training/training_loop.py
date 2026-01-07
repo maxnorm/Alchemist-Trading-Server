@@ -87,7 +87,7 @@ class TrainingLoop:
                 "divergence_threshold": self.config.divergence_threshold,
                 "gradient_norm_threshold": self.config.gradient_norm_threshold,
             }
-            self.health_monitor = TrainingHealthMonitor(health_config)
+            self.health_monitor: Optional[TrainingHealthMonitor] = TrainingHealthMonitor(health_config)
         else:
             self.health_monitor = None
 
@@ -236,9 +236,10 @@ class TrainingLoop:
         if state is None or state.shape[0] < self.env.window_size:
             # Log detailed data availability per pair
             data_status = []
-            if self.env.data_providers:
-                for provider in self.env.data_providers:
-                    symbol = provider.currency_pair.symbol
+            if self.env.connectors:
+                for connector in self.env.connectors:
+                    currency_pair = getattr(connector, "currency_pair", None)
+                    symbol = currency_pair.symbol if currency_pair else "UNKNOWN"
                     history_len = len(self.env.price_history_by_pair.get(symbol, []))
                     data_status.append(
                         f"{symbol}: {history_len}/{self.env.window_size}"
@@ -295,13 +296,13 @@ class TrainingLoop:
         Build action mask based on current state
         :return: Binary mask array (1=valid, 0=invalid) for each action
         """
-        if not self.env.data_providers:
-            # If no data providers, only HOLD is valid
+        if not self.env.connectors:
+            # If no connectors, only HOLD is valid
             mask = np.zeros(self.agent.action_size, dtype=np.int32)
             mask[0] = 1  # HOLD is always valid
             return mask
 
-        n_pairs = len(self.env.data_providers)
+        n_pairs = len(self.env.connectors)
         action_mask = np.ones((n_pairs * 3) + 1, dtype=np.int32)  # +1 for global HOLD
 
         # Action 0 (HOLD) is always valid
@@ -497,43 +498,59 @@ class TrainingLoop:
         q_values = self._get_current_q_values()  # For value overestimation check
 
         # Comprehensive health checks (research-validated)
-        checks = [
-            self.health_monitor.check_loss_trend(loss),
-            self.health_monitor.check_nan(loss, model_weights),
-            self.health_monitor.check_gradient_norm(
-                gradients,
-                preserve_initial_norm=self.config.gradient_norm_preservation_enabled,
-            ),
-            self.health_monitor.check_value_overestimation(
-                q_values, threshold=self.config.value_overestimation_threshold
-            ),
-            self.health_monitor.check_update_to_data_ratio(
-                update_count=self.metrics_tracker.total_steps,
-                data_count=len(self.agent.memory),
-                max_ratio=self.config.update_to_data_ratio_threshold,
-            ),
-        ]
+        # Only perform checks if health_monitor is available
+        if self.health_monitor is not None:
+            checks = [
+                self.health_monitor.check_loss_trend(loss),
+                self.health_monitor.check_nan(loss, model_weights),
+                self.health_monitor.check_gradient_norm(
+                    gradients,
+                    preserve_initial_norm=self.config.gradient_norm_preservation_enabled,
+                ),
+            ]
+            
+            # Add value overestimation check only if q_values is available
+            if q_values is not None:
+                checks.append(
+                    self.health_monitor.check_value_overestimation(
+                        q_values, threshold=self.config.value_overestimation_threshold
+                    )
+                )
+            
+            checks.append(
+                self.health_monitor.check_update_to_data_ratio(
+                    update_count=self.metrics_tracker.total_steps,
+                    data_count=len(self.agent.memory),
+                    max_ratio=self.config.update_to_data_ratio_threshold,
+                )
+            )
 
-        # Check if any divergence detected
-        for check_result in checks:
-            if len(check_result) == 3:  # gradient_norm returns 3 values
-                is_diverged, reason, grad_norm = check_result
-            else:
-                is_diverged, reason = check_result
+            # Check if any divergence detected
+            for check_result in checks:
+                # Handle gradient_norm which returns 3 values
+                if isinstance(check_result, tuple) and len(check_result) == 3:
+                    is_diverged, reason, grad_norm = check_result
+                elif isinstance(check_result, tuple) and len(check_result) == 2:
+                    is_diverged, reason = check_result
+                else:
+                    # Fallback for unexpected format
+                    continue
 
-            if is_diverged:
-                self.logger.error(f"Training divergence detected: {reason}")
-                if pre_training_checkpoint:
-                    self._handle_divergence(pre_training_checkpoint, reason)
-                return None  # Don't record this loss
+                if is_diverged:
+                    # Convert reason to string if needed
+                    reason_str = str(reason) if reason is not None else "Unknown divergence"
+                    self.logger.error(f"Training divergence detected: {reason_str}")
+                    if pre_training_checkpoint:
+                        self._handle_divergence(pre_training_checkpoint, reason_str)
+                    return None  # Don't record this loss
 
-        # Apply gradient norm preservation (if suggested)
-        if (
-            self.config.adaptive_learning_rate_on_norm_deviation
-            and hasattr(self.health_monitor, "adaptive_lr_factor")
-            and self.health_monitor.adaptive_lr_factor < 1.0
-        ):
-            self._adjust_learning_rate(self.health_monitor.adaptive_lr_factor)
+            # Apply gradient norm preservation (if suggested)
+            if (
+                self.config.adaptive_learning_rate_on_norm_deviation
+                and hasattr(self.health_monitor, "adaptive_lr_factor")
+                and self.health_monitor.adaptive_lr_factor < 1.0
+            ):
+                self._adjust_learning_rate(self.health_monitor.adaptive_lr_factor)
 
         # Log successful training step
         if self.metrics_tracker.total_steps % 10 == 0:
@@ -571,13 +588,15 @@ class TrainingLoop:
             # Decode action for logging
             pair_index, action_type = self.env.decode_action(action)
             action_names = {1: "BUY", 2: "SELL", 3: "CLOSE"}
-            pair_symbol = (
-                self.env.data_providers[pair_index].currency_pair.symbol
-                if self.env.data_providers
+            connector = (
+                self.env.connectors[pair_index]
+                if self.env.connectors
                 and pair_index is not None
-                and pair_index < len(self.env.data_providers)
-                else "UNKNOWN"
+                and pair_index < len(self.env.connectors)
+                else None
             )
+            currency_pair = getattr(connector, "currency_pair", None) if connector else None
+            pair_symbol = currency_pair.symbol if currency_pair else "UNKNOWN"
             action_name = action_names.get(
                 action_type.value if hasattr(action_type, "value") else action_type,
                 "UNKNOWN",
@@ -769,7 +788,7 @@ class TrainingLoop:
                 # Environment
                 "window_size": self.env.window_size,
                 "n_pairs": (
-                    len(self.env.data_providers) if self.env.data_providers else 0
+                    len(self.env.connectors) if self.env.connectors else 0
                 ),
             }
 

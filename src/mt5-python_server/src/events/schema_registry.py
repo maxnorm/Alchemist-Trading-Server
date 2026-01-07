@@ -207,7 +207,7 @@ class SchemaRegistry:
     Allows registration and validation of source-specific event formats
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize schema registry"""
         self._source_schemas: Dict[str, Dict[str, Any]] = {}
 

@@ -52,13 +52,13 @@ class AgentTrainer:
         Build action mask based on current state
         :return: Binary mask array (1=valid, 0=invalid) for each action
         """
-        if not self.env.data_providers:
-            # If no data providers, only HOLD is valid
+        if not self.env.connectors:
+            # If no connectors, only HOLD is valid
             mask = np.zeros(self.agent.action_size, dtype=np.int32)
             mask[0] = 1  # HOLD is always valid
             return mask
 
-        n_pairs = len(self.env.data_providers)
+        n_pairs = len(self.env.connectors)
         action_mask = np.ones((n_pairs * 3) + 1, dtype=np.int32)  # +1 for global HOLD
 
         # Action 0 (HOLD) is always valid
@@ -166,13 +166,14 @@ class AgentTrainer:
         # Validate pair_index
         if (
             pair_index is None
-            or not self.env.data_providers
-            or pair_index >= len(self.env.data_providers)
+            or not self.env.connectors
+            or pair_index >= len(self.env.connectors)
         ):
             return 0.0
 
         # Get currency pair for the selected pair_index
-        pair = self.env.data_providers[pair_index].currency_pair
+        connector = self.env.connectors[pair_index]
+        pair = getattr(connector, "currency_pair", None)
 
         if pair is None:
             return 0.0

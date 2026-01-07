@@ -87,7 +87,12 @@ class LiveTradingEnv(BaseTradingEnv):
 
             db = Database()
             symbols = (
-                [connector.config.symbol for connector in connectors]
+                [
+                    getattr(getattr(connector, "config", None), "symbol", "unknown")
+                    if getattr(connector, "config", None)
+                    else "unknown"
+                    for connector in connectors
+                ]
                 if connectors
                 else []
             )
@@ -140,7 +145,7 @@ class LiveTradingEnv(BaseTradingEnv):
         # Initialize reward normalizer
         self.use_reward_normalization = use_reward_normalization
         if reward_normalizer is not None:
-            self.reward_normalizer = reward_normalizer
+            self.reward_normalizer: Optional[RewardNormalizer] = reward_normalizer
         elif use_reward_normalization:
             self.reward_normalizer = RewardNormalizer(
                 alpha=0.99, clip_range=(-3.0, 3.0)
@@ -151,7 +156,7 @@ class LiveTradingEnv(BaseTradingEnv):
         # Initialize reward monitor
         self.use_reward_monitoring = use_reward_monitoring
         if reward_monitor is not None:
-            self.reward_monitor = reward_monitor
+            self.reward_monitor: Optional[RewardMonitor] = reward_monitor
         elif use_reward_monitoring:
             self.reward_monitor = RewardMonitor(window_size=100, anomaly_threshold=3.0)
         else:

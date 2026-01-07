@@ -34,7 +34,8 @@ class PriceHistoryManager:
 
         # Initialize for each connector
         for connector in connectors:
-            symbol = connector.config.symbol
+            config = getattr(connector, "config", None)
+            symbol = getattr(config, "symbol", "unknown") if config else "unknown"
             self.price_history_by_pair[symbol] = []
             self.price_timestamps[symbol] = []
             self.last_update_time[symbol] = 0.0

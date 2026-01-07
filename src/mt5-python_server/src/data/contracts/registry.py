@@ -16,7 +16,7 @@ class ContractRegistry:
     Provides a central place to register and retrieve validators by data type
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize registry with default validators"""
         self._validators: Dict[str, IContractValidator] = {}
         self._register_default_validators()

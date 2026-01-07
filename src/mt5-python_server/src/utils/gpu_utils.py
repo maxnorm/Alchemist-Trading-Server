@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any
 class GPUConfig:
     """GPU configuration and optimization utilities"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
         self.gpus_available: List[tf.config.PhysicalDevice] = []
         self.is_configured = False

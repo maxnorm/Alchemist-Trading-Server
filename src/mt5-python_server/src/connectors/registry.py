@@ -22,7 +22,7 @@ class ConnectorRegistry:
     and automatically discovers features from connector schemas.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the registry with thread-safe storage."""
         self._connectors: Dict[str, IDataSourceConnector] = {}
         self._lock = threading.Lock()
@@ -112,7 +112,8 @@ class ConnectorRegistry:
         features = []
 
         # Get symbol from connector config
-        symbol = getattr(connector.config, "symbol", "unknown")
+        config = getattr(connector, "config", None)
+        symbol = getattr(config, "symbol", "unknown") if config else "unknown"
         source = schema.get("source", connector_name)
         data_type = schema.get("data_type", "unknown")
 

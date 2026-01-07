@@ -196,13 +196,14 @@ class LiveTrainer:
         # Validate pair_index
         if (
             pair_index is None
-            or not self.env.data_providers
-            or pair_index >= len(self.env.data_providers)
+            or not self.env.connectors
+            or pair_index >= len(self.env.connectors)
         ):
             return 0.0
 
         # Get currency pair for the selected pair_index
-        pair = self.env.data_providers[pair_index].currency_pair
+        connector = self.env.connectors[pair_index]
+        pair = getattr(connector, "currency_pair", None)
 
         if pair is None:
             return 0.0
@@ -311,13 +312,14 @@ class LiveTrainer:
         # Validate pair_index
         if (
             pair_index is None
-            or not self.env.data_providers
-            or pair_index >= len(self.env.data_providers)
+            or not self.env.connectors
+            or pair_index >= len(self.env.connectors)
         ):
             return 0.0
 
         # Get currency pair for the selected pair_index
-        pair = self.env.data_providers[pair_index].currency_pair
+        connector = self.env.connectors[pair_index]
+        pair = getattr(connector, "currency_pair", None)
 
         if pair is None:
             return 0.0
@@ -596,14 +598,16 @@ class LiveTrainer:
         if self.simulated_position:
             # Get the pair for the simulated position
             pair_index = self.simulated_position.get("pair_index", 0)
-            if self.env.data_providers and pair_index < len(self.env.data_providers):
-                pair = self.env.data_providers[pair_index].currency_pair
+            if self.env.connectors and pair_index < len(self.env.connectors):
+                connector = self.env.connectors[pair_index]
+                pair = getattr(connector, "currency_pair", None)
             else:
-                pair = (
-                    self.env.data_providers[0].currency_pair
-                    if self.env.data_providers
+                connector = (
+                    self.env.connectors[0]
+                    if self.env.connectors
                     else None
                 )
+                pair = getattr(connector, "currency_pair", None) if connector else None
 
             if pair:
                 mid_price = None

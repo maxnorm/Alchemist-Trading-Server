@@ -42,7 +42,7 @@ class SourceTimestampConfig:
 class TimestampAlignmentService:
     """Unified timestamp alignment for all sources"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize timestamp alignment service"""
         self.source_configs: Dict[str, SourceTimestampConfig] = {}
         self._register_default_sources()

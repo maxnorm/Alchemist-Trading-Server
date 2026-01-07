@@ -74,7 +74,7 @@ class MT5TickConnector(IDataSourceConnector):
                 db = Database()
 
                 self.streamer = MT5TickStreamer(
-                    socket=self.socket,
+                    sock=self.socket,
                     asset=self.currency_pair,
                     stop_char="\n",
                     verbose=False,

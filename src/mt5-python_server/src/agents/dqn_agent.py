@@ -98,7 +98,7 @@ class DQNAgent:
 
         # Learning rate scheduler
         if learning_rate_scheduler is not None:
-            self.learning_rate_scheduler = learning_rate_scheduler
+            self.learning_rate_scheduler: Optional[BaseLearningRateScheduler] = learning_rate_scheduler
         elif scheduler_config is not None:
             scheduler_type = scheduler_config.pop("type", "reduce_on_plateau")
             self.learning_rate_scheduler = create_scheduler(

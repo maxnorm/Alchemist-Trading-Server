@@ -17,7 +17,7 @@ from mt5_connection.terminal import MT5Terminal
 class TerminalManager:
     """Manages MT5 terminal connections"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize terminal manager"""
         self.accounts: List[Account] = []
 
@@ -46,7 +46,7 @@ class TerminalManager:
         if account:
             account.set_terminal(terminal)
         else:
-            account = Account(login, terminal)
+            account = Account(login, terminal=terminal)
             self.accounts.append(account)
 
         # Start heartbeat to keep connection alive
