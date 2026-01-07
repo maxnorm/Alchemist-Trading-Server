@@ -7,7 +7,7 @@ import sys
 import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'mt5-python_server', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'trading_server', 'src'))
 
 from utils.risk_management import RiskManager
 from models.account import Account

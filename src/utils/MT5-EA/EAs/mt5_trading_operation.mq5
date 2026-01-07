@@ -19,6 +19,7 @@
 
 input string ip = "127.0.0.1";
 input int port = 8080;
+input string auth_token = "";
 
 int auth_code = 2;
 int successful_auth_code = 0;
@@ -109,6 +110,7 @@ bool auth()
       CJAVal json;
       json["auth_code"] = auth_code;
       json["login"] = AccountInfoInteger(ACCOUNT_LOGIN);
+      json["auth_token"] = auth_token;
       
       PrintFormat("[EA] auth: Sending auth - code: %d, login: %d", auth_code, AccountInfoInteger(ACCOUNT_LOGIN));
 

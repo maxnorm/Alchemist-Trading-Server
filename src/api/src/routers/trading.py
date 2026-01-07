@@ -4,6 +4,7 @@ Trading control endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List
 from dependencies import get_db
 from services import trading_service
@@ -30,6 +31,15 @@ async def get_trading_status(db: Session = Depends(get_db)):
     """Get trading status"""
     try:
         return trading_service.get_trading_status(db)
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code (e.g., 503 from get_db)
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get trading status: {str(e)}"

@@ -4,6 +4,7 @@ Feature catalog service
 
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
 from schemas.features import FeatureResponse, DataSourceResponse
 import logging
@@ -15,37 +16,45 @@ def get_all_features(
     db: Session, source: Optional[str] = None, category: Optional[str] = None
 ) -> List[FeatureResponse]:
     """Get all features with optional filtering"""
-    query = "SELECT * FROM features WHERE 1=1"
-    params = {}
+    try:
+        query = "SELECT * FROM features WHERE 1=1"
+        params = {}
 
-    if source:
-        query += " AND source = :source"
-        params["source"] = source
+        if source:
+            query += " AND source = :source"
+            params["source"] = source
 
-    if category:
-        query += " AND category = :category"
-        params["category"] = category
+        if category:
+            query += " AND category = :category"
+            params["category"] = category
 
-    query += " ORDER BY name"
+        query += " ORDER BY name"
 
-    result = db.execute(text(query), params)
-    rows = result.fetchall()
+        result = db.execute(text(query), params)
+        rows = result.fetchall()
 
-    features = []
-    for row in rows:
-        # Convert row to dict
-        row_dict = dict(row._mapping)
-        # Parse JSON statistics if present
-        if row_dict.get("statistics") and isinstance(row_dict["statistics"], str):
-            import json
+        features = []
+        for row in rows:
+            # Convert row to dict
+            row_dict = dict(row._mapping)
+            # Parse JSON statistics if present
+            if row_dict.get("statistics") and isinstance(row_dict["statistics"], str):
+                import json
 
-            try:
-                row_dict["statistics"] = json.loads(row_dict["statistics"])
-            except (ValueError, TypeError):
-                row_dict["statistics"] = None
-        features.append(FeatureResponse(**row_dict))
+                try:
+                    row_dict["statistics"] = json.loads(row_dict["statistics"])
+                except (ValueError, TypeError):
+                    row_dict["statistics"] = None
+            features.append(FeatureResponse(**row_dict))
 
-    return features
+        return features
+    except SQLAlchemyError:
+        # Re-raise SQLAlchemyError so router can handle it
+        raise
+    except Exception as e:
+        # Wrap other exceptions to provide context
+        logger.error(f"Error in get_all_features: {e}")
+        raise
 
 
 def get_feature_by_name(db: Session, name: str) -> Optional[FeatureResponse]:

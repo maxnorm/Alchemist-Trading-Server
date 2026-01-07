@@ -170,7 +170,7 @@ pytest tests/integration/
 pytest tests/api/
 
 # With coverage
-pytest tests/ --cov=src/mt5-python_server/src --cov-report=html
+pytest tests/ --cov=src/trading_server/src --cov-report=html
 ```
 
 ### Test Coverage

@@ -4,7 +4,7 @@ import type { Experiment, CreateExperimentDto } from '@/types/experiment'
 import type { Feature, FeatureFilters } from '@/types/feature'
 import type { Model, ModelStage } from '@/types/model'
 import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
-import type { MT5Account, ModelAssignment } from '@/types/mt5'
+import type { MT5Account, MT5AccountCreatePayload, MT5AccountSecret, ModelAssignment } from '@/types/mt5'
 import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade, ModelStatistics, ModelComparison } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
 import type { PaperSession, ValidationResult } from '@/types/model'
@@ -230,6 +230,14 @@ class ApiClient {
   async getMT5Accounts(): Promise<MT5Account[]> {
     const response = await this.client.get<MT5Account[]>(API_ENDPOINTS.mt5Accounts)
     return Array.isArray(response.data) ? response.data : []
+  }
+
+  async postMt5AccountRegister(payload: MT5AccountCreatePayload): Promise<MT5AccountSecret> {
+    const response = await this.client.post<MT5AccountSecret>(
+      `${API_ENDPOINTS.mt5Accounts}/register`,
+      payload
+    )
+    return response.data
   }
 
   async getMT5Account(id: number): Promise<MT5Account> {

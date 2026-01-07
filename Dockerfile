@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1
 RUN pip install --upgrade pip
 
 WORKDIR /app
-COPY ./src/mt5-python_server .
+COPY ./src/trading_server .
 
 COPY .env .env
 

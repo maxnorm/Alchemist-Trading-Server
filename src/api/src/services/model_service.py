@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 try:
     # Try different import paths
     try:
-        from src.mt5_python_server.src.mlops.two_factor_auth import TwoFactorAuth
+        from src.trading_server.src.mlops.two_factor_auth import TwoFactorAuth
     except ImportError:
         # Alternative path
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
-        from src.mt5_python_server.src.mlops.two_factor_auth import TwoFactorAuth
+        from src.trading_server.src.mlops.two_factor_auth import TwoFactorAuth
     TWO_FA_AVAILABLE = True
 except ImportError:
     TWO_FA_AVAILABLE = False

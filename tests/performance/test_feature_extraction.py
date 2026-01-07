@@ -8,7 +8,7 @@ import os
 from unittest.mock import Mock
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
 
 
 class TestFeatureExtractionBenchmark:

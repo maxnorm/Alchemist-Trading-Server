@@ -4,6 +4,7 @@ Model registry endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional
 from dependencies import get_db
 from services import model_service
@@ -32,6 +33,15 @@ async def list_models(
             db, stage=stage, experiment_id=experiment_id
         )
         return ModelListResponse(models=models, total=len(models))
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code (e.g., 503 from get_db)
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch models: {str(e)}")
 

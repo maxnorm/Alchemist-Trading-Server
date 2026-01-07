@@ -21,6 +21,7 @@ from routers import (
     performance,
     health,
     data,
+    mt5_accounts,
 )
 from websocket.manager import websocket_manager
 from websocket import channels  # type: ignore[attr-defined]
@@ -149,12 +150,25 @@ app.include_router(models.router, prefix="/api/v1", tags=["Models"])
 app.include_router(trading.router, prefix="/api/v1", tags=["Trading"])
 app.include_router(performance.router, prefix="/api/v1", tags=["Performance"])
 app.include_router(data.router, prefix="/api/v1", tags=["Data"])
+app.include_router(mt5_accounts.router, prefix="/api/v1", tags=["MT5 Accounts"])
 
 
 # WebSocket endpoints
+@app.websocket("/ws")
+async def websocket_generic(websocket: WebSocket):
+    """Generic WebSocket endpoint that accepts channel subscriptions"""
+    await channels.handle_generic_websocket(websocket)
+
+
 @app.websocket("/ws/ticks")
 async def websocket_ticks(websocket: WebSocket):
     await channels.handle_websocket(websocket, "ticks")
+
+
+@app.websocket("/ws/accounts/mt5")
+async def websocket_mt5_accounts(websocket: WebSocket):
+    """WebSocket for MT5 account connection status updates"""
+    await channels.handle_websocket(websocket, "mt5_accounts")
 
 
 @app.websocket("/ws/training")

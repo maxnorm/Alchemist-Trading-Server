@@ -256,17 +256,17 @@ Build an **AI Forex Experimentation Platform** that enables:
 
 | Component | Status | Location |
 |-----------|--------|----------|
-| Socket server for MT5 | ✅ Complete | `src/mt5-python_server/src/server.py` |
-| Tick streaming | ✅ Complete | `src/mt5-python_server/src/mt5_connection/tick_streamer.py` |
-| DQN Agent (Attention) | ✅ Complete | `src/mt5-python_server/src/agents/attention_dqn_agent.py` |
-| Feature engineering | ✅ Complete | `src/mt5-python_server/src/utils/feature_engineering.py` |
-| Technical indicators | ✅ Complete | `src/mt5-python_server/src/utils/technical_indicators.py` |
-| Live training loop | ✅ Complete | `src/mt5-python_server/src/training/live_trainer.py` |
-| Base data provider | ✅ Complete | `src/mt5-python_server/src/data_providers/base_provider.py` |
-| Price data provider | ✅ Complete | `src/mt5-python_server/src/data_providers/price_provider.py` |
-| Database integration | ✅ Complete | `src/mt5-python_server/src/database.py` |
-| Trading controller | 🔄 Started | `src/mt5-python_server/src/trading_controller.py` |
-| Risk module | 🔄 Started | `src/mt5-python_server/src/risk/` |
+| Socket server for MT5 | ✅ Complete | `src/trading_server/src/server.py` |
+| Tick streaming | ✅ Complete | `src/trading_server/src/mt5_connection/tick_streamer.py` |
+| DQN Agent (Attention) | ✅ Complete | `src/trading_server/src/agents/attention_dqn_agent.py` |
+| Feature engineering | ✅ Complete | `src/trading_server/src/utils/feature_engineering.py` |
+| Technical indicators | ✅ Complete | `src/trading_server/src/utils/technical_indicators.py` |
+| Live training loop | ✅ Complete | `src/trading_server/src/training/live_trainer.py` |
+| Base data provider | ✅ Complete | `src/trading_server/src/data_providers/base_provider.py` |
+| Price data provider | ✅ Complete | `src/trading_server/src/data_providers/price_provider.py` |
+| Database integration | ✅ Complete | `src/trading_server/src/database.py` |
+| Trading controller | 🔄 Started | `src/trading_server/src/trading_controller.py` |
+| Risk module | 🔄 Started | `src/trading_server/src/risk/` |
 
 ### 4.2 What's Missing
 
@@ -442,7 +442,7 @@ Build an **AI Forex Experimentation Platform** that enables:
 │   │       ├── stores/
 │   │       └── types/
 │   │
-│   └── mt5-python_server/
+│   └── trading_server/
 │   └── src/
 │       ├── server.py
 │       ├── trading_controller.py
@@ -590,7 +590,7 @@ The platform allows developers to add new data sources through code. Each data p
 
 ```python
 # Example: How developers add a new data source
-# File: src/mt5-python_server/src/data_providers/sentiment_provider.py
+# File: src/trading_server/src/data_providers/sentiment_provider.py
 
 from data_providers.base_provider import DataProvider, Feature
 
@@ -2259,7 +2259,7 @@ services:
   
   # Trading Server (Python)
   server:
-    build: ./src/mt5-python_server
+    build: ./src/trading_server
     ports: ["8080:8080"]
     depends_on:
       - mariadb
@@ -2646,7 +2646,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          cd src/mt5-python_server
+          cd src/trading_server
           pip install -r requirements.txt
           pip install pytest pytest-cov bandit safety
       
@@ -2660,7 +2660,7 @@ jobs:
       
       - name: Security scan (Bandit)
         run: |
-          bandit -r src/mt5-python_server/src -f json -o bandit-report.json
+          bandit -r src/trading_server/src -f json -o bandit-report.json
       
       - name: Dependency vulnerability scan
         run: |
@@ -3509,7 +3509,7 @@ CIRCUIT_BREAKER_MAX_DRAWDOWN_PCT=20.0
 
 To add a new data source:
 
-1. Create a new file in `src/mt5-python_server/src/data_providers/`
+1. Create a new file in `src/trading_server/src/data_providers/`
 2. Implement the `DataProvider` base class
 3. Define features with metadata
 4. Register with the provider registry

@@ -19,9 +19,10 @@ class ConnectionManager:
         self.connections: Set[WebSocket] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, channel: str) -> None:
+    async def connect(self, websocket: WebSocket, channel: str, accept: bool = True) -> None:
         """Connect a WebSocket to a channel"""
-        await websocket.accept()
+        if accept:
+            await websocket.accept()
 
         async with self._lock:
             if channel not in self.channels:
@@ -54,13 +55,31 @@ class ConnectionManager:
         if channel not in self.channels:
             return
 
+        # Wrap message with channel info for frontend routing (if message doesn't already have channel field)
+        wrapped_message = message.copy()
+        if "channel" not in wrapped_message:
+            # Map backend channel names to frontend channel paths
+            channel_path_mapping = {
+                "training": "/ws/training/metrics",
+                "positions": "/ws/trading/positions",
+                "performance": "/ws/performance/updates",
+                "alerts": "/ws/alerts",
+                "mt5_accounts": "/ws/accounts/mt5",
+                "trading": "/ws/trading/status",
+            }
+            frontend_channel = channel_path_mapping.get(channel, f"/ws/{channel}")
+            wrapped_message = {
+                "channel": frontend_channel,
+                "data": message
+            }
+
         disconnected = set()
         async with self._lock:
             connections = self.channels[channel].copy()
 
         for connection in connections:
             try:
-                await connection.send_json(message)
+                await connection.send_json(wrapped_message)
             except Exception as e:
                 logger.warning(f"Failed to broadcast to connection: {e}")
                 disconnected.add(connection)

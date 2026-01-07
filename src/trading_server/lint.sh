@@ -16,9 +16,9 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Check if we're in the mt5-python_server directory
+# Check if we're in the trading_server directory
 if [ ! -f "requirements.txt" ]; then
-    echo -e "${RED}❌ Error: This script must be run from the src/mt5-python_server directory${NC}"
+    echo -e "${RED}❌ Error: This script must be run from the src/trading_server directory${NC}"
     exit 1
 fi
 

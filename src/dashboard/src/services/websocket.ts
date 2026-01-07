@@ -35,6 +35,9 @@ class WebSocketService {
         this.isConnecting = false
         this.reconnectAttempts = 0
         this.reconnectDelay = 1000
+        
+        // Subscribe to all active channels
+        this.resubscribeAll()
       }
 
       this.ws.onmessage = (event) => {
@@ -84,7 +87,8 @@ class WebSocketService {
       const handlers = this.subscribers.get(channel)!
       handlers.forEach((handler) => {
         try {
-          handler(data)
+          // Ensure data is always defined (default to empty object if undefined)
+          handler(data ?? {})
         } catch (error) {
           console.error('Error in WebSocket message handler:', error)
         }
@@ -101,6 +105,9 @@ class WebSocketService {
     // Ensure connection is open
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.connect()
+    } else {
+      // If already connected, send subscription message immediately
+      this.sendSubscription(channel)
     }
 
     // Return unsubscribe function
@@ -110,8 +117,37 @@ class WebSocketService {
         handlers.delete(handler)
         if (handlers.size === 0) {
           this.subscribers.delete(channel)
+          // Send unsubscribe message if no more handlers for this channel
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            this.sendUnsubscription(channel)
+          }
         }
       }
+    }
+  }
+  
+  private sendSubscription(channel: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        action: 'subscribe',
+        channel: channel
+      }))
+    }
+  }
+  
+  private sendUnsubscription(channel: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        action: 'unsubscribe',
+        channel: channel
+      }))
+    }
+  }
+  
+  private resubscribeAll(): void {
+    // Resubscribe to all active channels after reconnection
+    for (const channel of this.subscribers.keys()) {
+      this.sendSubscription(channel)
     }
   }
 

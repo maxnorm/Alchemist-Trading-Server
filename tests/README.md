@@ -68,7 +68,7 @@ python tests/test_data_validation.py
 
 Generate coverage report with pytest:
 ```bash
-pytest tests/ --cov=src/mt5-python_server/src --cov-report=html --cov-report=term
+pytest tests/ --cov=src/trading_server/src --cov-report=html --cov-report=term
 ```
 
 This will:

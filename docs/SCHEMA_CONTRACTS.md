@@ -205,7 +205,7 @@ To add a new data type:
 
 1. **Define Contract**: Add a new section in this document following the template
 2. **Register Contract**: Add contract definition to `schema_contracts` table
-3. **Implement Validator**: Create validator class in `src/mt5-python_server/src/data/contracts/`
+3. **Implement Validator**: Create validator class in `src/trading_server/src/data/contracts/`
 4. **Update Quality Gates**: Register validator in `quality_gates.py`
 5. **Database Migration**: Create table and add schema version columns
 6. **Update Documentation**: Add examples and usage patterns
@@ -336,6 +336,6 @@ The system maintains a registry of all active contracts in the `schema_contracts
 
 ## References
 
-- [Canonical Event Schema](../src/mt5-python_server/src/events/schema_registry.py)
-- [Quality Gates](../src/mt5-python_server/src/data/quality_gates.py)
+- [Canonical Event Schema](../src/trading_server/src/events/schema_registry.py)
+- [Quality Gates](../src/trading_server/src/data/quality_gates.py)
 - [Database Schema](../src/database/scripts/)

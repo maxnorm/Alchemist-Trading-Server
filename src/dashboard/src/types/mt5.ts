@@ -15,6 +15,22 @@ export interface MT5Account {
   updated_at?: string
 }
 
+export interface MT5AccountSecret extends MT5Account {
+  auth_token: string
+  server_host?: string
+  server_port?: number
+}
+
+export interface MT5AccountCreatePayload {
+  account_login: number
+  account_type: AccountType
+  broker_name?: string
+  broker_server?: string
+  account_currency?: string
+  account_leverage?: number
+  account_name?: string
+}
+
 export interface ModelAssignment {
   id: number
   account_id: number

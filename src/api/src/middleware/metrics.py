@@ -10,7 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Import metrics from mt5-python_server monitoring module
+# Import metrics from trading_server monitoring module
 # Since we're in the API service, we need to import prometheus_client directly
 api_request_duration: Optional["Histogram"]
 api_requests_total: Optional["Counter"]

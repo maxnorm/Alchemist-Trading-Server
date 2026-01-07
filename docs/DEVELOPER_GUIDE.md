@@ -4,7 +4,7 @@
 
 ### Step 1: Create Provider Class
 
-Create a new file in `src/mt5-python_server/src/data_providers/`:
+Create a new file in `src/trading_server/src/data_providers/`:
 
 ```python
 from data_providers.base_provider import DataProvider, Feature
@@ -40,7 +40,7 @@ class MyDataProvider(DataProvider):
 
 ### Step 2: Register Provider
 
-In `src/mt5-python_server/src/server.py`, register your provider:
+In `src/trading_server/src/server.py`, register your provider:
 
 ```python
 from data_providers.my_provider import MyDataProvider
@@ -58,7 +58,7 @@ After restarting, your features will automatically appear in the Feature Catalog
 
 ### Adding New Indicators
 
-1. Add calculation function to `src/mt5-python_server/src/features/technical_indicators.py`
+1. Add calculation function to `src/trading_server/src/features/technical_indicators.py`
 2. Add feature declaration to `IndicatorProvider.get_features()`
 3. Restart server
 
@@ -96,7 +96,7 @@ pytest tests/integration/
 pytest tests/api/
 
 # With coverage
-pytest tests/ --cov=src/mt5-python_server/src --cov-report=html
+pytest tests/ --cov=src/trading_server/src --cov-report=html
 ```
 
 ### Writing Tests

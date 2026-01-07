@@ -8,6 +8,7 @@ import json
 import socket
 import threading
 import time
+from typing import Dict
 
 from database import Database
 from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
@@ -158,6 +159,9 @@ class Server:
         server_port = int(os.getenv("SERVER_PORT"))
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__socket.bind((server_ip, server_port))
+        
+        # Track account IDs for connection lifecycle management
+        self.__account_ids: Dict[int, int] = {}  # login -> account_id mapping
 
         if self.__verbose:
             print_with_datetime(f"Server socket bind to {server_ip}:{server_port}")
@@ -360,7 +364,10 @@ class Server:
         Expected message format:
             {
                 "auth_code": 1,
-                "symbol": Currency pair symbol
+                "symbol": Currency pair symbol,
+                "digits": Number of digits,
+                "login": Account login,
+                "auth_token": Account auth token
             }
 
         Successfull authentification response:
@@ -368,7 +375,27 @@ class Server:
                 "auth_status": 0
             }
         """
-        if len(infos) == 3:
+        from infrastructure.db_integration import get_account_auth_token
+
+        # Require minimum fields for secure authentication
+        required_fields = {"symbol", "digits", "login", "auth_token"}
+        if not required_fields.issubset(infos.keys()):
+            self.__invalid_auth(
+                client,
+                "Invalid message format. Expected symbol, digits, login and auth_token for streamer authentication",
+            )
+            return
+
+        login = infos["login"]
+        provided_token = infos.get("auth_token")
+
+        # Validate auth token against database
+        expected_token = get_account_auth_token(login)
+        if not expected_token or not provided_token or expected_token != provided_token:
+            self.__invalid_auth(client, "Authentication failed")
+            return
+
+        if len(infos) >= 4:
             data = {"auth_status": Socket.SUCCESSFUL_AUTH.value}
             try:
                 client.send(bytes(json.dumps(data) + "\n", "utf-8"))
@@ -447,7 +474,8 @@ class Server:
         Expected message format:
             {
                 "auth_code": 2,
-                "login": Account login
+                "login": Account login,
+                "auth_token": Account auth token
             }
 
         Successfull authentification response:
@@ -456,7 +484,22 @@ class Server:
                 "terminal_id": Current terminal id
             }
         """
-        if len(infos) == 2:
+        from infrastructure.db_integration import get_account_auth_token
+
+        if len(infos) >= 2:  # Allow for additional fields (account_type, broker_name, etc.)
+            login = infos.get("login")
+            provided_token = infos.get("auth_token")
+
+            # Validate login and token before creating terminal
+            if login is None:
+                self.__invalid_auth(client, "Invalid message format. Missing account login")
+                return
+
+            expected_token = get_account_auth_token(login)
+            if not expected_token or not provided_token or expected_token != provided_token:
+                self.__invalid_auth(client, "Authentication failed")
+                return
+
             terminal = MT5Terminal(client)
 
             data = {
@@ -471,13 +514,21 @@ class Server:
 
             broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
 
+            # Check if account already exists
+            account_exists = False
             for account in self.__accounts:
                 if account.login == infos["login"]:
                     account.set_broker_adapter(broker_adapter)
-                    return
+                    account_exists = True
+                    # Update account in database
+                    self._persist_account_to_db(account, terminal, client, infos)
+                    break
 
-            account = Account(infos["login"], broker_adapter=broker_adapter)
-            self.__accounts.append(account)
+            if not account_exists:
+                account = Account(infos["login"], broker_adapter=broker_adapter)
+                self.__accounts.append(account)
+                # Persist account to database
+                self._persist_account_to_db(account, terminal, client, infos)
 
             if infos["login"] not in self.__environments:
 
@@ -495,6 +546,121 @@ class Server:
 
         else:
             self.__invalid_auth(client, "Invalid message format. Missing account login")
+
+    def _setup_terminal_disconnect_tracking(self, terminal, login):
+        """Set up tracking for terminal disconnection"""
+        try:
+            # Store reference to account_id in terminal for cleanup
+            account_id = self.__account_ids.get(login)
+            if account_id:
+                # Store account_id as attribute for cleanup
+                terminal._account_id = account_id
+                terminal._account_login = login
+        except Exception as e:
+            if self.__verbose:
+                with self.__console_lock:
+                    print_with_datetime(f"Error setting up disconnect tracking: {e}")
+
+    def _handle_terminal_disconnect(self, terminal_id, login):
+        """Handle terminal disconnection"""
+        try:
+            from infrastructure.db_integration import update_connection_status
+            
+            account_id = self.__account_ids.get(login)
+            if account_id:
+                update_connection_status(
+                    account_id=account_id,
+                    terminal_id=terminal_id,
+                    is_connected=False,
+                    disconnect_reason="Terminal disconnected",
+                )
+                
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(
+                            f"Terminal {terminal_id} disconnected for account {login}"
+                        )
+        except Exception as e:
+            with self.__console_lock:
+                print_with_datetime(f"Error handling terminal disconnect: {e}")
+
+    def _persist_account_to_db(self, account, terminal, client, infos):
+        """
+        Persist account information to database
+        """
+        try:
+            from infrastructure.db_integration import (
+                register_account_in_db,
+                log_connection,
+            )
+
+            # Extract account info
+            account_info = account.info
+
+            # Determine account type from EA message or account info
+            account_type = infos.get("account_type", "live")
+            if isinstance(account_type, int):
+                # Convert MT5 account type code: 0=Demo, 2=Real
+                account_type = "demo" if account_type == 0 else "live"
+
+            # Get connection IP
+            connection_ip = None
+            try:
+                connection_ip = client.getpeername()[0]
+            except Exception:
+                pass
+
+            # Register account in database
+            account_id = register_account_in_db(
+                login=account.login,
+                account_type=account_type,
+                broker_name=infos.get("broker_name") or account_info.broker_name if hasattr(account_info, 'broker_name') else None,
+                broker_server=infos.get("broker_server") or account_info.broker_server if hasattr(account_info, 'broker_server') else None,
+                currency=account_info.currency,
+                leverage=account_info.leverage,
+                account_name=infos.get("account_name"),
+            )
+
+            if account_id:
+                # Store account_id mapping for connection tracking
+                self.__account_ids[account.login] = account_id
+                
+                # Log connection
+                log_connection(
+                    account_id=account_id,
+                    terminal_id=terminal.id,
+                    ea_version=infos.get("ea_version"),
+                    connection_ip=connection_ip,
+                )
+
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(
+                            f"Persisted account {account.login} to database (ID: {account_id})"
+                        )
+                
+                # Set up disconnect tracking on terminal
+                self._setup_terminal_disconnect_tracking(terminal, account.login)
+            else:
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime(
+                            f"Warning: Failed to persist account {account.login} to database"
+                        )
+
+        except ImportError:
+            # Database integration not available - skip persistence
+            if self.__verbose:
+                with self.__console_lock:
+                    print_with_datetime(
+                        f"Database integration not available - skipping account persistence"
+                    )
+        except Exception as e:
+            # Log error but don't fail authentication
+            with self.__console_lock:
+                print_with_datetime(
+                    f"Error persisting account to database: {e}"
+                )
 
     def __invalid_auth(self, client, msg):
         """

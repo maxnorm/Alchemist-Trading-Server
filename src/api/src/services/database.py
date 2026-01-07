@@ -5,7 +5,9 @@ Database service layer with SQLAlchemy connection pool
 from sqlalchemy import create_engine, text, Engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
+from sqlalchemy.exc import OperationalError, DisconnectionError
 import logging
+import time
 from typing import Optional
 from config import settings
 
@@ -51,24 +53,61 @@ def init_db():
     # Create session factory
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
-    # Test connection - but don't fail if DB isn't ready yet
-    # The connection pool will retry when actually used
-    try:
-        with _engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        logger.info("Database connection successful")
-    except Exception as e:
-        logger.warning(f"Database connection test failed: {e}")
-        logger.info("Connection pool created, will retry on first use")
-        # Don't raise - allow the engine to be created
-        # The pool_pre_ping will verify connections when they're actually used
+    # Test connection with retry logic
+    max_retries = 5
+    retry_delay = 2
+    for attempt in range(max_retries):
+        try:
+            with _engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("Database connection successful")
+            return
+        except (OperationalError, DisconnectionError) as e:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Database connection test failed (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"Database connection test failed after {max_retries} attempts: {e}")
+                logger.error(f"Database URL: {database_url.split('@')[0]}@***")
+                logger.error("Connection pool created, but database is not available")
+                logger.error("The API will start, but database operations will fail until the database is available")
+        except Exception as e:
+            logger.error(f"Unexpected error during database connection test: {e}")
+            logger.error("Connection pool created, but connection test failed")
+            break
 
 
 def get_db_session() -> Session:
-    """Get a database session"""
+    """Get a database session with retry logic"""
     if _SessionLocal is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
-    return _SessionLocal()
+    
+    # Try to get a session with retry logic
+    max_retries = 3
+    retry_delay = 1
+    
+    for attempt in range(max_retries):
+        try:
+            session = _SessionLocal()
+            # Test the connection by executing a simple query
+            session.execute(text("SELECT 1"))
+            return session
+        except (OperationalError, DisconnectionError) as e:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Database connection failed (attempt {attempt + 1}/{max_retries}): {e}"
+                )
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"Database connection failed after {max_retries} attempts: {e}")
+                raise
+        except Exception as e:
+            logger.error(f"Unexpected error getting database session: {e}")
+            raise
 
 
 def close_db():

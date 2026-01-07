@@ -8,7 +8,7 @@ import os
 import unittest
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'mt5-python_server', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'trading_server', 'src'))
 
 if __name__ == '__main__':
     # Discover and run tests

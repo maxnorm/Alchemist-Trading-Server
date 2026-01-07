@@ -20,7 +20,7 @@ This guide covers how to test the refactored connector and broker adapter archit
 pytest tests/ -v
 
 # With coverage
-pytest tests/ --cov=src/mt5-python_server/src --cov-report=html --cov-report=term
+pytest tests/ --cov=src/trading_server/src --cov-report=html --cov-report=term
 ```
 
 ### Run Specific Test Suites
@@ -288,7 +288,7 @@ state = env.get_state()
 ```bash
 # Full coverage report
 pytest tests/ \
-    --cov=src/mt5-python_server/src \
+    --cov=src/trading_server/src \
     --cov-report=html \
     --cov-report=term \
     --cov-report=xml
@@ -328,7 +328,7 @@ pytest tests/ \
 1. **Import Errors**
    ```bash
    # Ensure Python path includes src
-   export PYTHONPATH="${PYTHONPATH}:$(pwd)/src/mt5-python_server/src"
+   export PYTHONPATH="${PYTHONPATH}:$(pwd)/src/trading_server/src"
    ```
 
 2. **Mock Issues**

@@ -35,6 +35,14 @@ class Settings(BaseSettings):
         default="/app/logs/kill_switch.flag", alias="KILL_SWITCH_FILE"
     )
 
+    # Public MT5 server coordinates for EA configuration
+    mt5_server_public_host: Optional[str] = Field(
+        default=None, alias="MT5_SERVER_PUBLIC_HOST"
+    )
+    mt5_server_public_port: Optional[int] = Field(
+        default=None, alias="MT5_SERVER_PUBLIC_PORT"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

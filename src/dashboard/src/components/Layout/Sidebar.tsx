@@ -21,7 +21,7 @@ const navigation = [
   { name: 'Feature Catalog', href: '/features', icon: List },
   { name: 'Model Registry', href: '/models', icon: Bot },
   { name: 'Live Trading', href: '/trading', icon: TrendingUp },
-  { name: 'MT5 Accounts', href: '/accounts', icon: Building2 },
+  { name: 'Accounts', href: '/accounts', icon: Building2 },
   { name: 'Performance', href: '/performance', icon: BarChart3 },
 ]
 

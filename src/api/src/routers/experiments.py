@@ -4,6 +4,7 @@ Experiment management endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional
 from dependencies import get_db
 from services import experiment_service
@@ -26,6 +27,15 @@ async def list_experiments(
     try:
         experiments = experiment_service.get_all_experiments(db, status=status)
         return ExperimentListResponse(experiments=experiments, total=len(experiments))
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code (e.g., 503 from get_db)
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch experiments: {str(e)}"

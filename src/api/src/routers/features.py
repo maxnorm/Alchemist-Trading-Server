@@ -4,6 +4,7 @@ Feature catalog endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List
 from dependencies import get_db
 from services import feature_service
@@ -28,6 +29,15 @@ async def list_features(
             db, source=source, category=category
         )
         return FeatureListResponse(features=features, total=len(features))
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code (e.g., 503 from get_db)
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch features: {str(e)}"
@@ -37,10 +47,25 @@ async def list_features(
 @router.get("/features/{name}", response_model=FeatureResponse)
 async def get_feature(name: str, db: Session = Depends(get_db)):
     """Get feature details by name"""
-    feature = get_feature_by_name(db, name)
-    if not feature:
-        raise HTTPException(status_code=404, detail=f"Feature '{name}' not found")
-    return feature
+    try:
+        feature = get_feature_by_name(db, name)
+        if not feature:
+            raise HTTPException(status_code=404, detail=f"Feature '{name}' not found")
+        return feature
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch feature: {str(e)}"
+        )
 
 
 @router.get("/features/sources", response_model=List[DataSourceResponse])
@@ -49,6 +74,15 @@ async def list_data_sources(db: Session = Depends(get_db)):
     try:
         sources = feature_service.get_all_data_sources(db)
         return sources
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code (e.g., 503 from get_db)
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
+        raise HTTPException(
+            status_code=503,
+            detail=f"Database error: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch data sources: {str(e)}"
@@ -58,9 +92,24 @@ async def list_data_sources(db: Session = Depends(get_db)):
 @router.get("/features/sources/{id}/health", response_model=DataSourceResponse)
 async def get_source_health(id: int, db: Session = Depends(get_db)):
     """Get data source health status"""
-    source = get_data_source_health(db, id)
-    if not source:
+    try:
+        source = get_data_source_health(db, id)
+        if not source:
+            raise HTTPException(
+                status_code=404, detail=f"Data source with id {id} not found"
+            )
+        return source
+    except HTTPException:
+        # Re-raise HTTPException to preserve status code
+        raise
+    except SQLAlchemyError as e:
+        # Database errors should return 503
         raise HTTPException(
-            status_code=404, detail=f"Data source with id {id} not found"
+            status_code=503,
+            detail=f"Database error: {str(e)}"
         )
-    return source
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch data source health: {str(e)}"
+        )

@@ -18,7 +18,7 @@ from unittest.mock import Mock, MagicMock, patch
 
 # Add source to path
 sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "../../src/mt5-python_server/src")
+    0, os.path.join(os.path.dirname(__file__), "../../src/trading_server/src")
 )
 
 from risk.pre_trade_controls import PreTradeControls

@@ -25,9 +25,11 @@ const getWsUrl = () => {
   }
   // Use same protocol as current page
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return window.location.origin.includes('localhost') 
-    ? 'ws://localhost:8000' 
-    : `${protocol}//${window.location.host}/ws`
+  // Check if we're accessing via gateway (port 80) or directly (port 8000)
+  const isGateway = window.location.port === '' || window.location.port === '80'
+  return isGateway 
+    ? `${protocol}//${window.location.host}/ws` 
+    : 'ws://localhost:8000/ws'
 }
 
 export const API_BASE_URL = getBaseUrl()
@@ -38,7 +40,7 @@ export const API_ENDPOINTS = {
   experiments: '/api/v1/experiments',
   models: '/api/v1/models',
   trading: '/api/v1/trading',
-  mt5Accounts: '/api/v1/mt5-accounts',
+  mt5Accounts: '/api/v1/accounts/mt5',
   performance: '/api/v1/performance',
   optuna: '/api/v1/optuna',
 } as const

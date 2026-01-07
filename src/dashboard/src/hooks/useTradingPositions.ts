@@ -9,7 +9,7 @@ export function useTradingPositions() {
 
   useEffect(() => {
     const unsubscribe = subscribe<{ positions: Position[] }>(WS_CHANNELS.tradingPositions, (data) => {
-      if (data.positions) {
+      if (data && typeof data === 'object' && 'positions' in data && Array.isArray(data.positions)) {
         setPositions(data.positions)
       }
     })

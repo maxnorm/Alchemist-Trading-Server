@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
 
 from data.quality_gates import QualityGate
 from utils.time_utils import get_utc_time

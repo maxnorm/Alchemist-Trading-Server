@@ -29,7 +29,7 @@ def get_trading_status(db: Session) -> TradingStatusResponse:
     # Get open positions
     result = db.execute(
         text(
-            "SELECT COUNT(*) FROM orders WHERE state IN ('new', 'partially_filled', 'filled')"
+            "SELECT COUNT(*) FROM orders WHERE state IN ('NEW', 'PARTIALLY_FILLED', 'FILLED')"
         )
     )
     open_positions = result.scalar() or 0
@@ -177,7 +177,7 @@ def get_open_positions(db: Session) -> List[PositionResponse]:
                 SELECT id, experiment_id, account_login, symbol, order_type,
                        entry_price, volume, pnl, entry_time, status
                 FROM orders
-                WHERE state IN ('new', 'partially_filled', 'filled')
+                WHERE state IN ('NEW', 'PARTIALLY_FILLED', 'FILLED')
                 ORDER BY entry_time DESC
             """
             )

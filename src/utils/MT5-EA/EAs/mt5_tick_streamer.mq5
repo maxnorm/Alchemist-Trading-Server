@@ -13,6 +13,8 @@
 
 input string ip = "127.0.0.1";
 input int port = 8080;
+input long account_login = 0;
+input string auth_token = "";
 
 string separator = "|";
 
@@ -126,6 +128,10 @@ bool auth()
       json["auth_code"] = auth_code;
       json["symbol"] = symbol;
       json["digits"] = digits;
+      // If account_login input is not set, fall back to terminal login
+      long login = account_login > 0 ? account_login : AccountInfoInteger(ACCOUNT_LOGIN);
+      json["login"] = login;
+      json["auth_token"] = auth_token;
 
       send_msg(socket, json, false);
       CJAVal msg = receive_msg(socket);

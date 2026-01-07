@@ -292,7 +292,7 @@ class ExperimentTracker:
             # Try multiple possible locations
             possible_paths = [
                 Path("requirements.txt"),  # Project root
-                Path("src/mt5-python_server/requirements.txt"),  # Server-specific
+                Path("src/trading_server/requirements.txt"),  # Server-specific
                 Path(__file__).parent.parent.parent.parent
                 / "requirements.txt",  # Relative to this file
             ]
