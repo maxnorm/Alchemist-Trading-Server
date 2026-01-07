@@ -9,6 +9,8 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -77,38 +79,34 @@ class PaperTradingSessionManager:
         :param start_balance: Starting balance for paper trading
         :return: PaperSession instance
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO paper_trading_sessions (
                     model_id, status, start_balance, current_balance, started_at
-                ) VALUES (%s, %s, %s, %s, %s)
-                """,
-                (model_id, "running", start_balance, start_balance, datetime.now()),
-            )
+                ) VALUES (:model_id, :status, :start_balance, :current_balance, :started_at)
+                RETURNING id
+            """
 
-            session_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
+            params = {
+                "model_id": model_id,
+                "status": "running",
+                "start_balance": start_balance,
+                "current_balance": start_balance,
+                "started_at": datetime.now(),
+            }
 
-            logger.info(
-                f"Created paper trading session {session_id} for model {model_id}"
-            )
+            result = self.db.execute_one(query, params)
+            if result:
+                session_id = result[0]
+                logger.info(
+                    f"Created paper trading session {session_id} for model {model_id}"
+                )
+                return self.get_session(session_id)
+            return None
 
-            return self.get_session(session_id)
-
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error creating paper trading session: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def get_session(self, session_id: int) -> Optional[PaperSession]:
         """
@@ -117,24 +115,17 @@ class PaperTradingSessionManager:
         :param session_id: Session ID
         :return: PaperSession instance or None
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, model_id, status, start_balance, current_balance,
                        total_trades, winning_trades, pnl, sharpe_ratio, max_drawdown,
                        started_at, ended_at
                 FROM paper_trading_sessions
-                WHERE id = %s
-                """,
-                (session_id,),
-            )
+                WHERE id = :session_id
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            params = {"session_id": session_id}
+            row = self.db.execute_one(query, params)
 
             if not row:
                 return None
@@ -169,12 +160,9 @@ class PaperTradingSessionManager:
                 ended_at=ended_at,
             )
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error getting session {session_id}: {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def update_session_metrics(
         self,
@@ -194,54 +182,38 @@ class PaperTradingSessionManager:
         :param pnl: Current P&L
         :return: True if successful
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+            # Build update query safely with whitelist of allowed columns
+            allowed_columns = {
+                "current_balance": balance,
+                "total_trades": total_trades,
+                "winning_trades": winning_trades,
+                "pnl": pnl,
+            }
 
-            # Build update query dynamically
-            updates = []
-            params = []
+            # Filter out None values
+            updates_dict = {k: v for k, v in allowed_columns.items() if v is not None}
 
-            if balance is not None:
-                updates.append("current_balance = %s")
-                params.append(balance)
-
-            if total_trades is not None:
-                updates.append("total_trades = %s")
-                params.append(total_trades)
-
-            if winning_trades is not None:
-                updates.append("winning_trades = %s")
-                params.append(winning_trades)
-
-            if pnl is not None:
-                updates.append("pnl = %s")
-                params.append(pnl)
-
-            if not updates:
+            if not updates_dict:
                 return True  # Nothing to update
 
-            params.append(session_id)
+            # Build query safely with named parameters
+            updates = []
+            params: Dict[str, Any] = {"session_id": session_id}
+            for col, val in updates_dict.items():
+                updates.append(f"{col} = :{col}")
+                params[col] = val
 
-            cursor.execute(
-                f"UPDATE paper_trading_sessions SET {', '.join(updates)} WHERE id = %s",
-                params,
-            )
+            query = f"UPDATE paper_trading_sessions SET {', '.join(updates)} WHERE id = :session_id"
 
-            conn.commit()
-            cursor.close()
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             return True
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error updating session metrics: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             return False
-        finally:
-            if conn:
-                conn.close()
 
     def end_session(
         self, session_id: int, final_metrics: Optional[Dict[str, float]] = None
@@ -269,36 +241,36 @@ class PaperTradingSessionManager:
             if not final_metrics:
                 final_metrics = self._calculate_metrics(session)
 
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE paper_trading_sessions
                 SET status = 'completed',
-                    current_balance = %s,
-                    total_trades = %s,
-                    winning_trades = %s,
-                    pnl = %s,
-                    sharpe_ratio = %s,
-                    max_drawdown = %s,
-                    ended_at = %s
-                WHERE id = %s
-                """,
-                (
-                    final_metrics.get("current_balance", session.current_balance),
-                    final_metrics.get("total_trades", session.total_trades),
-                    final_metrics.get("winning_trades", session.winning_trades),
-                    final_metrics.get("pnl", session.pnl),
-                    final_metrics.get("sharpe_ratio"),
-                    final_metrics.get("max_drawdown"),
-                    datetime.now(),
-                    session_id,
-                ),
-            )
+                    current_balance = :current_balance,
+                    total_trades = :total_trades,
+                    winning_trades = :winning_trades,
+                    pnl = :pnl,
+                    sharpe_ratio = :sharpe_ratio,
+                    max_drawdown = :max_drawdown,
+                    ended_at = :ended_at
+                WHERE id = :session_id
+            """
 
-            conn.commit()
-            cursor.close()
+            params = {
+                "current_balance": final_metrics.get(
+                    "current_balance", session.current_balance
+                ),
+                "total_trades": final_metrics.get("total_trades", session.total_trades),
+                "winning_trades": final_metrics.get(
+                    "winning_trades", session.winning_trades
+                ),
+                "pnl": final_metrics.get("pnl", session.pnl),
+                "sharpe_ratio": final_metrics.get("sharpe_ratio"),
+                "max_drawdown": final_metrics.get("max_drawdown"),
+                "ended_at": datetime.now(),
+                "session_id": session_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             logger.info(f"Ended paper trading session {session_id}")
 
@@ -308,14 +280,9 @@ class PaperTradingSessionManager:
                 raise ValueError(f"Session {session_id} not found after ending")
             return session.to_dict()
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error ending session: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def stop_session(self, session_id: int) -> bool:
         """
@@ -324,34 +291,27 @@ class PaperTradingSessionManager:
         :param session_id: Session ID
         :return: True if successful
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE paper_trading_sessions
-                SET status = 'stopped', ended_at = %s
-                WHERE id = %s AND status = 'running'
-                """,
-                (datetime.now(), session_id),
-            )
+                SET status = 'stopped', ended_at = :ended_at
+                WHERE id = :session_id AND status = 'running'
+            """
 
-            conn.commit()
-            cursor.close()
+            params = {
+                "ended_at": datetime.now(),
+                "session_id": session_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             logger.info(f"Stopped paper trading session {session_id}")
             return True
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error stopping session: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             return False
-        finally:
-            if conn:
-                conn.close()
 
     def get_session_metrics(self, session_id: int) -> Dict[str, Any]:
         """
@@ -373,25 +333,18 @@ class PaperTradingSessionManager:
         :param model_id: Model ID
         :return: List of PaperSession instances
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, model_id, status, start_balance, current_balance,
                        total_trades, winning_trades, pnl, sharpe_ratio, max_drawdown,
                        started_at, ended_at
                 FROM paper_trading_sessions
-                WHERE model_id = %s
+                WHERE model_id = :model_id
                 ORDER BY started_at DESC
-                """,
-                (model_id,),
-            )
+            """
 
-            rows = cursor.fetchall()
-            cursor.close()
+            params = {"model_id": model_id}
+            rows = self.db.execute_with_result(query, params)
 
             sessions = []
             for row in rows:
@@ -429,14 +382,11 @@ class PaperTradingSessionManager:
 
             return sessions
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error getting sessions for model {model_id}: {e}", exc_info=True
             )
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def validate_session(
         self, session_id: int, criteria: Optional[Dict[str, Any]] = None

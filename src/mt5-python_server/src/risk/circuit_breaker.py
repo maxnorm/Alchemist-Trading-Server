@@ -18,6 +18,8 @@ from typing import Optional, Dict, List, Any
 import threading
 import logging
 import numpy as np
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from monitoring.metrics import circuit_breaker_state
 
@@ -668,39 +670,32 @@ class CircuitBreaker:
             return
 
         try:
-            conn = self.database.get_connection()
-            cursor = conn.cursor()
-
             query = """
                 INSERT INTO circuit_breaker_events (
                     breaker_type, trigger_value, threshold_value, trip_reason, created_at, resumed_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (:breaker_type, :trigger_value, :threshold_value, :trip_reason, :created_at, :resumed_at)
+                RETURNING id
             """
 
-            cursor.execute(
-                query,
-                (
-                    breaker_type,
-                    trigger_value or 0.0,
-                    threshold_value or 0.0,
-                    reason,
-                    datetime.now(),
-                    None,
-                ),
-            )
+            params = {
+                "breaker_type": breaker_type,
+                "trigger_value": trigger_value or 0.0,
+                "threshold_value": threshold_value or 0.0,
+                "trip_reason": reason,
+                "created_at": datetime.now(),
+                "resumed_at": None,
+            }
 
-            # Store the event ID for later resume update
-            self._last_trip_event_id = cursor.lastrowid
-
-            conn.commit()
-            cursor.close()
-            conn.close()
+            result = self.database.execute_one(query, params)
+            if result:
+                # Store the event ID for later resume update
+                self._last_trip_event_id = result[0]
 
             self.logger.debug(
                 f"Logged circuit breaker trip to database: {breaker_type}"
             )
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(
                 f"Failed to log circuit breaker trip to database: {e}", exc_info=True
             )
@@ -712,24 +707,23 @@ class CircuitBreaker:
             return
 
         try:
-            conn = self.database.get_connection()
-            cursor = conn.cursor()
-
             query = """
                 UPDATE circuit_breaker_events
-                SET resumed_at = ?
-                WHERE id = ?
+                SET resumed_at = :resumed_at
+                WHERE id = :event_id
             """
 
-            cursor.execute(query, (datetime.now(), self._last_trip_event_id))
+            params = {
+                "resumed_at": datetime.now(),
+                "event_id": self._last_trip_event_id,
+            }
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with self.database.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.debug("Updated circuit breaker resume in database")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(
                 f"Failed to update circuit breaker resume in database: {e}",
                 exc_info=True,

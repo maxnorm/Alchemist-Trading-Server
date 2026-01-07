@@ -77,7 +77,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
-    ],  # React dev servers
+        "http://localhost",  # Gateway
+        # Add production domain: "https://yourdomain.com",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

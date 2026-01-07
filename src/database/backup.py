@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database backup script for MariaDB
+Database backup script for PostgreSQL
 Creates daily backups with retention policy
 """
 import os
@@ -13,11 +13,11 @@ from pathlib import Path
 # Configuration
 BACKUP_DIR = os.getenv('DB_BACKUP_DIR', '/backups')
 RETENTION_DAYS = int(os.getenv('DB_BACKUP_RETENTION_DAYS', '7'))
-DB_HOST = os.getenv('DB_HOST', 'mariadb')
-DB_PORT = os.getenv('DB_PORT', '3306')
-DB_USER = os.getenv('DB_USER', 'forex_user')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'forex_password')
-DB_NAME = os.getenv('DB_NAME', 'db_forex')
+DB_HOST = os.getenv('PGHOST', os.getenv('DB_HOST', 'postgres'))
+DB_PORT = os.getenv('PGPORT', os.getenv('DB_PORT', '5432'))
+DB_USER = os.getenv('PGUSER', os.getenv('DB_USER', 'forex_user'))
+DB_PASSWORD = os.getenv('PGPASSWORD', os.getenv('DB_PASSWORD', 'forex_password'))
+DB_NAME = os.getenv('PGDATABASE', os.getenv('DB_NAME', 'db_forex'))
 
 def create_backup():
     """Create a database backup"""
@@ -27,48 +27,41 @@ def create_backup():
     
     # Generate backup filename with timestamp
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_file = backup_path / f"{DB_NAME}_backup_{timestamp}.sql"
+    backup_file = backup_path / f"{DB_NAME}_backup_{timestamp}.dump"
     
-    # Build mysqldump command
-    # Use MYSQL_PWD environment variable for password to avoid command line exposure
+    # Build pg_dump command
+    # Use PGPASSWORD environment variable for password to avoid command line exposure
     env = os.environ.copy()
-    env['MYSQL_PWD'] = DB_PASSWORD
+    env['PGPASSWORD'] = DB_PASSWORD
     
     cmd = [
-        'mysqldump',
+        'pg_dump',
         f'--host={DB_HOST}',
         f'--port={DB_PORT}',
-        f'--user={DB_USER}',
-        '--single-transaction',
-        '--routines',
-        '--triggers',
-        '--events',
-        '--quick',
-        '--lock-tables=false',
+        f'--username={DB_USER}',
+        '--format=custom',
+        '--no-owner',
+        '--no-acl',
         DB_NAME
     ]
     
     try:
         print(f"Creating backup: {backup_file}")
         
-        # Execute mysqldump and write to file
-        with open(backup_file, 'w') as f:
+        # Execute pg_dump and write to file
+        with open(backup_file, 'wb') as f:
             result = subprocess.run(
                 cmd,
                 stdout=f,
                 stderr=subprocess.PIPE,
-                text=True,
                 env=env
             )
         
         if result.returncode == 0:
-            # Compress backup
-            compressed_file = f"{backup_file}.gz"
-            subprocess.run(['gzip', str(backup_file)], check=True)
-            print(f"Backup created successfully: {compressed_file}")
-            return compressed_file
+            print(f"Backup created successfully: {backup_file}")
+            return backup_file
         else:
-            print(f"Error creating backup: {result.stderr}", file=sys.stderr)
+            print(f"Error creating backup: {result.stderr.decode()}", file=sys.stderr)
             if backup_file.exists():
                 backup_file.unlink()
             return None
@@ -88,11 +81,11 @@ def cleanup_old_backups():
     cutoff_date = datetime.datetime.now() - datetime.timedelta(days=RETENTION_DAYS)
     deleted_count = 0
     
-    for backup_file in backup_path.glob(f"{DB_NAME}_backup_*.sql.gz"):
+    for backup_file in backup_path.glob(f"{DB_NAME}_backup_*.dump"):
         try:
             # Extract timestamp from filename
-            # Format: db_forex_backup_YYYYMMDD_HHMMSS.sql.gz
-            filename = backup_file.stem.replace('.sql', '')  # Remove .sql before .gz
+            # Format: db_forex_backup_YYYYMMDD_HHMMSS.dump
+            filename = backup_file.stem  # Remove .dump extension
             timestamp_str = filename.split('_backup_')[-1]
             file_date = datetime.datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
             

@@ -1,12 +1,10 @@
 -- Phase 6: Live Performance Tracking Tables
 -- Run this migration after Phase 7 (Models) is complete
--- Requires: models table (from Phase 7 - 09_models.sql)
-
-USE db_forex;
+-- Requires: models table (from Phase 7 - 10_models.sql)
 
 -- Live trading sessions (tracks when a model is deployed to production)
 CREATE TABLE IF NOT EXISTS live_trading_sessions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     model_id INT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',  -- active, paused, stopped
     start_balance DECIMAL(15, 2) NOT NULL,
@@ -15,15 +13,16 @@ CREATE TABLE IF NOT EXISTS live_trading_sessions (
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMP NULL,
     ended_reason VARCHAR(100),  -- 'user_stopped', 'kill_switch', 'replaced', etc.
-    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-    INDEX idx_model (model_id),
-    INDEX idx_status (status),
-    INDEX idx_started_at (started_at)
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_model ON live_trading_sessions(model_id);
+CREATE INDEX IF NOT EXISTS idx_status ON live_trading_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_started_at ON live_trading_sessions(started_at);
 
 -- Individual trades executed by models
 CREATE TABLE IF NOT EXISTS model_trades (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     session_id INT NOT NULL,
     model_id INT NOT NULL,
     order_uuid VARCHAR(36) NOT NULL,
@@ -41,17 +40,18 @@ CREATE TABLE IF NOT EXISTS model_trades (
     closed_at TIMESTAMP NULL,
     duration_seconds INT,
     FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE,
-    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-    INDEX idx_session (session_id),
-    INDEX idx_model (model_id),
-    INDEX idx_status (status),
-    INDEX idx_opened_at (opened_at),
-    INDEX idx_order_uuid (order_uuid)
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_session ON model_trades(session_id);
+CREATE INDEX IF NOT EXISTS idx_model ON model_trades(model_id);
+CREATE INDEX IF NOT EXISTS idx_status ON model_trades(status);
+CREATE INDEX IF NOT EXISTS idx_opened_at ON model_trades(opened_at);
+CREATE INDEX IF NOT EXISTS idx_order_uuid ON model_trades(order_uuid);
 
 -- Daily performance snapshots (for charts and historical analysis)
 CREATE TABLE IF NOT EXISTS daily_performance (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     model_id INT,  -- NULL for portfolio-level
     session_id INT,
     date DATE NOT NULL,
@@ -67,34 +67,36 @@ CREATE TABLE IF NOT EXISTS daily_performance (
     max_drawdown DECIMAL(10, 4),
     sharpe_ratio DECIMAL(10, 4),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_model_date (model_id, date),
+    UNIQUE (model_id, date),
     FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-    FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE,
-    INDEX idx_model_date (model_id, date),
-    INDEX idx_session (session_id),
-    INDEX idx_date (date)
+    FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_model_date ON daily_performance(model_id, date);
+CREATE INDEX IF NOT EXISTS idx_session ON daily_performance(session_id);
+CREATE INDEX IF NOT EXISTS idx_date ON daily_performance(date);
 
 -- Real-time performance metrics (updated frequently)
 CREATE TABLE IF NOT EXISTS performance_metrics (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     model_id INT,  -- NULL for portfolio-level
     session_id INT,
     metric_type VARCHAR(50) NOT NULL,  -- 'sharpe', 'sortino', 'win_rate', 'profit_factor', etc.
     value DECIMAL(15, 6) NOT NULL,
     period VARCHAR(20) NOT NULL,  -- 'realtime', 'daily', 'weekly', 'monthly', 'yearly', 'all_time'
     calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_metric (model_id, metric_type, period),
+    UNIQUE (model_id, metric_type, period),
     FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-    FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE,
-    INDEX idx_model_metric (model_id, metric_type),
-    INDEX idx_period (period),
-    INDEX idx_calculated_at (calculated_at)
+    FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_model_metric ON performance_metrics(model_id, metric_type);
+CREATE INDEX IF NOT EXISTS idx_period ON performance_metrics(period);
+CREATE INDEX IF NOT EXISTS idx_calculated_at ON performance_metrics(calculated_at);
 
 -- Equity curve data points (for chart rendering)
 CREATE TABLE IF NOT EXISTS equity_curve (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     model_id INT,  -- NULL for portfolio-level
     session_id INT,
     timestamp TIMESTAMP NOT NULL,
@@ -102,22 +104,24 @@ CREATE TABLE IF NOT EXISTS equity_curve (
     balance DECIMAL(15, 2) NOT NULL,
     drawdown_pct DECIMAL(10, 4) NOT NULL,
     unrealized_pnl DECIMAL(15, 2) DEFAULT 0,
-    INDEX idx_model_timestamp (model_id, timestamp),
-    INDEX idx_session_timestamp (session_id, timestamp),
     FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
     FOREIGN KEY (session_id) REFERENCES live_trading_sessions(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_model_timestamp ON equity_curve(model_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_session_timestamp ON equity_curve(session_id, timestamp);
+
 -- Portfolio allocation tracking
 CREATE TABLE IF NOT EXISTS portfolio_allocation (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     model_id INT NOT NULL,
     symbol VARCHAR(20) NOT NULL,
     position_value DECIMAL(15, 2) NOT NULL,
     allocation_pct DECIMAL(10, 4) NOT NULL,
-    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE,
-    INDEX idx_model (model_id),
-    INDEX idx_timestamp (timestamp),
-    INDEX idx_symbol (symbol)
+    FOREIGN KEY (model_id) REFERENCES models(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_model ON portfolio_allocation(model_id);
+CREATE INDEX IF NOT EXISTS idx_timestamp ON portfolio_allocation(timestamp);
+CREATE INDEX IF NOT EXISTS idx_symbol ON portfolio_allocation(symbol);

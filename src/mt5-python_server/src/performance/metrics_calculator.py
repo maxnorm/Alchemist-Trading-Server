@@ -377,34 +377,28 @@ class PerformanceMetricsCalculator:
         :param metrics: Dictionary of metric name -> value
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+            from sqlalchemy import text
 
-            for metric_type, value in metrics.items():
-                cursor.execute(
-                    """
-                    INSERT INTO performance_metrics
-                    (model_id, session_id, metric_type, value, period, calculated_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                        value = ?,
-                        calculated_at = ?
-                """,
-                    (
-                        model_id,
-                        session_id,
-                        metric_type,
-                        value,
-                        period,
-                        datetime.utcnow(),
-                        value,
-                        datetime.utcnow(),
-                    ),
-                )
+            query = """
+                INSERT INTO performance_metrics
+                (model_id, session_id, metric_type, value, period, calculated_at)
+                VALUES (:model_id, :session_id, :metric_type, :value, :period, :calculated_at)
+                ON CONFLICT (model_id, session_id, metric_type, period) DO UPDATE SET
+                    value = EXCLUDED.value,
+                    calculated_at = EXCLUDED.calculated_at
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with self.db.execute_query() as conn:
+                for metric_type, value in metrics.items():
+                    params = {
+                        "model_id": model_id,
+                        "session_id": session_id,
+                        "metric_type": metric_type,
+                        "value": value,
+                        "period": period,
+                        "calculated_at": datetime.utcnow(),
+                    }
+                    conn.execute(text(query), params)
 
             self.logger.debug(
                 f"Updated metrics in DB for model_id={model_id}, period={period}"

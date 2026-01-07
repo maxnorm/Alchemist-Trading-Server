@@ -2838,7 +2838,7 @@ jobs:
 
 #### Prometheus Configuration
 
-**`monitoring/prometheus.yml`**
+**`src/monitoring/prometheus/prometheus.yml`**
 
 ```yaml
 global:
@@ -2883,7 +2883,7 @@ scrape_configs:
 
 #### Alert Rules
 
-**`monitoring/alerts/trading-alerts.yml`**
+**`src/monitoring/prometheus/alerts/trading-alerts.yml`**
 
 ```yaml
 groups:
@@ -3061,7 +3061,7 @@ curl -f https://your-domain.com/api/v1/trading/status
 
 # 10. Configure monitoring
 # Access Grafana at https://your-domain.com/grafana
-# Import dashboards from monitoring/grafana/dashboards/
+# Import dashboards from src/monitoring/grafana/dashboards/
 
 # 11. Set up automated backups
 # Backups run daily at 2 AM via cron in backup container

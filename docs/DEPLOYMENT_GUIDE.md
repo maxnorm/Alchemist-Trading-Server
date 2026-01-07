@@ -49,8 +49,8 @@
 
 ```env
 # Database
-DB_HOST=mariadb
-DB_PORT=3306
+DB_HOST=postgres
+DB_PORT=5432
 DB_NAME=db_forex
 DB_USER=forex_user
 DB_PASSWORD=forex_password
@@ -83,20 +83,27 @@ MYFXBOOK_PASSWORD=your_password
 
 ### Running Migrations
 
-Migrations are in `src/database/scripts/` and should be run in order:
+Migrations are in `src/database/scripts/` and should be run in order using the migration script:
 
 ```bash
-# Connect to database
-mysql -u forex_user -p db_forex
-
-# Run migrations
-source src/database/scripts/06_features.sql
-source src/database/scripts/07_experiments.sql
-source src/database/scripts/08_performance_tracking.sql
-source src/database/scripts/09_models.sql
+# Run all migrations
+python scripts/run-migrations.py
 ```
 
-Or use the migration script:
+Or connect to PostgreSQL directly:
+```bash
+# Connect to database
+psql -h localhost -U forex_user -d db_forex
+
+# Run migrations manually (in order)
+\i src/database/scripts/00_triggers.sql
+\i src/database/scripts/01_create.sql
+\i src/database/scripts/02_procedures.sql
+# ... continue with other scripts in order
+\i src/database/scripts/16_timescaledb_setup.sql
+```
+
+The migration script:
 ```bash
 python scripts/run-migrations.py
 ```
@@ -177,12 +184,12 @@ Log files are also stored in `logs/` directory.
 
 1. **Verify Database is Running**
    ```bash
-   docker compose ps mariadb
+   docker compose ps postgres
    ```
 
 2. **Check Credentials**
    - Verify `.env` file has correct credentials
-   - Test connection: `mysql -u user -p -h localhost`
+   - Test connection: `psql -h localhost -U forex_user -d db_forex`
 
 3. **Check Network**
    - Ensure services are on same Docker network
@@ -209,17 +216,17 @@ Log files are also stored in `logs/` directory.
 
 ```bash
 # Manual backup
-docker compose exec mariadb mysqldump -u forex_user -p db_forex > backup.sql
+docker compose exec postgres pg_dump -U forex_user db_forex --format=custom > backup.dump
 
 # Automated backup (if configured)
-python scripts/backup.py
+python src/database/backup.py
 ```
 
 ### Restore Database
 
 ```bash
 # Restore from backup
-docker compose exec -T mariadb mysql -u forex_user -p db_forex < backup.sql
+docker compose exec -T postgres pg_restore -U forex_user -d db_forex < backup.dump
 ```
 
 ## Updates

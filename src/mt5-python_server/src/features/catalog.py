@@ -6,9 +6,10 @@ Stores and retrieves features discovered from data providers.
 """
 
 import logging
-import mariadb
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from data_providers.base_provider import Feature
 from database import Database
 
@@ -43,76 +44,67 @@ class FeatureCatalog:
         if not features:
             return
 
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+            with self.db.execute_query() as conn:
+                for feature in features:
+                    try:
+                        # Check if feature exists
+                        existing = conn.execute(
+                            text("SELECT id FROM features WHERE name = :name"),
+                            {"name": feature.name},
+                        ).fetchone()
 
-            for feature in features:
-                try:
-                    # Check if feature exists
-                    cursor.execute(
-                        "SELECT id FROM features WHERE name = %s", (feature.name,)
-                    )
-                    existing = cursor.fetchone()
+                        # Convert Python type to string representation
+                        data_type_str = self._type_to_string(feature.data_type)
 
-                    # Convert Python type to string representation
-                    data_type_str = self._type_to_string(feature.data_type)
-
-                    if existing:
-                        # Update existing feature
-                        cursor.execute(
+                        if existing:
+                            # Update existing feature
+                            query = """
+                                UPDATE features
+                                SET data_type = :data_type, source = :source, description = :description,
+                                    category = :category, updated_at = :updated_at
+                                WHERE name = :name
                             """
-                            UPDATE features
-                            SET data_type = %s, source = %s, description = %s,
-                                category = %s, updated_at = %s
-                            WHERE name = %s
-                            """,
-                            (
-                                data_type_str,
-                                feature.source,
-                                feature.description,
-                                feature.category,
-                                datetime.utcnow(),
-                                feature.name,
-                            ),
-                        )
-                        logger.debug(f"Updated feature: {feature.name}")
-                    else:
-                        # Insert new feature
-                        cursor.execute(
+                            params = {
+                                "data_type": data_type_str,
+                                "source": feature.source,
+                                "description": feature.description,
+                                "category": feature.category,
+                                "updated_at": datetime.utcnow(),
+                                "name": feature.name,
+                            }
+                            conn.execute(text(query), params)
+                            logger.debug(f"Updated feature: {feature.name}")
+                        else:
+                            # Insert new feature
+                            query = """
+                                INSERT INTO features
+                                (name, data_type, source, description, category, available,
+                                 created_at, updated_at)
+                                VALUES (:name, :data_type, :source, :description, :category, TRUE,
+                                        :created_at, :updated_at)
                             """
-                            INSERT INTO features
-                            (name, data_type, source, description, category, available, created_at, updated_at)
-                            VALUES (%s, %s, %s, %s, %s, TRUE, %s, %s)
-                            """,
-                            (
-                                feature.name,
-                                data_type_str,
-                                feature.source,
-                                feature.description,
-                                feature.category,
-                                datetime.utcnow(),
-                                datetime.utcnow(),
-                            ),
+                            params = {
+                                "name": feature.name,
+                                "data_type": data_type_str,
+                                "source": feature.source,
+                                "description": feature.description,
+                                "category": feature.category,
+                                "created_at": datetime.utcnow(),
+                                "updated_at": datetime.utcnow(),
+                            }
+                            conn.execute(text(query), params)
+                            logger.debug(f"Inserted feature: {feature.name}")
+                    except SQLAlchemyError as e:
+                        logger.error(
+                            f"Error storing feature '{feature.name}': {e}",
+                            exc_info=True,
                         )
-                        logger.debug(f"Inserted feature: {feature.name}")
-                except mariadb.Error as e:
-                    logger.error(
-                        f"Error storing feature '{feature.name}': {e}", exc_info=True
-                    )
-                    continue
+                        continue
 
-            conn.commit()
-            cursor.close()
             logger.info(f"Stored {len(features)} features in catalog")
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error storing features: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                conn.close()
 
     def get_all_features(self) -> List[Feature]:
         """
@@ -120,20 +112,14 @@ class FeatureCatalog:
 
         :return: List of Feature objects
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT name, data_type, source, description, category, available
                 FROM features
                 ORDER BY source, category, name
-                """
-            )
+            """
 
-            rows = cursor.fetchall()
+            rows = self.db.execute_with_result(query)
             features = []
 
             for row in rows:
@@ -155,14 +141,10 @@ class FeatureCatalog:
                 )
                 features.append(feature)
 
-            cursor.close()
             return features
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error retrieving features: {e}", exc_info=True)
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_features_by_source(self, source: str) -> List[Feature]:
         """
@@ -171,22 +153,16 @@ class FeatureCatalog:
         :param source: Provider source name
         :return: List of Feature objects
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT name, data_type, source, description, category, available
                 FROM features
-                WHERE source = %s AND available = TRUE
+                WHERE source = :source AND available = TRUE
                 ORDER BY category, name
-                """,
-                (source,),
-            )
+            """
 
-            rows = cursor.fetchall()
+            params = {"source": source}
+            rows = self.db.execute_with_result(query, params)
             features = []
 
             for row in rows:
@@ -202,16 +178,12 @@ class FeatureCatalog:
                 )
                 features.append(feature)
 
-            cursor.close()
             return features
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error retrieving features by source '{source}': {e}", exc_info=True
             )
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_features_by_category(self, category: str) -> List[Feature]:
         """
@@ -220,22 +192,16 @@ class FeatureCatalog:
         :param category: Feature category
         :return: List of Feature objects
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT name, data_type, source, description, category, available
                 FROM features
-                WHERE category = %s AND available = TRUE
+                WHERE category = :category AND available = TRUE
                 ORDER BY source, name
-                """,
-                (category,),
-            )
+            """
 
-            rows = cursor.fetchall()
+            params = {"category": category}
+            rows = self.db.execute_with_result(query, params)
             features = []
 
             for row in rows:
@@ -251,17 +217,13 @@ class FeatureCatalog:
                 )
                 features.append(feature)
 
-            cursor.close()
             return features
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error retrieving features by category '{category}': {e}",
                 exc_info=True,
             )
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_feature(self, name: str) -> Optional[Feature]:
         """
@@ -270,22 +232,15 @@ class FeatureCatalog:
         :param name: Feature name
         :return: Feature object or None if not found
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT name, data_type, source, description, category, available
                 FROM features
-                WHERE name = %s AND available = TRUE
-                """,
-                (name,),
-            )
+                WHERE name = :name AND available = TRUE
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            params = {"name": name}
+            row = self.db.execute_one(query, params)
 
             if row:
                 name_val, data_type_str, source, description, category, available = row
@@ -300,12 +255,9 @@ class FeatureCatalog:
                 )
 
             return None
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error retrieving feature '{name}': {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def update_feature_availability(self, name: str, available: bool) -> None:
         """
@@ -314,32 +266,27 @@ class FeatureCatalog:
         :param name: Feature name
         :param available: Availability status
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE features
-                SET available = %s, updated_at = %s
-                WHERE name = %s
-                """,
-                (available, datetime.utcnow(), name),
-            )
+                SET available = :available, updated_at = :updated_at
+                WHERE name = :name
+            """
 
-            conn.commit()
-            cursor.close()
+            params = {
+                "available": available,
+                "updated_at": datetime.utcnow(),
+                "name": name,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
+
             logger.info(f"Updated availability for feature '{name}': {available}")
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error updating feature availability '{name}': {e}", exc_info=True
             )
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                conn.close()
 
     def sync_with_registry(self, registry) -> None:
         """
@@ -378,22 +325,16 @@ class FeatureCatalog:
         :param pipeline_version: Pipeline version string
         :return: List of Feature objects
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT name, data_type, source, description, category, available
                 FROM features
-                WHERE pipeline_version = %s AND available = TRUE
+                WHERE pipeline_version = :pipeline_version AND available = TRUE
                 ORDER BY category, name
-                """,
-                (pipeline_version,),
-            )
+            """
 
-            rows = cursor.fetchall()
+            params = {"pipeline_version": pipeline_version}
+            rows = self.db.execute_with_result(query, params)
             features = []
 
             for row in rows:
@@ -409,17 +350,13 @@ class FeatureCatalog:
                 )
                 features.append(feature)
 
-            cursor.close()
             return features
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error retrieving features by pipeline version '{pipeline_version}': {e}",
                 exc_info=True,
             )
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_feature_history(self, feature_name: str) -> List[Dict[str, Any]]:
         """
@@ -428,23 +365,16 @@ class FeatureCatalog:
         :param feature_name: Feature name
         :return: List of dictionaries with version history
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            # Get all versions where this feature appears
-            cursor.execute(
-                """
+            query = """
                 SELECT pipeline_version, first_seen_version, created_at, updated_at
                 FROM features
-                WHERE name = %s
+                WHERE name = :feature_name
                 ORDER BY created_at
-                """,
-                (feature_name,),
-            )
+            """
 
-            rows = cursor.fetchall()
+            params = {"feature_name": feature_name}
+            rows = self.db.execute_with_result(query, params)
             history = []
 
             for row in rows:
@@ -458,17 +388,13 @@ class FeatureCatalog:
                     }
                 )
 
-            cursor.close()
             return history
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error retrieving feature history for '{feature_name}': {e}",
                 exc_info=True,
             )
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def compare_versions(self, version1: str, version2: str) -> Dict[str, Any]:
         """
@@ -507,75 +433,61 @@ class FeatureCatalog:
         :param feature_name: Feature name
         :param pipeline_version: Pipeline version string
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             # Check if feature exists and get current first_seen_version
-            cursor.execute(
-                """
-                SELECT first_seen_version FROM features WHERE name = %s
-                """,
-                (feature_name,),
+            row = self.db.execute_one(
+                "SELECT first_seen_version FROM features WHERE name = :feature_name",
+                {"feature_name": feature_name},
             )
-            row = cursor.fetchone()
 
-            if row:
-                first_seen_version = row[0]
-                # If first_seen_version is not set, set it to current version
-                if not first_seen_version:
-                    first_seen_version = pipeline_version
+            with self.db.execute_query() as conn:
+                if row:
+                    first_seen_version = row[0]
+                    # If first_seen_version is not set, set it to current version
+                    if not first_seen_version:
+                        first_seen_version = pipeline_version
 
-                cursor.execute(
+                    query = """
+                        UPDATE features
+                        SET pipeline_version = :pipeline_version,
+                            first_seen_version = :first_seen_version,
+                            updated_at = :updated_at
+                        WHERE name = :feature_name
                     """
-                    UPDATE features
-                    SET pipeline_version = %s,
-                        first_seen_version = %s,
-                        updated_at = %s
-                    WHERE name = %s
-                    """,
-                    (
-                        pipeline_version,
-                        first_seen_version,
-                        datetime.utcnow(),
-                        feature_name,
-                    ),
-                )
-            else:
-                # Feature doesn't exist, create it with pipeline version
-                cursor.execute(
+                    params = {
+                        "pipeline_version": pipeline_version,
+                        "first_seen_version": first_seen_version,
+                        "updated_at": datetime.utcnow(),
+                        "feature_name": feature_name,
+                    }
+                    conn.execute(text(query), params)
+                else:
+                    # Feature doesn't exist, create it with pipeline version
+                    query = """
+                        INSERT INTO features
+                        (name, data_type, source, description, category, available,
+                         pipeline_version, first_seen_version, created_at, updated_at)
+                        VALUES (:name, :data_type, :source, :description, :category, TRUE,
+                                :pipeline_version, :first_seen_version, :created_at, :updated_at)
                     """
-                    INSERT INTO features
-                    (name, data_type, source, description, category, available,
-                     pipeline_version, first_seen_version, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
-                    """,
-                    (
-                        feature_name,
-                        "float",  # Default type
-                        "feature_engine",  # Default source
-                        f"Feature from pipeline {pipeline_version}",
-                        None,
-                        pipeline_version,
-                        pipeline_version,
-                        datetime.utcnow(),
-                        datetime.utcnow(),
-                    ),
-                )
+                    params = {
+                        "name": feature_name,
+                        "data_type": "float",  # Default type
+                        "source": "feature_engine",  # Default source
+                        "description": f"Feature from pipeline {pipeline_version}",
+                        "category": None,
+                        "pipeline_version": pipeline_version,
+                        "first_seen_version": pipeline_version,
+                        "created_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow(),
+                    }
+                    conn.execute(text(query), params)
 
-            conn.commit()
-            cursor.close()
             logger.info(
                 f"Updated feature '{feature_name}' to pipeline version {pipeline_version}"
             )
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error updating feature pipeline version: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                conn.close()
 
     def _type_to_string(self, data_type: type) -> str:
         """

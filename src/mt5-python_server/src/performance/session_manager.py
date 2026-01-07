@@ -6,6 +6,8 @@ Manages trading session lifecycle for performance tracking
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from database import Database
 
 
@@ -34,28 +36,29 @@ class SessionManager:
         :return: Session ID
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO live_trading_sessions
                 (model_id, status, start_balance, current_balance, high_water_mark)
-                VALUES (?, 'active', ?, ?, ?)
-            """,
-                (model_id, start_balance, start_balance, start_balance),
-            )
+                VALUES (:model_id, 'active', :start_balance, :current_balance, :high_water_mark)
+                RETURNING id
+            """
 
-            session_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {
+                "model_id": model_id,
+                "start_balance": start_balance,
+                "current_balance": start_balance,
+                "high_water_mark": start_balance,
+            }
 
-            self.logger.info(
-                f"Created trading session {session_id} for model {model_id}"
-            )
-            return session_id
-        except Exception as e:
+            result = self.db.execute_one(query, params)
+            if result:
+                session_id = result[0]
+                self.logger.info(
+                    f"Created trading session {session_id} for model {model_id}"
+                )
+                return session_id
+            raise RuntimeError("Failed to create trading session")
+        except SQLAlchemyError as e:
             self.logger.error(f"Error creating session: {e}", exc_info=True)
             raise
 
@@ -67,27 +70,27 @@ class SessionManager:
         :param end_balance: Ending balance
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE live_trading_sessions
                 SET status = 'stopped',
-                    ended_at = ?,
-                    ended_reason = ?,
-                    current_balance = ?
-                WHERE id = ?
-            """,
-                (datetime.utcnow(), reason, end_balance, session_id),
-            )
+                    ended_at = :ended_at,
+                    ended_reason = :ended_reason,
+                    current_balance = :current_balance
+                WHERE id = :session_id
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {
+                "ended_at": datetime.utcnow(),
+                "ended_reason": reason,
+                "current_balance": end_balance,
+                "session_id": session_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.info(f"Ended trading session {session_id}: {reason}")
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error ending session: {e}", exc_info=True)
             raise
 
@@ -97,24 +100,19 @@ class SessionManager:
         :param session_id: Session ID
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE live_trading_sessions
                 SET status = 'paused'
-                WHERE id = ?
-            """,
-                (session_id,),
-            )
+                WHERE id = :session_id
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {"session_id": session_id}
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.info(f"Paused trading session {session_id}")
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error pausing session: {e}", exc_info=True)
             raise
 
@@ -124,24 +122,19 @@ class SessionManager:
         :param session_id: Session ID
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE live_trading_sessions
                 SET status = 'active'
-                WHERE id = ?
-            """,
-                (session_id,),
-            )
+                WHERE id = :session_id
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {"session_id": session_id}
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.info(f"Resumed trading session {session_id}")
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error resuming session: {e}", exc_info=True)
             raise
 
@@ -152,37 +145,33 @@ class SessionManager:
         :param current_balance: Current balance
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             # Get current high water mark
-            cursor.execute(
-                """
-                SELECT high_water_mark FROM live_trading_sessions WHERE id = ?
-            """,
-                (session_id,),
+            result = self.db.execute_one(
+                "SELECT high_water_mark FROM live_trading_sessions WHERE id = :session_id",
+                {"session_id": session_id},
             )
-            result = cursor.fetchone()
             high_water_mark = result[0] if result else current_balance
 
             # Update high water mark if current balance is higher
             if current_balance > high_water_mark:
                 high_water_mark = current_balance
 
-            cursor.execute(
-                """
+            query = """
                 UPDATE live_trading_sessions
-                SET current_balance = ?,
-                    high_water_mark = ?
-                WHERE id = ?
-            """,
-                (current_balance, high_water_mark, session_id),
-            )
+                SET current_balance = :current_balance,
+                    high_water_mark = :high_water_mark
+                WHERE id = :session_id
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
-        except Exception as e:
+            params = {
+                "current_balance": current_balance,
+                "high_water_mark": high_water_mark,
+                "session_id": session_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
+        except SQLAlchemyError as e:
             self.logger.error(f"Error updating balance: {e}", exc_info=True)
             raise
 
@@ -193,33 +182,41 @@ class SessionManager:
         :return: List of session dictionaries
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor(dictionary=True)
-
             if model_id:
-                cursor.execute(
-                    """
+                query = """
                     SELECT * FROM live_trading_sessions
-                    WHERE status = 'active' AND model_id = ?
+                    WHERE status = 'active' AND model_id = :model_id
                     ORDER BY started_at DESC
-                """,
-                    (model_id,),
-                )
+                """
+                params = {"model_id": model_id}
             else:
-                cursor.execute(
-                    """
+                query = """
                     SELECT * FROM live_trading_sessions
                     WHERE status = 'active'
                     ORDER BY started_at DESC
                 """
-                )
+                params = None
 
-            sessions = cursor.fetchall()
-            cursor.close()
-            conn.close()
+            rows = self.db.execute_with_result(query, params)
+
+            # Convert rows to dictionaries (assuming standard column order)
+            sessions = []
+            for row in rows:
+                session_dict = {
+                    "id": row[0],
+                    "model_id": row[1],
+                    "status": row[2],
+                    "start_balance": float(row[3]) if row[3] else None,
+                    "current_balance": float(row[4]) if row[4] else None,
+                    "high_water_mark": float(row[5]) if row[5] else None,
+                    "started_at": row[6],
+                    "ended_at": row[7],
+                    "ended_reason": row[8],
+                }
+                sessions.append(session_dict)
 
             return sessions
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error getting active sessions: {e}", exc_info=True)
             return []
 
@@ -230,21 +227,27 @@ class SessionManager:
         :return: Session dictionary or None
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            query = """
+                SELECT * FROM live_trading_sessions WHERE id = :session_id
+            """
 
-            cursor.execute(
-                """
-                SELECT * FROM live_trading_sessions WHERE id = ?
-            """,
-                (session_id,),
-            )
+            params = {"session_id": session_id}
+            row = self.db.execute_one(query, params)
 
-            session = cursor.fetchone()
-            cursor.close()
-            conn.close()
-
-            return session
-        except Exception as e:
+            if row:
+                session_dict = {
+                    "id": row[0],
+                    "model_id": row[1],
+                    "status": row[2],
+                    "start_balance": float(row[3]) if row[3] else None,
+                    "current_balance": float(row[4]) if row[4] else None,
+                    "high_water_mark": float(row[5]) if row[5] else None,
+                    "started_at": row[6],
+                    "ended_at": row[7],
+                    "ended_reason": row[8],
+                }
+                return session_dict
+            return None
+        except SQLAlchemyError as e:
             self.logger.error(f"Error getting session: {e}", exc_info=True)
             return None

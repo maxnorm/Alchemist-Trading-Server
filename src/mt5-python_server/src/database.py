@@ -1,15 +1,17 @@
 """
-Database interaction from server to MariaDB Docker Container
+Database interaction from server to PostgreSQL Docker Container
 """
 
 import os
 import time
 import threading
-import uuid
-import mariadb
+from contextlib import contextmanager
+from typing import List, Dict, Tuple, Optional, Any
 import json
 from datetime import datetime
-from typing import List, Dict
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import QueuePool
+from sqlalchemy.exc import SQLAlchemyError
 from utils.time_utils import print_with_datetime, normalize_to_utc, ensure_utc_timezone
 
 
@@ -70,9 +72,6 @@ class Database:
         self.__retry_delay = float(os.getenv("DB_RETRY_DELAY", "2.0"))
         self.__verbose = os.getenv("DB_VERBOSE", "false").lower() == "true"
 
-        # Pool name - use shared name or unique if specified
-        self.__pool_name = os.getenv("DB_POOL_NAME", "server_pool")
-
         # Metrics tracking
         self.__metrics = {
             "connection_retries": 0,
@@ -86,66 +85,50 @@ class Database:
         }
         self.__metrics_lock = threading.Lock()
 
-        # Initialize connection pool and lock
-        self.__connection_lock = threading.Lock()
-        self.__pool = self.__create_pool()
+        # Initialize SQLAlchemy engine with connection pooling
+        self.engine = self.__create_engine()
 
-    def __create_pool(self, retries=None, delay=None):
+    def __create_engine(self, retries=None, delay=None):
         """
-        Create the database connection pool with exponential backoff retry
-        Uses unique pool name if default pool already exists
+        Create SQLAlchemy engine with connection pooling and exponential backoff retry
 
         :param retries: Number of retry attempts (defaults to self.__max_retries)
         :param delay: Initial delay in seconds (defaults to self.__retry_delay)
-        :return: MariaDB connection pool
+        :return: SQLAlchemy Engine
         """
         if retries is None:
             retries = self.__max_retries
         if delay is None:
             delay = self.__retry_delay
 
-        pool_name = self.__pool_name
-        use_unique_name = False
+        # Build PostgreSQL connection URL
+        database_url = f"postgresql+psycopg2://{self.__user}:{self.__password}@{self.__host}:{self.__port}/{self.__db}"
 
         for attempt in range(retries):
             try:
-                # If previous attempt failed due to pool existing, use unique name
-                if use_unique_name:
-                    pool_name = f"{self.__pool_name}_{uuid.uuid4().hex[:8]}"
-
-                pool = mariadb.ConnectionPool(
-                    pool_name=pool_name,
-                    pool_size=20,
-                    user=self.__user,
-                    password=self.__password,
-                    host=self.__host,
-                    port=self.__port,
-                    database=self.__db,
+                engine = create_engine(
+                    database_url,
+                    poolclass=QueuePool,
+                    pool_size=10,
+                    max_overflow=20,
+                    pool_pre_ping=True,  # Verify connections before using
+                    pool_recycle=3600,  # Recycle connections after 1 hour
+                    connect_args={
+                        "connect_timeout": 10,
+                        "options": "-c statement_timeout=30000",
+                    },
+                    echo=False,
                 )
                 if attempt > 0:
                     print_with_datetime(
-                        f"Successfully created connection pool after {attempt} retries"
+                        f"Successfully created SQLAlchemy engine after {attempt} retries"
                     )
-                if use_unique_name:
-                    print_with_datetime(f"Using unique pool name: {pool_name}")
-                return pool
-            except mariadb.ProgrammingError as e:
-                # Pool already exists - use unique name on next attempt
-                if "already exists" in str(e) and not use_unique_name:
-                    print_with_datetime(
-                        f"Pool '{pool_name}' already exists, using unique pool name"
-                    )
-                    use_unique_name = True
-                    # Don't sleep, retry immediately with unique name
-                    continue
-                else:
-                    # Other programming error or already using unique name
-                    raise e
-            except mariadb.Error as e:
+                return engine
+            except Exception as e:
                 if attempt < retries - 1:
                     wait_time = delay * (2**attempt)  # Exponential backoff
                     print_with_datetime(
-                        f"Error creating connection pool (attempt {attempt + 1}/{retries}): {e}. "
+                        f"Error creating SQLAlchemy engine (attempt {attempt + 1}/{retries}): {e}. "
                         f"Retrying in {wait_time:.1f}s..."
                     )
                     with self.__metrics_lock:
@@ -155,56 +138,70 @@ class Database:
                     with self.__metrics_lock:
                         self.__metrics["connection_failures"] += 1
                     print_with_datetime(
-                        f"Failed to create connection pool after {retries} attempts: {e}"
+                        f"Failed to create SQLAlchemy engine after {retries} attempts: {e}"
                     )
                     raise e
 
-    def __get_connection(self, retries=3):
+    @contextmanager
+    def execute_query(self):
         """
-        Get a connection from the pool in a thread-safe manner with retry logic
+        Context manager for executing queries with automatic transaction handling.
 
-        :param retries: Number of retry attempts for transient failures
-        :return: MariaDB connection
+        Automatically commits on success, rolls back on error.
+        Connections are automatically returned to the pool.
+
+        Usage:
+            with self.execute_query() as conn:
+                result = conn.execute(text("SELECT * FROM table WHERE id = :id"), {"id": 1})
         """
-        for attempt in range(retries):
+        with self.engine.connect() as conn:
+            trans = conn.begin()
             try:
-                with self.__connection_lock:
-                    return self.__pool.get_connection()
-            except mariadb.Error as e:
-                if attempt < retries - 1:
-                    # Check if it's a transient error (connection lost, timeout, etc.)
-                    error_code = getattr(e, "errno", None)
-                    transient_errors = (
-                        2006,
-                        2013,
-                        2003,
-                        2002,
-                    )  # Connection lost, timeout, can't connect
+                yield conn
+                trans.commit()
+            except Exception:
+                trans.rollback()
+                raise
 
-                    if error_code in transient_errors:
-                        wait_time = 0.5 * (2**attempt)  # Short exponential backoff
-                        print_with_datetime(
-                            f"Transient connection error (attempt {attempt + 1}/{retries}): {e}. "
-                            f"Retrying in {wait_time:.1f}s..."
-                        )
-                        with self.__metrics_lock:
-                            self.__metrics["connection_retries"] += 1
-                        time.sleep(wait_time)
-                        continue
-
-                print_with_datetime(f"Error getting connection from pool: {e}")
-                with self.__metrics_lock:
-                    self.__metrics["connection_failures"] += 1
-                raise e
-
-    def get_connection(self, retries=3):
+    def execute_with_result(
+        self, query: str, params: Optional[Dict[str, Any]] = None
+    ) -> List[Tuple]:
         """
-        Public method to get a database connection from the pool.
+        Execute query and return all results
 
-        :param retries: Number of retry attempts for transient failures
-        :return: MariaDB connection
+        :param query: SQL query string with named parameters (:param_name)
+        :param params: Dictionary of parameters
+        :return: List of result tuples
         """
-        return self.__get_connection(retries)
+        with self.execute_query() as conn:
+            result = conn.execute(text(query), params or {})
+            return result.fetchall()
+
+    def execute_one(
+        self, query: str, params: Optional[Dict[str, Any]] = None
+    ) -> Optional[Tuple]:
+        """
+        Execute query and return single result
+
+        :param query: SQL query string with named parameters (:param_name)
+        :param params: Dictionary of parameters
+        :return: Single result tuple or None
+        """
+        with self.execute_query() as conn:
+            result = conn.execute(text(query), params or {})
+            return result.fetchone()
+
+    def execute_transaction(
+        self, queries_with_params: List[Tuple[str, Dict[str, Any]]]
+    ):
+        """
+        Execute multiple queries in a single transaction
+
+        :param queries_with_params: List of (query, params) tuples
+        """
+        with self.execute_query() as conn:
+            for query, params in queries_with_params:
+                conn.execute(text(query), params or {})
 
     def check_connection_health(self):
         """
@@ -213,12 +210,9 @@ class Database:
         :return: True if healthy, False otherwise
         """
         try:
-            conn = self.__get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
-            cursor.close()
-            conn.close()
+            with self.execute_query() as conn:
+                result = conn.execute(text("SELECT 1"))
+                result.fetchone()
             return True
         except Exception as e:
             print_with_datetime(f"Health check failed: {e}")
@@ -311,7 +305,6 @@ class Database:
         :param schema_type: Data type identifier (default: 'tick')
         :return: True if insert is done
         """
-        conn = None
         try:
             # Normalize timestamps to UTC (returns datetime object, preserves microseconds)
             normalized_date_time = self._normalize_timestamp(date_time)
@@ -325,11 +318,6 @@ class Database:
                     (normalized_receive_time - normalized_date_time).total_seconds()
                 )
 
-            conn = self.__get_connection()
-            cursor = conn.cursor()
-
-            # Use direct INSERT to support bitemporal columns
-            # Get pair_id first
             # Normalize symbol to uppercase for consistency (MT5 symbols are typically uppercase)
             symbol_upper = symbol.upper().strip()
             base_currency = symbol_upper[:3]
@@ -344,41 +332,43 @@ class Database:
                     self.__metrics["insert_failures"] += 1
                 return False
 
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO ticks_forex (
                     datetime, ask, bid, forex_pairs_id,
                     receive_time, latency_seconds, is_stale,
                     stale_age_seconds, timestamp_source,
                     schema_version, schema_type
                 )
-                SELECT ?, ?, ?, fp.id, ?, ?, ?, ?, ?, ?, ?
+                SELECT :datetime, :ask, :bid, fp.id, :receive_time, :latency_seconds,
+                       :is_stale, :stale_age_seconds, :timestamp_source, :schema_version, :schema_type
                 FROM currency c1
                 CROSS JOIN currency c2
                 INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
-                WHERE c1.iso_code = ? AND c2.iso_code = ?
+                WHERE c1.iso_code = :base_currency AND c2.iso_code = :quoted_currency
                 LIMIT 1
-            """,
-                (
-                    normalized_date_time,
-                    ask,
-                    bid,
-                    normalized_receive_time,
-                    latency_seconds,
-                    is_stale,
-                    stale_age_seconds,
-                    timestamp_source,
-                    schema_version,
-                    schema_type,
-                    base_currency,
-                    quoted_currency,
-                ),
-            )
+            """
 
-            conn.commit()
+            params = {
+                "datetime": normalized_date_time,
+                "ask": ask,
+                "bid": bid,
+                "receive_time": normalized_receive_time,
+                "latency_seconds": latency_seconds,
+                "is_stale": is_stale,
+                "stale_age_seconds": stale_age_seconds,
+                "timestamp_source": timestamp_source,
+                "schema_version": schema_version,
+                "schema_type": schema_type,
+                "base_currency": base_currency,
+                "quoted_currency": quoted_currency,
+            }
+
+            with self.execute_query() as conn:
+                result = conn.execute(text(query), params)
+                rowcount = result.rowcount
 
             # Check if a row was actually inserted
-            if cursor.rowcount == 0:
+            if rowcount == 0:
                 # No row inserted - currency pair not found or lookup failed
                 print_with_datetime(
                     f"WARNING: Currency pair '{symbol}' (normalized: '{symbol_upper}', "
@@ -386,23 +376,18 @@ class Database:
                     f"database - tick not inserted. Please verify the symbol exists in "
                     f"the forex_pairs table."
                 )
-                cursor.close()
                 with self.__metrics_lock:
                     self.__metrics["insert_failures"] += 1
                 return False
 
-            cursor.close()
             with self.__metrics_lock:
                 self.__metrics["insert_success"] += 1
             return True
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             print_with_datetime(f"Error inserting forex tick: {e}")
             with self.__metrics_lock:
                 self.__metrics["insert_failures"] += 1
             return False
-        finally:
-            if conn:
-                conn.close()  # Return connection to pool
 
     def _categorize_rejection_reason(self, rejection_reason: str) -> str:
         """
@@ -445,7 +430,6 @@ class Database:
         :param receive_time: When tick was received (optional)
         :return: True if insert is successful, False otherwise
         """
-        conn = None
         try:
             # Normalize timestamps to UTC
             normalized_date_time = self._normalize_timestamp(date_time)
@@ -456,29 +440,24 @@ class Database:
             # Categorize rejection reason
             rejection_category = self._categorize_rejection_reason(rejection_reason)
 
-            conn = self.__get_connection()
-            cursor = conn.cursor()
-
-            # Insert into quarantine_ticks table
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO quarantine_ticks
                 (symbol, datetime, receive_time, bid, ask, rejection_reason, rejection_category)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    symbol,
-                    normalized_date_time,
-                    normalized_receive_time,
-                    bid,
-                    ask,
-                    rejection_reason,
-                    rejection_category,
-                ),
-            )
+                VALUES (:symbol, :datetime, :receive_time, :bid, :ask, :rejection_reason, :rejection_category)
+            """
 
-            conn.commit()
-            cursor.close()
+            params = {
+                "symbol": symbol,
+                "datetime": normalized_date_time,
+                "receive_time": normalized_receive_time,
+                "bid": bid,
+                "ask": ask,
+                "rejection_reason": rejection_reason,
+                "rejection_category": rejection_category,
+            }
+
+            with self.execute_query() as conn:
+                conn.execute(text(query), params)
 
             with self.__metrics_lock:
                 self.__metrics["quarantine_insert_success"] += 1
@@ -497,7 +476,7 @@ class Database:
                 )
 
             return True
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             print_with_datetime(f"Error inserting quarantine tick: {e}")
             with self.__metrics_lock:
                 self.__metrics["quarantine_insert_failures"] += 1
@@ -507,9 +486,6 @@ class Database:
             with self.__metrics_lock:
                 self.__metrics["quarantine_insert_failures"] += 1
             return False
-        finally:
-            if conn:
-                conn.close()  # Return connection to pool
 
     def insert_forex_ticks_batch(self, ticks):
         """
@@ -531,9 +507,7 @@ class Database:
         if not ticks:
             return 0
 
-        conn = None
         try:
-            conn = self.__get_connection()
             # #region agent log
             _write_debug_log(
                 "debug-session",
@@ -541,16 +515,10 @@ class Database:
                 "F",
                 "database.py:281",
                 "Database connection obtained",
-                {"has_connection": conn is not None},
+                {"has_connection": True},
             )
             # #endregion
-            cursor = conn.cursor()
 
-            # Build bulk INSERT statement with VALUES clause
-            # First, we need to resolve currency pairs for all ticks
-            # We'll use a more efficient approach: bulk insert with subquery for pair_id
-
-            # Group ticks by currency pair to optimize lookups
             # Normalize all timestamps to UTC (returns datetime objects, preserves microseconds)
             tick_data = []
             for symbol, date_time, ask, bid in ticks:
@@ -582,67 +550,73 @@ class Database:
             insert_count = 0
             failed_symbols = set()
 
-            for (
-                date_time,
-                ask,
-                bid,
-                base_currency,
-                quoted_currency,
-                symbol_upper,
-            ) in tick_data:
-                try:
-                    # Use direct INSERT with subquery to get pair_id
-                    # This way we can check if the pair exists and get feedback
-                    cursor.execute(
-                        """
-                        INSERT INTO ticks_forex (datetime, ask, bid, forex_pairs_id)
-                        SELECT ?, ?, ?, fp.id
-                        FROM currency c1
-                        CROSS JOIN currency c2
-                        INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
-                        WHERE c1.iso_code = ? AND c2.iso_code = ?
-                        LIMIT 1
-                    """,
-                        (date_time, ask, bid, base_currency, quoted_currency),
-                    )
+            query = """
+                INSERT INTO ticks_forex (datetime, ask, bid, forex_pairs_id)
+                SELECT :datetime, :ask, :bid, fp.id
+                FROM currency c1
+                CROSS JOIN currency c2
+                INNER JOIN forex_pairs fp ON fp.base_currency_id = c1.id AND fp.quote_currency_id = c2.id
+                WHERE c1.iso_code = :base_currency AND c2.iso_code = :quoted_currency
+                LIMIT 1
+            """
 
-                    # Check if a row was actually inserted
-                    # #region agent log
-                    _write_debug_log(
-                        "debug-session",
-                        "run1",
-                        "F",
-                        "database.py:319",
-                        "Insert attempt result",
-                        {"symbol": symbol_upper, "rowcount": cursor.rowcount},
-                    )
-                    # #endregion
-                    if cursor.rowcount > 0:
-                        insert_count += 1
-                    else:
-                        # No row inserted - pair doesn't exist
-                        failed_symbols.add(symbol_upper)
-                        if self.__verbose:
-                            print_with_datetime(
-                                f"WARNING: Currency pair {symbol_upper} "
-                                f"(base: {base_currency}, quote: {quoted_currency}) "
-                                f"not found in database - tick not inserted"
-                            )
-                except mariadb.Error as e:
-                    symbol = base_currency + quoted_currency
-                    failed_symbols.add(symbol)
-                    # #region agent log
-                    _write_debug_log(
-                        "debug-session",
-                        "run1",
-                        "F",
-                        "database.py:357",
-                        "Database insert error",
-                        {"symbol": symbol, "error": str(e)},
-                    )
-                    # #endregion
-                    print_with_datetime(f"Error inserting tick for {symbol}: {e}")
-                    continue
+            with self.execute_query() as conn:
+                for (
+                    date_time,
+                    ask,
+                    bid,
+                    base_currency,
+                    quoted_currency,
+                    symbol_upper,
+                ) in tick_data:
+                    try:
+                        params = {
+                            "datetime": date_time,
+                            "ask": ask,
+                            "bid": bid,
+                            "base_currency": base_currency,
+                            "quoted_currency": quoted_currency,
+                        }
+                        result = conn.execute(text(query), params)
+                        rowcount = result.rowcount
+
+                        # Check if a row was actually inserted
+                        # #region agent log
+                        _write_debug_log(
+                            "debug-session",
+                            "run1",
+                            "F",
+                            "database.py:319",
+                            "Insert attempt result",
+                            {"symbol": symbol_upper, "rowcount": rowcount},
+                        )
+                        # #endregion
+                        if rowcount > 0:
+                            insert_count += 1
+                        else:
+                            # No row inserted - pair doesn't exist
+                            failed_symbols.add(symbol_upper)
+                            if self.__verbose:
+                                print_with_datetime(
+                                    f"WARNING: Currency pair {symbol_upper} "
+                                    f"(base: {base_currency}, quote: {quoted_currency}) "
+                                    f"not found in database - tick not inserted"
+                                )
+                    except SQLAlchemyError as e:
+                        symbol = base_currency + quoted_currency
+                        failed_symbols.add(symbol)
+                        # #region agent log
+                        _write_debug_log(
+                            "debug-session",
+                            "run1",
+                            "F",
+                            "database.py:357",
+                            "Database insert error",
+                            {"symbol": symbol, "error": str(e)},
+                        )
+                        # #endregion
+                        print_with_datetime(f"Error inserting tick for {symbol}: {e}")
+                        continue
 
             if failed_symbols:
                 print_with_datetime(
@@ -651,7 +625,6 @@ class Database:
                     f"These currency pairs may not exist in the forex_pairs table."
                 )
 
-            conn.commit()
             # #region agent log
             _write_debug_log(
                 "debug-session",
@@ -666,7 +639,6 @@ class Database:
                 },
             )
             # #endregion
-            cursor.close()
 
             with self.__metrics_lock:
                 self.__metrics["batch_inserts"] += 1
@@ -691,19 +663,10 @@ class Database:
                 {"error": str(e), "error_type": type(e).__name__},
             )
             # #endregion
-        except mariadb.Error as e:
             print_with_datetime(f"Error in batch insert: {e}")
-            if conn:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
             with self.__metrics_lock:
                 self.__metrics["insert_failures"] += len(ticks)
             return -1
-        finally:
-            if conn:
-                conn.close()  # Return connection to pool
 
     def insert_economic_calendar_data(self, data):
         """
@@ -711,34 +674,38 @@ class Database:
 
         :param data: Pandas Dataframe
         """
-        conn = None
         try:
-            conn = self.__get_connection()
-            cursor = conn.cursor()
+            query = (
+                "SELECT insert_economic_calendar_data(:date, :country, :event, "
+                ":impact, :previous, :consensus, :actual)"
+            )
 
-            for _, row in data.iterrows():
-                # Normalize timestamp to EST before storing
-                date = self._normalize_timestamp(row["Date"])
-                country = row["Country"]
-                event = row["Event"]
-                impact = row["Impact"]
-                previous = row["Previous"] if row["Previous"] != "" else None
-                consensus = row["Consensus"] if row["Consensus"] != "" else None
-                actual = row["Actual"] if row["Actual"] != "" else None
-                cursor.callproc(
-                    "insert_economic_calendar_data",
-                    (date, country, event, impact, previous, consensus, actual),
-                )
-            conn.commit()
+            with self.execute_query() as conn:
+                for _, row in data.iterrows():
+                    # Normalize timestamp to EST before storing
+                    date = self._normalize_timestamp(row["Date"])
+                    country = row["Country"]
+                    event = row["Event"]
+                    impact = row["Impact"]
+                    previous = row["Previous"] if row["Previous"] != "" else None
+                    consensus = row["Consensus"] if row["Consensus"] != "" else None
+                    actual = row["Actual"] if row["Actual"] != "" else None
 
-            cursor.close()
+                    params = {
+                        "date": date,
+                        "country": country,
+                        "event": event,
+                        "impact": impact,
+                        "previous": previous,
+                        "consensus": consensus,
+                        "actual": actual,
+                    }
+                    conn.execute(text(query), params)
+
             return True
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             print_with_datetime(f"Error inserting economic calendar data: {e}")
             return False
-        finally:
-            if conn:
-                conn.close()  # Return connection to pool
 
     def get_recent_ticks(
         self,
@@ -756,24 +723,21 @@ class Database:
         :param query_by: Query by 'event_time' (datetime column) or 'receive_time' (for point-in-time training)
         :return: List of dictionaries with bitemporal timestamp information
         """
-        conn = None
         try:
             # Extract base and quote currencies from symbol
             base_currency = symbol[:3]
             quote_currency = symbol[3:]
 
-            conn = self.__get_connection()
-            cursor = conn.cursor()
-
             # Determine which timestamp column to use for filtering and ordering
+            # Use conditional logic instead of f-string interpolation for security
             if query_by == "receive_time":
                 # Query by receive_time (transaction time) for point-in-time training
-                time_column = "COALESCE(tf.receive_time, tf.datetime)"  # Fallback to datetime if receive_time is NULL
-                order_by = "COALESCE(tf.receive_time, tf.datetime)"
+                time_filter = "COALESCE(tf.receive_time, tf.datetime) >= NOW() - INTERVAL :hours HOUR"
+                order_clause = "ORDER BY COALESCE(tf.receive_time, tf.datetime) ASC"
             else:
                 # Query by event_time (datetime) for pattern learning
-                time_column = "tf.datetime"
-                order_by = "tf.datetime"
+                time_filter = "tf.datetime >= NOW() - INTERVAL :hours HOUR"
+                order_clause = "ORDER BY tf.datetime ASC"
 
             query = f"""
                 SELECT
@@ -790,14 +754,20 @@ class Database:
                 JOIN forex_pairs fp ON tf.forex_pairs_id = fp.id
                 JOIN currency c1 ON fp.base_currency_id = c1.id
                 JOIN currency c2 ON fp.quote_currency_id = c2.id
-                WHERE c1.iso_code = %s AND c2.iso_code = %s
-                AND {time_column} >= DATE_SUB(NOW(), INTERVAL %s HOUR)
-                ORDER BY {order_by} ASC
-                LIMIT %s
+                WHERE c1.iso_code = :base_currency AND c2.iso_code = :quote_currency
+                AND {time_filter}
+                {order_clause}
+                LIMIT :limit
             """
 
-            cursor.execute(query, (base_currency, quote_currency, hours, limit))
-            results = cursor.fetchall()
+            params = {
+                "base_currency": base_currency,
+                "quote_currency": quote_currency,
+                "hours": hours,
+                "limit": limit,
+            }
+
+            results = self.execute_with_result(query, params)
 
             ticks = []
             for row in results:
@@ -815,15 +785,11 @@ class Database:
                     }
                 )
 
-            cursor.close()
             return ticks
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             print_with_datetime(f"Error retrieving recent ticks for {symbol}: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_upcoming_events(self, hours_ahead: int = 24) -> List[Dict]:
         """
@@ -832,21 +798,17 @@ class Database:
         :param hours_ahead: Number of hours to look ahead
         :return: List of dictionaries with event information
         """
-        conn = None
         try:
-            conn = self.__get_connection()
-            cursor = conn.cursor()
-
             query = """
                 SELECT datetime, event, impact, country, previous, consensus, actual
                 FROM economic_calendar
                 WHERE datetime >= NOW()
-                AND datetime <= DATE_ADD(NOW(), INTERVAL %s HOUR)
+                AND datetime <= NOW() + INTERVAL :hours_ahead HOUR
                 ORDER BY datetime ASC
             """
 
-            cursor.execute(query, (hours_ahead,))
-            results = cursor.fetchall()
+            params = {"hours_ahead": hours_ahead}
+            results = self.execute_with_result(query, params)
 
             events = []
             for row in results:
@@ -862,31 +824,8 @@ class Database:
                     }
                 )
 
-            cursor.close()
             return events
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             print_with_datetime(f"Error retrieving upcoming events: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
-
-    def __create_conn(self):
-        """
-        Create the database connection
-
-        :return: MariaDB connection
-        """
-        try:
-            conn = mariadb.connect(
-                user=self.__user,
-                password=self.__password,
-                host=self.__host,
-                port=self.__port,
-                database=self.__db,
-            )
-            return conn
-        except mariadb.Error as e:
-            print_with_datetime(f"Error connecting to MariaDB Platform: {e}")
-            raise e

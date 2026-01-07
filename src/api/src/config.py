@@ -12,8 +12,8 @@ class Settings(BaseSettings):
 
     # Database
     database_url: Optional[str] = Field(default=None, alias="DATABASE_URL")
-    db_host: str = Field(default="mariadb", alias="DB_HOST")
-    db_port: int = Field(default=3306, alias="DB_PORT")
+    db_host: str = Field(default="postgres", alias="DB_HOST")
+    db_port: int = Field(default=5432, alias="DB_PORT")
     db_user: str = Field(default="forex_user", alias="DB_USER")
     db_password: str = Field(default="forex_password", alias="DB_PASSWORD")
     db_name: str = Field(default="db_forex", alias="DB_NAME")
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
         """Get database URL, constructing it if not provided"""
         if self.database_url:
             return self.database_url
-        return f"mysql+pymysql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        return f"postgresql+psycopg2://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
 
 settings = Settings()

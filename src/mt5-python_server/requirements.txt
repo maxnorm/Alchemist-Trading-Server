@@ -1,6 +1,7 @@
 # Core dependencies
 beautifulsoup4==4.13.3
-mariadb==1.1.6
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
 pandas>=2.0.0
 numpy<2.0.0
 python-dotenv==1.0.1

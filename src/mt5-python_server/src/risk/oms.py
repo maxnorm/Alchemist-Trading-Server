@@ -20,6 +20,7 @@ import threading
 import json
 import logging
 from pathlib import Path
+from sqlalchemy import text
 
 from monitoring.metrics import oms_reconciliation_errors
 
@@ -795,10 +796,6 @@ class OrderManagementSystem:
             return
 
         try:
-            # Get connection from pool
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             # Convert state enum to database value
             state_value = (
                 order.state.value.upper()
@@ -808,24 +805,6 @@ class OrderManagementSystem:
 
             # Prepare metadata JSON
             metadata_json = json.dumps(order.metadata) if order.metadata else None
-
-            # Insert or update order
-            query = """
-                INSERT INTO orders (
-                    id, client_order_id, experiment_id, account_login, symbol, side, order_type,
-                    quantity, price, stop_loss, take_profit, state, filled_quantity,
-                    average_fill_price, broker_order_id, reject_reason, metadata, created_at, updated_at
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-                ON DUPLICATE KEY UPDATE
-                    state = VALUES(state),
-                    filled_quantity = VALUES(filled_quantity),
-                    average_fill_price = VALUES(average_fill_price),
-                    broker_order_id = VALUES(broker_order_id),
-                    reject_reason = VALUES(reject_reason),
-                    updated_at = VALUES(updated_at)
-            """
 
             # Extract account_login from account_id or metadata
             account_login = None
@@ -844,34 +823,50 @@ class OrderManagementSystem:
             if account_login is None:
                 account_login = 0
 
-            cursor.execute(
-                query,
-                (
-                    order.order_id,
-                    order.client_order_id or None,
-                    None,  # experiment_id (will be set in Phase 3)
-                    account_login,
-                    order.symbol,
-                    order.side,
-                    order.order_type,
-                    float(order.quantity),
-                    float(order.price) if order.price else None,
-                    float(order.stop_loss) if order.stop_loss else None,
-                    float(order.take_profit) if order.take_profit else None,
-                    state_value,
-                    float(order.filled_quantity),
-                    float(order.average_fill_price),
-                    order.broker_order_id,
-                    order.reject_reason,
-                    metadata_json,
-                    order.created_at,
-                    order.updated_at,
-                ),
-            )
+            # Insert or update order (PostgreSQL ON CONFLICT syntax)
+            query = """
+                INSERT INTO orders (
+                    id, client_order_id, experiment_id, account_login, symbol, side, order_type,
+                    quantity, price, stop_loss, take_profit, state, filled_quantity,
+                    average_fill_price, broker_order_id, reject_reason, metadata, created_at, updated_at
+                ) VALUES (
+                    :id, :client_order_id, :experiment_id, :account_login, :symbol, :side, :order_type,
+                    :quantity, :price, :stop_loss, :take_profit, :state, :filled_quantity,
+                    :average_fill_price, :broker_order_id, :reject_reason, :metadata, :created_at, :updated_at
+                )
+                ON CONFLICT (id) DO UPDATE SET
+                    state = EXCLUDED.state,
+                    filled_quantity = EXCLUDED.filled_quantity,
+                    average_fill_price = EXCLUDED.average_fill_price,
+                    broker_order_id = EXCLUDED.broker_order_id,
+                    reject_reason = EXCLUDED.reject_reason,
+                    updated_at = EXCLUDED.updated_at
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {
+                "id": order.order_id,
+                "client_order_id": order.client_order_id or None,
+                "experiment_id": None,  # experiment_id (will be set in Phase 3)
+                "account_login": account_login,
+                "symbol": order.symbol,
+                "side": order.side,
+                "order_type": order.order_type,
+                "quantity": float(order.quantity),
+                "price": float(order.price) if order.price else None,
+                "stop_loss": float(order.stop_loss) if order.stop_loss else None,
+                "take_profit": float(order.take_profit) if order.take_profit else None,
+                "state": state_value,
+                "filled_quantity": float(order.filled_quantity),
+                "average_fill_price": float(order.average_fill_price),
+                "broker_order_id": order.broker_order_id,
+                "reject_reason": order.reject_reason,
+                "metadata": metadata_json,
+                "created_at": order.created_at,
+                "updated_at": order.updated_at,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
         except Exception as e:
             self.logger.error(
@@ -885,9 +880,6 @@ class OrderManagementSystem:
             return
 
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             # Load all non-terminal orders
             query = """
                 SELECT id, client_order_id, experiment_id, account_login, symbol, side, order_type,
@@ -899,8 +891,7 @@ class OrderManagementSystem:
                 ORDER BY created_at DESC
             """
 
-            cursor.execute(query)
-            results = cursor.fetchall()
+            results = self.db.execute_with_result(query)
 
             for row in results:
                 try:
@@ -953,10 +944,7 @@ class OrderManagementSystem:
                     continue
 
             # Reconstruct positions from filled orders
-            self._reconstruct_positions_from_db(cursor)
-
-            cursor.close()
-            conn.close()
+            self._reconstruct_positions_from_db()
 
             self.logger.info(
                 f"Loaded {len(self.orders)} orders from database, "
@@ -969,7 +957,7 @@ class OrderManagementSystem:
             )
             raise
 
-    def _reconstruct_positions_from_db(self, cursor) -> None:
+    def _reconstruct_positions_from_db(self) -> None:
         """Reconstruct positions from filled orders in database"""
         try:
             # Get all filled orders grouped by symbol
@@ -980,8 +968,7 @@ class OrderManagementSystem:
                 ORDER BY updated_at DESC
             """
 
-            cursor.execute(query)
-            results = cursor.fetchall()
+            results = self.db.execute_with_result(query)
 
             for row in results:
                 symbol, side, filled_qty, avg_price = row

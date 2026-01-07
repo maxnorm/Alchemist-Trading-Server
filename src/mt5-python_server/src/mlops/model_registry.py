@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from enum import Enum
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -143,71 +145,65 @@ class ModelRegistry:
         :param version: Optional version string (auto-generated if not provided)
         :return: Registered Model instance
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             # Generate version if not provided
             if not version:
                 # Get latest version number for this experiment
-                cursor.execute(
-                    "SELECT COUNT(*) FROM models WHERE experiment_id = %s",
-                    (experiment_id,),
+                result = self.db.execute_one(
+                    "SELECT COUNT(*) FROM models WHERE experiment_id = :experiment_id",
+                    {"experiment_id": experiment_id},
                 )
-                count = cursor.fetchone()[0]
+                count = result[0] if result else 0
                 version = f"v{count + 1}"
 
             # Check if version already exists
-            cursor.execute("SELECT id FROM models WHERE version = %s", (version,))
-            if cursor.fetchone():
+            existing = self.db.execute_one(
+                "SELECT id FROM models WHERE version = :version", {"version": version}
+            )
+            if existing:
                 raise ValueError(f"Model version {version} already exists")
 
             # Insert model
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO models (
                     version, experiment_id, stage, features, hyperparameters,
                     metrics, mlflow_model_uri, mlflow_run_id, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    version,
-                    experiment_id,
-                    ModelStage.TRAINING.value,
-                    json.dumps(features),
-                    json.dumps(hyperparameters),
-                    json.dumps(metrics) if metrics else None,
-                    mlflow_model_uri,
-                    mlflow_run_id,
-                    datetime.now(),
-                ),
-            )
+                ) VALUES (:version, :experiment_id, :stage, :features, :hyperparameters,
+                    :metrics, :mlflow_model_uri, :mlflow_run_id, :created_at)
+                RETURNING id
+            """
 
-            model_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
+            params = {
+                "version": version,
+                "experiment_id": experiment_id,
+                "stage": ModelStage.TRAINING.value,
+                "features": json.dumps(features),
+                "hyperparameters": json.dumps(hyperparameters),
+                "metrics": json.dumps(metrics) if metrics else None,
+                "mlflow_model_uri": mlflow_model_uri,
+                "mlflow_run_id": mlflow_run_id,
+                "created_at": datetime.now(),
+            }
 
-            logger.info(
-                f"Registered model {model_id} (version {version}) for experiment {experiment_id}"
-            )
+            result = self.db.execute_one(query, params)
+            if result:
+                model_id = result[0]
+                logger.info(
+                    f"Registered model {model_id} (version {version}) for experiment {experiment_id}"
+                )
 
-            # Auto-promote to staging
-            self.update_model_stage(model_id, ModelStage.STAGING, promoted_by=None)
+                # Auto-promote to staging
+                self.update_model_stage(model_id, ModelStage.STAGING, promoted_by=None)
 
-            model = self.get_model(model_id)
-            if model is None:
-                raise ValueError(f"Model {model_id} not found after registration")
-            return model
+                model = self.get_model(model_id)
+                if model is None:
+                    raise ValueError(f"Model {model_id} not found after registration")
+                return model
+            raise RuntimeError("Failed to register model")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error registering model: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def get_model(self, model_id: int) -> Optional[Model]:
         """
@@ -216,24 +212,17 @@ class ModelRegistry:
         :param model_id: Model ID
         :return: Model instance or None
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, experiment_id, stage, features, hyperparameters,
                        metrics, mlflow_model_uri, mlflow_run_id, paper_trading_results,
                        created_at, promoted_at, promoted_by
                 FROM models
-                WHERE id = %s
-                """,
-                (model_id,),
-            )
+                WHERE id = :model_id
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            params = {"model_id": model_id}
+            row = self.db.execute_one(query, params)
 
             if not row:
                 return None
@@ -275,12 +264,9 @@ class ModelRegistry:
                 promoted_by=promoted_by,
             )
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error getting model {model_id}: {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def get_model_by_version(self, version: str) -> Optional[Model]:
         """
@@ -289,24 +275,17 @@ class ModelRegistry:
         :param version: Version string
         :return: Model instance or None
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, experiment_id, stage, features, hyperparameters,
                        metrics, mlflow_model_uri, mlflow_run_id, paper_trading_results,
                        created_at, promoted_at, promoted_by
                 FROM models
-                WHERE version = %s
-                """,
-                (version,),
-            )
+                WHERE version = :version
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            params = {"version": version}
+            row = self.db.execute_one(query, params)
 
             if not row:
                 return None
@@ -348,14 +327,11 @@ class ModelRegistry:
                 promoted_by=promoted_by,
             )
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error getting model by version {version}: {e}", exc_info=True
             )
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def get_models_by_stage(self, stage: ModelStage) -> List[Model]:
         """
@@ -364,25 +340,18 @@ class ModelRegistry:
         :param stage: Model stage
         :return: List of Model instances
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, experiment_id, stage, features, hyperparameters,
                        metrics, mlflow_model_uri, mlflow_run_id, paper_trading_results,
                        created_at, promoted_at, promoted_by
                 FROM models
-                WHERE stage = %s
+                WHERE stage = :stage
                 ORDER BY created_at DESC
-                """,
-                (stage.value,),
-            )
+            """
 
-            rows = cursor.fetchall()
-            cursor.close()
+            params = {"stage": stage.value}
+            rows = self.db.execute_with_result(query, params)
 
             models = []
             for row in rows:
@@ -428,14 +397,11 @@ class ModelRegistry:
 
             return models
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error getting models by stage {stage.value}: {e}", exc_info=True
             )
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def update_model_stage(
         self, model_id: int, new_stage: ModelStage, promoted_by: Optional[int] = None
@@ -448,34 +414,29 @@ class ModelRegistry:
         :param promoted_by: Optional user ID who promoted
         :return: True if successful
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE models
-                SET stage = %s, promoted_at = %s, promoted_by = %s
-                WHERE id = %s
-                """,
-                (new_stage.value, datetime.now(), promoted_by, model_id),
-            )
+                SET stage = :stage, promoted_at = :promoted_at, promoted_by = :promoted_by
+                WHERE id = :model_id
+            """
 
-            conn.commit()
-            cursor.close()
+            params = {
+                "stage": new_stage.value,
+                "promoted_at": datetime.now(),
+                "promoted_by": promoted_by,
+                "model_id": model_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             logger.info(f"Updated model {model_id} stage to {new_stage.value}")
             return True
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error updating model stage: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             return False
-        finally:
-            if conn:
-                conn.close()
 
     def store_paper_trading_results(
         self, model_id: int, results: Dict[str, Any]
@@ -487,34 +448,27 @@ class ModelRegistry:
         :param results: Paper trading results dictionary
         :return: True if successful
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE models
-                SET paper_trading_results = %s
-                WHERE id = %s
-                """,
-                (json.dumps(results), model_id),
-            )
+                SET paper_trading_results = :paper_trading_results
+                WHERE id = :model_id
+            """
 
-            conn.commit()
-            cursor.close()
+            params = {
+                "paper_trading_results": json.dumps(results),
+                "model_id": model_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             logger.info(f"Stored paper trading results for model {model_id}")
             return True
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error storing paper trading results: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             return False
-        finally:
-            if conn:
-                conn.close()
 
     def list_all_models(self, experiment_id: Optional[int] = None) -> List[Model]:
         """
@@ -523,36 +477,28 @@ class ModelRegistry:
         :param experiment_id: Optional experiment ID filter
         :return: List of Model instances
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             if experiment_id:
-                cursor.execute(
-                    """
+                query = """
                     SELECT id, version, experiment_id, stage, features, hyperparameters,
                            metrics, mlflow_model_uri, mlflow_run_id, paper_trading_results,
                            created_at, promoted_at, promoted_by
                     FROM models
-                    WHERE experiment_id = %s
+                    WHERE experiment_id = :experiment_id
                     ORDER BY created_at DESC
-                    """,
-                    (experiment_id,),
-                )
+                """
+                params = {"experiment_id": experiment_id}
             else:
-                cursor.execute(
-                    """
+                query = """
                     SELECT id, version, experiment_id, stage, features, hyperparameters,
                            metrics, mlflow_model_uri, mlflow_run_id, paper_trading_results,
                            created_at, promoted_at, promoted_by
                     FROM models
                     ORDER BY created_at DESC
-                    """
-                )
+                """
+                params = None
 
-            rows = cursor.fetchall()
-            cursor.close()
+            rows = self.db.execute_with_result(query, params)
 
             models = []
             for row in rows:
@@ -598,9 +544,6 @@ class ModelRegistry:
 
             return models
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error listing models: {e}", exc_info=True)
             return []
-        finally:
-            if conn:
-                conn.close()

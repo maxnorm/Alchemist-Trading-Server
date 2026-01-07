@@ -6,6 +6,8 @@ Logs trade entries and exits for performance tracking
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from database import Database
 
 
@@ -52,41 +54,38 @@ class TradeLogger:
         :return: Trade ID
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO model_trades
                 (session_id, model_id, order_uuid, symbol, action, entry_price, volume,
                  commission, swap, status, opened_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)
-            """,
-                (
-                    session_id,
-                    model_id,
-                    order_uuid,
-                    symbol,
-                    action,
-                    entry_price,
-                    volume,
-                    commission,
-                    swap,
-                    datetime.utcnow(),
-                ),
-            )
+                VALUES (:session_id, :model_id, :order_uuid, :symbol, :action, :entry_price,
+                        :volume, :commission, :swap, 'open', :opened_at)
+                RETURNING id
+            """
 
-            trade_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {
+                "session_id": session_id,
+                "model_id": model_id,
+                "order_uuid": order_uuid,
+                "symbol": symbol,
+                "action": action,
+                "entry_price": entry_price,
+                "volume": volume,
+                "commission": commission,
+                "swap": swap,
+                "opened_at": datetime.utcnow(),
+            }
 
-            self.logger.info(
-                f"Logged trade entry: trade_id={trade_id}, session_id={session_id}, "
-                f"symbol={symbol}, action={action}, price={entry_price}, volume={volume}"
-            )
-            return trade_id
-        except Exception as e:
+            result = self.db.execute_one(query, params)
+            if result:
+                trade_id = result[0]
+                self.logger.info(
+                    f"Logged trade entry: trade_id={trade_id}, session_id={session_id}, "
+                    f"symbol={symbol}, action={action}, price={entry_price}, volume={volume}"
+                )
+                return trade_id
+            raise RuntimeError("Failed to log trade entry")
+        except SQLAlchemyError as e:
             self.logger.error(f"Error logging trade entry: {e}", exc_info=True)
             raise
 
@@ -107,39 +106,34 @@ class TradeLogger:
         :param duration_seconds: Trade duration in seconds
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 UPDATE model_trades
-                SET exit_price = ?,
-                    pnl = ?,
-                    pnl_pips = ?,
-                    duration_seconds = ?,
+                SET exit_price = :exit_price,
+                    pnl = :pnl,
+                    pnl_pips = :pnl_pips,
+                    duration_seconds = :duration_seconds,
                     status = 'closed',
-                    closed_at = ?
-                WHERE id = ?
-            """,
-                (
-                    exit_price,
-                    pnl,
-                    pnl_pips,
-                    duration_seconds,
-                    datetime.utcnow(),
-                    trade_id,
-                ),
-            )
+                    closed_at = :closed_at
+                WHERE id = :trade_id
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {
+                "exit_price": exit_price,
+                "pnl": pnl,
+                "pnl_pips": pnl_pips,
+                "duration_seconds": duration_seconds,
+                "closed_at": datetime.utcnow(),
+                "trade_id": trade_id,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.info(
                 f"Logged trade exit: trade_id={trade_id}, exit_price={exit_price}, "
                 f"pnl={pnl}, pnl_pips={pnl_pips}, duration={duration_seconds}s"
             )
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error logging trade exit: {e}", exc_info=True)
             raise
 
@@ -153,29 +147,47 @@ class TradeLogger:
         :return: List of open trade dictionaries
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor(dictionary=True)
-
             query = "SELECT * FROM model_trades WHERE status = 'open'"
-            params = []
+            params = {}
 
             if session_id:
-                query += " AND session_id = ?"
-                params.append(session_id)
+                query += " AND session_id = :session_id"
+                params["session_id"] = session_id
 
             if model_id:
-                query += " AND model_id = ?"
-                params.append(model_id)
+                query += " AND model_id = :model_id"
+                params["model_id"] = model_id
 
             query += " ORDER BY opened_at DESC"
 
-            cursor.execute(query, tuple(params))
-            trades = cursor.fetchall()
-            cursor.close()
-            conn.close()
+            rows = self.db.execute_with_result(query, params if params else None)
+
+            # Convert rows to dictionaries
+            trades = []
+            for row in rows:
+                trade_dict = {
+                    "id": row[0],
+                    "session_id": row[1],
+                    "model_id": row[2],
+                    "order_uuid": row[3],
+                    "symbol": row[4],
+                    "action": row[5],
+                    "entry_price": float(row[6]) if row[6] else None,
+                    "exit_price": float(row[7]) if row[7] else None,
+                    "volume": float(row[8]) if row[8] else None,
+                    "commission": float(row[9]) if row[9] else None,
+                    "swap": float(row[10]) if row[10] else None,
+                    "pnl": float(row[11]) if row[11] else None,
+                    "pnl_pips": float(row[12]) if row[12] else None,
+                    "duration_seconds": row[13],
+                    "status": row[14],
+                    "opened_at": row[15],
+                    "closed_at": row[16],
+                }
+                trades.append(trade_dict)
 
             return trades
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error getting open trades: {e}", exc_info=True)
             return []
 
@@ -199,38 +211,57 @@ class TradeLogger:
         :return: List of trade dictionaries
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor(dictionary=True)
-
             query = "SELECT * FROM model_trades WHERE 1=1"
-            params: List[Any] = []
+            params: Dict[str, Any] = {}
 
             if model_id:
-                query += " AND model_id = ?"
-                params.append(model_id)
+                query += " AND model_id = :model_id"
+                params["model_id"] = model_id
 
             if session_id:
-                query += " AND session_id = ?"
-                params.append(session_id)
+                query += " AND session_id = :session_id"
+                params["session_id"] = session_id
 
             if start_date:
-                query += " AND opened_at >= ?"
-                params.append(start_date)
+                query += " AND opened_at >= :start_date"
+                params["start_date"] = start_date
 
             if end_date:
-                query += " AND opened_at <= ?"
-                params.append(end_date)
+                query += " AND opened_at <= :end_date"
+                params["end_date"] = end_date
 
-            query += " ORDER BY opened_at DESC LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
+            query += " ORDER BY opened_at DESC LIMIT :limit OFFSET :offset"
+            params["limit"] = limit
+            params["offset"] = offset
 
-            cursor.execute(query, tuple(params))
-            trades = cursor.fetchall()
-            cursor.close()
-            conn.close()
+            rows = self.db.execute_with_result(query, params)
+
+            # Convert rows to dictionaries
+            trades = []
+            for row in rows:
+                trade_dict = {
+                    "id": row[0],
+                    "session_id": row[1],
+                    "model_id": row[2],
+                    "order_uuid": row[3],
+                    "symbol": row[4],
+                    "action": row[5],
+                    "entry_price": float(row[6]) if row[6] else None,
+                    "exit_price": float(row[7]) if row[7] else None,
+                    "volume": float(row[8]) if row[8] else None,
+                    "commission": float(row[9]) if row[9] else None,
+                    "swap": float(row[10]) if row[10] else None,
+                    "pnl": float(row[11]) if row[11] else None,
+                    "pnl_pips": float(row[12]) if row[12] else None,
+                    "duration_seconds": row[13],
+                    "status": row[14],
+                    "opened_at": row[15],
+                    "closed_at": row[16],
+                }
+                trades.append(trade_dict)
 
             return trades
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error getting trade history: {e}", exc_info=True)
             return []
 
@@ -241,21 +272,35 @@ class TradeLogger:
         :return: Trade dictionary or None
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            query = """
+                SELECT * FROM model_trades WHERE order_uuid = :order_uuid
+            """
 
-            cursor.execute(
-                """
-                SELECT * FROM model_trades WHERE order_uuid = ?
-            """,
-                (order_uuid,),
-            )
+            params = {"order_uuid": order_uuid}
+            row = self.db.execute_one(query, params)
 
-            trade = cursor.fetchone()
-            cursor.close()
-            conn.close()
-
-            return trade
-        except Exception as e:
+            if row:
+                trade_dict = {
+                    "id": row[0],
+                    "session_id": row[1],
+                    "model_id": row[2],
+                    "order_uuid": row[3],
+                    "symbol": row[4],
+                    "action": row[5],
+                    "entry_price": float(row[6]) if row[6] else None,
+                    "exit_price": float(row[7]) if row[7] else None,
+                    "volume": float(row[8]) if row[8] else None,
+                    "commission": float(row[9]) if row[9] else None,
+                    "swap": float(row[10]) if row[10] else None,
+                    "pnl": float(row[11]) if row[11] else None,
+                    "pnl_pips": float(row[12]) if row[12] else None,
+                    "duration_seconds": row[13],
+                    "status": row[14],
+                    "opened_at": row[15],
+                    "closed_at": row[16],
+                }
+                return trade_dict
+            return None
+        except SQLAlchemyError as e:
             self.logger.error(f"Error getting trade by UUID: {e}", exc_info=True)
             return None

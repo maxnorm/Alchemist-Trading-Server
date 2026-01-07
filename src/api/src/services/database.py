@@ -30,12 +30,10 @@ def init_db():
     )
 
     # Create engine with connection pooling
-    # Add connection arguments for better timeout handling
+    # Add connection arguments for PostgreSQL
     connect_args = {
         "connect_timeout": 10,
-        "read_timeout": 30,
-        "write_timeout": 60,
-        "charset": "utf8mb4",
+        "options": "-c statement_timeout=30000 -c client_encoding=utf8"
     }
 
     _engine = create_engine(
@@ -44,7 +42,7 @@ def init_db():
         pool_size=10,
         max_overflow=20,
         pool_pre_ping=True,  # Verify connections before using
-        pool_recycle=3600,  # Recycle connections after 1 hour (before MySQL wait_timeout)
+        pool_recycle=3600,  # Recycle connections after 1 hour
         pool_reset_on_return="commit",  # Reset connections when returned to pool
         echo=False,
         connect_args=connect_args,

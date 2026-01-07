@@ -3,23 +3,30 @@
 -- Creates table to store feature metadata from data providers
 
 CREATE TABLE IF NOT EXISTS features (
-    id INT PRIMARY KEY AUTO_INCREMENT,
+    id SERIAL PRIMARY KEY,
     name VARCHAR(100) UNIQUE NOT NULL,
     data_type VARCHAR(20) NOT NULL,
     source VARCHAR(50) NOT NULL,
     description TEXT,
     category VARCHAR(50),
     available BOOLEAN DEFAULT TRUE,
-    min_value DOUBLE,
-    max_value DOUBLE,
-    mean_value DOUBLE,
+    min_value DOUBLE PRECISION,
+    max_value DOUBLE PRECISION,
+    mean_value DOUBLE PRECISION,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_source (source),
-    INDEX idx_category (category),
-    INDEX idx_available (available),
-    INDEX idx_name (name)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_source ON features(source);
+CREATE INDEX IF NOT EXISTS idx_category ON features(category);
+CREATE INDEX IF NOT EXISTS idx_available ON features(available);
+CREATE INDEX IF NOT EXISTS idx_name ON features(name);
+
+-- Add trigger for updated_at column
+CREATE TRIGGER update_features_updated_at
+    BEFORE UPDATE ON features
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Add comment to table
-ALTER TABLE features COMMENT = 'Feature catalog storing metadata for all available features from data providers';
+COMMENT ON TABLE features IS 'Feature catalog storing metadata for all available features from data providers';

@@ -51,18 +51,15 @@ class EquityTracker:
         :param unrealized_pnl: Unrealized P&L
         """
         try:
+            from sqlalchemy import text
+            from sqlalchemy.exc import SQLAlchemyError
+
             # Calculate drawdown percentage
             # Get high water mark from session
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
-                SELECT high_water_mark FROM live_trading_sessions WHERE id = ?
-            """,
-                (session_id,),
+            result = self.db.execute_one(
+                "SELECT high_water_mark FROM live_trading_sessions WHERE id = :session_id",
+                {"session_id": session_id},
             )
-            result = cursor.fetchone()
             high_water_mark = result[0] if result else equity
 
             # Calculate drawdown
@@ -72,32 +69,30 @@ class EquityTracker:
                 drawdown_pct = 0.0
 
             # Insert snapshot
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO equity_curve
                 (model_id, session_id, timestamp, equity, balance, drawdown_pct, unrealized_pnl)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    model_id,
-                    session_id,
-                    datetime.utcnow(),
-                    equity,
-                    balance,
-                    drawdown_pct,
-                    unrealized_pnl,
-                ),
-            )
+                VALUES (:model_id, :session_id, :timestamp, :equity, :balance, :drawdown_pct, :unrealized_pnl)
+            """
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            params = {
+                "model_id": model_id,
+                "session_id": session_id,
+                "timestamp": datetime.utcnow(),
+                "equity": equity,
+                "balance": balance,
+                "drawdown_pct": drawdown_pct,
+                "unrealized_pnl": unrealized_pnl,
+            }
+
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.debug(
                 f"Recorded equity snapshot: session_id={session_id}, "
                 f"equity={equity}, balance={balance}, drawdown={drawdown_pct:.2f}%"
             )
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error recording equity snapshot: {e}", exc_info=True)
             raise
 
@@ -117,40 +112,51 @@ class EquityTracker:
         :return: List of equity curve points
         """
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            from sqlalchemy.exc import SQLAlchemyError
 
             query = "SELECT * FROM equity_curve WHERE 1=1"
-            params: List[Any] = []
+            params: Dict[str, Any] = {}
 
             if model_id is not None:
-                query += " AND model_id = ?"
-                params.append(model_id)
+                query += " AND model_id = :model_id"
+                params["model_id"] = model_id
             else:
                 # For portfolio-level, model_id should be NULL
                 query += " AND model_id IS NULL"
 
             if session_id:
-                query += " AND session_id = ?"
-                params.append(session_id)
+                query += " AND session_id = :session_id"
+                params["session_id"] = session_id
 
             if start_date:
-                query += " AND timestamp >= ?"
-                params.append(start_date)
+                query += " AND timestamp >= :start_date"
+                params["start_date"] = start_date
 
             if end_date:
-                query += " AND timestamp <= ?"
-                params.append(end_date)
+                query += " AND timestamp <= :end_date"
+                params["end_date"] = end_date
 
             query += " ORDER BY timestamp ASC"
 
-            cursor.execute(query, tuple(params))
-            curve = cursor.fetchall()
-            cursor.close()
-            conn.close()
+            rows = self.db.execute_with_result(query, params if params else None)
+
+            # Convert rows to dictionaries
+            curve = []
+            for row in rows:
+                curve_dict = {
+                    "id": row[0],
+                    "model_id": row[1],
+                    "session_id": row[2],
+                    "timestamp": row[3],
+                    "equity": float(row[4]) if row[4] else None,
+                    "balance": float(row[5]) if row[5] else None,
+                    "drawdown_pct": float(row[6]) if row[6] else None,
+                    "unrealized_pnl": float(row[7]) if row[7] else None,
+                }
+                curve.append(curve_dict)
 
             return curve
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(f"Error getting equity curve: {e}", exc_info=True)
             return []
 

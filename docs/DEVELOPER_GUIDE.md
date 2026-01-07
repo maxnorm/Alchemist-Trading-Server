@@ -139,8 +139,12 @@ def test_integration_flow():
 
 ```bash
 # Run all migrations
-mysql -u user -p database < src/database/scripts/06_features.sql
-mysql -u user -p database < src/database/scripts/07_experiments.sql
+# Use the migration script instead
+python scripts/run-migrations.py
+
+# Or connect to PostgreSQL directly
+psql -h localhost -U forex_user -d db_forex -f src/database/scripts/06_features.sql
+psql -h localhost -U forex_user -d db_forex -f src/database/scripts/07_experiments.sql
 # ... etc
 ```
 

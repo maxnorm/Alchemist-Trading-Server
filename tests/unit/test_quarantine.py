@@ -70,7 +70,7 @@ class TestInsertQuarantineTick:
         db = Database()
         return db
     
-    @patch('database.mariadb.ConnectionPool')
+    @patch('database.psycopg2.pool.ThreadedConnectionPool')
     def test_insert_quarantine_tick_success(self, mock_pool, db):
         """Test successful quarantine insert"""
         # Mock connection
@@ -78,11 +78,10 @@ class TestInsertQuarantineTick:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_conn.commit = MagicMock()
-        mock_conn.close = MagicMock()
         
         # Mock pool
         mock_pool_instance = MagicMock()
-        mock_pool_instance.get_connection.return_value = mock_conn
+        mock_pool_instance.getconn.return_value = mock_conn
         db._Database__pool = mock_pool_instance
         
         # Test insert
@@ -103,9 +102,9 @@ class TestInsertQuarantineTick:
         assert result is True
         assert mock_cursor.execute.called
         assert mock_conn.commit.called
-        assert mock_conn.close.called
+        assert mock_pool_instance.putconn.called
     
-    @patch('database.mariadb.ConnectionPool')
+    @patch('database.psycopg2.pool.ThreadedConnectionPool')
     def test_insert_quarantine_tick_with_receive_time(self, mock_pool, db):
         """Test quarantine insert with receive_time"""
         # Mock connection
@@ -113,11 +112,10 @@ class TestInsertQuarantineTick:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_conn.commit = MagicMock()
-        mock_conn.close = MagicMock()
         
         # Mock pool
         mock_pool_instance = MagicMock()
-        mock_pool_instance.get_connection.return_value = mock_conn
+        mock_pool_instance.getconn.return_value = mock_conn
         db._Database__pool = mock_pool_instance
         
         # Test insert
@@ -142,7 +140,7 @@ class TestInsertQuarantineTick:
         call_args = mock_cursor.execute.call_args
         assert call_args is not None
     
-    @patch('database.mariadb.ConnectionPool')
+    @patch('database.psycopg2.pool.ThreadedConnectionPool')
     def test_insert_quarantine_tick_database_error(self, mock_pool, db):
         """Test quarantine insert with database error"""
         # Mock connection that raises error
@@ -150,11 +148,10 @@ class TestInsertQuarantineTick:
         mock_cursor = MagicMock()
         mock_cursor.execute.side_effect = Exception("Database error")
         mock_conn.cursor.return_value = mock_cursor
-        mock_conn.close = MagicMock()
         
         # Mock pool
         mock_pool_instance = MagicMock()
-        mock_pool_instance.get_connection.return_value = mock_conn
+        mock_pool_instance.getconn.return_value = mock_conn
         db._Database__pool = mock_pool_instance
         
         # Test insert
@@ -167,9 +164,9 @@ class TestInsertQuarantineTick:
         )
         
         assert result is False
-        assert mock_conn.close.called
+        assert mock_pool_instance.putconn.called
     
-    @patch('database.mariadb.ConnectionPool')
+    @patch('database.psycopg2.pool.ThreadedConnectionPool')
     @patch('monitoring.metrics.quarantine_ticks_total')
     def test_insert_quarantine_tick_updates_metrics(self, mock_metrics, mock_pool, db):
         """Test that quarantine insert updates Prometheus metrics"""
@@ -178,11 +175,10 @@ class TestInsertQuarantineTick:
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
         mock_conn.commit = MagicMock()
-        mock_conn.close = MagicMock()
         
         # Mock pool
         mock_pool_instance = MagicMock()
-        mock_pool_instance.get_connection.return_value = mock_conn
+        mock_pool_instance.getconn.return_value = mock_conn
         db._Database__pool = mock_pool_instance
         
         # Mock metrics

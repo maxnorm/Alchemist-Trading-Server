@@ -7,10 +7,12 @@ Integrates Optuna with experiments for automated hyperparameter optimization.
 import json
 import logging
 import optuna
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from .models import Experiment, ExperimentRepository
 from .runner import ExperimentRunner
@@ -67,37 +69,34 @@ class OptunaHyperparameterTuner:
             )
 
         # Create study in database
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO optuna_studies (
                     experiment_id, study_name, direction, metric, n_trials, status
-                ) VALUES (%s, %s, %s, %s, %s, 'running')
-                """,
-                (experiment_id, study_name, direction, metric, n_trials),
-            )
+                ) VALUES (:experiment_id, :study_name, :direction, :metric, :n_trials, 'running')
+                RETURNING id
+            """
 
-            study_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
+            params = {
+                "experiment_id": experiment_id,
+                "study_name": study_name,
+                "direction": direction,
+                "metric": metric,
+                "n_trials": n_trials,
+            }
 
-            logger.info(
-                f"Created Optuna study {study_id} for experiment {experiment_id}"
-            )
-            return study_id
+            result = self.db.execute_one(query, params)
+            if result:
+                study_id = result[0]
+                logger.info(
+                    f"Created Optuna study {study_id} for experiment {experiment_id}"
+                )
+                return study_id
+            raise RuntimeError("Failed to create Optuna study")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error creating Optuna study: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def run_trials(
         self,
@@ -281,22 +280,16 @@ class OptunaHyperparameterTuner:
         :param study_id: Study ID
         :return: List of trial dictionaries
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT trial_number, params, value, state, metrics, created_at, completed_at
                 FROM optuna_trials
-                WHERE study_id = %s
+                WHERE study_id = :study_id
                 ORDER BY trial_number
-                """,
-                (study_id,),
-            )
+            """
 
-            rows = cursor.fetchall()
+            params = {"study_id": study_id}
+            rows = self.db.execute_with_result(query, params)
             trials: List[Dict[str, Any]] = []
 
             for row in rows:
@@ -324,15 +317,11 @@ class OptunaHyperparameterTuner:
                     }
                 )
 
-            cursor.close()
             return trials
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error getting trial results: {e}", exc_info=True)
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_param_importance(self, study_id: int) -> Dict[str, float]:
         """
@@ -436,23 +425,16 @@ class OptunaHyperparameterTuner:
 
     def _get_study(self, study_id: int) -> Optional[Dict[str, Any]]:
         """Get study data from database"""
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, experiment_id, study_name, direction, metric, n_trials, status,
                        best_trial_number, best_value, best_params, param_importance
                 FROM optuna_studies
-                WHERE id = %s
-                """,
-                (study_id,),
-            )
+                WHERE id = :study_id
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            params = {"study_id": study_id}
+            row = self.db.execute_one(query, params)
 
             if not row:
                 return None
@@ -485,44 +467,36 @@ class OptunaHyperparameterTuner:
                 "param_importance": param_importance,
             }
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error getting study {study_id}: {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def _store_trial(
         self, study_id: int, trial_number: int, params: Dict[str, Any], state: str
     ) -> int:
         """Store trial in database"""
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO optuna_trials (study_id, trial_number, params, state)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (study_id, trial_number, json.dumps(params), state),
-            )
+                VALUES (:study_id, :trial_number, :params, :state)
+                RETURNING id
+            """
 
-            trial_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
+            params_dict = {
+                "study_id": study_id,
+                "trial_number": trial_number,
+                "params": json.dumps(params),
+                "state": state,
+            }
 
-            return trial_id
+            result = self.db.execute_one(query, params_dict)
+            if result:
+                return result[0]
+            raise RuntimeError("Failed to store trial")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error storing trial: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def _update_trial(
         self,
@@ -533,51 +507,42 @@ class OptunaHyperparameterTuner:
         mlflow_run_id: Optional[str] = None,
     ):
         """Update trial in database"""
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+            # Whitelist of allowed columns
+            allowed_columns = {
+                "state": state,
+                "value": value,
+                "metrics": json.dumps(metrics) if metrics is not None else None,
+                "mlflow_run_id": mlflow_run_id,
+            }
 
-            updates: List[str] = []
-            params: List[Union[str, int, float, datetime]] = []
+            # Filter out None values
+            updates_dict: Dict[str, Any] = {
+                k: v for k, v in allowed_columns.items() if v is not None
+            }
 
-            if state is not None:
-                updates.append("state = ?")
-                params.append(state)
+            if not updates_dict:
+                return  # Nothing to update
 
-            if value is not None:
-                updates.append("value = ?")
-                params.append(value)
+            # Always add completed_at
+            updates_dict["completed_at"] = datetime.now()
 
-            if metrics is not None:
-                updates.append("metrics = ?")
-                params.append(json.dumps(metrics))
+            # Build query safely with named parameters
+            updates = []
+            params: Dict[str, Any] = {"trial_id": trial_id}
+            for col, val in updates_dict.items():
+                updates.append(f"{col} = :{col}")
+                params[col] = val
 
-            if mlflow_run_id is not None:
-                updates.append("mlflow_run_id = ?")
-                params.append(mlflow_run_id)
+            query = (
+                f"UPDATE optuna_trials SET {', '.join(updates)} WHERE id = :trial_id"
+            )
 
-            if updates:
-                updates.append("completed_at = ?")
-                params.append(datetime.now())  # type: ignore[arg-type]
-                params.append(trial_id)  # type: ignore[arg-type]
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
-                cursor.execute(
-                    f"UPDATE optuna_trials SET {', '.join(updates)} WHERE id = %s",
-                    params,
-                )
-
-                conn.commit()
-
-            cursor.close()
-
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error updating trial: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                conn.close()
 
     def _update_study(
         self,
@@ -589,51 +554,47 @@ class OptunaHyperparameterTuner:
         status: Optional[str] = None,
     ):
         """Update study in database"""
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+            # Whitelist of allowed columns
+            allowed_columns = {
+                "best_trial_number": best_trial_number,
+                "best_value": best_value,
+                "best_params": (
+                    json.dumps(best_params) if best_params is not None else None
+                ),
+                "param_importance": (
+                    json.dumps(param_importance)
+                    if param_importance is not None
+                    else None
+                ),
+                "status": status,
+            }
 
-            updates: List[str] = []
-            params: List[Union[str, int, float, datetime]] = []
+            # Filter out None values
+            updates_dict: Dict[str, Any] = {
+                k: v for k, v in allowed_columns.items() if v is not None
+            }
 
-            if best_trial_number is not None:
-                updates.append("best_trial_number = ?")
-                params.append(best_trial_number)
+            # Add completed_at if status indicates completion
+            if status in ["completed", "failed", "stopped"]:
+                updates_dict["completed_at"] = datetime.now()
 
-            if best_value is not None:
-                updates.append("best_value = ?")
-                params.append(best_value)
+            if not updates_dict:
+                return  # Nothing to update
 
-            if best_params is not None:
-                updates.append("best_params = ?")
-                params.append(json.dumps(best_params))
+            # Build query safely with named parameters
+            updates = []
+            params: Dict[str, Any] = {"study_id": study_id}
+            for col, val in updates_dict.items():
+                updates.append(f"{col} = :{col}")
+                params[col] = val
 
-            if param_importance is not None:
-                updates.append("param_importance = ?")
-                params.append(json.dumps(param_importance))
+            query = (
+                f"UPDATE optuna_studies SET {', '.join(updates)} WHERE id = :study_id"
+            )
 
-            if status is not None:
-                updates.append("status = ?")
-                params.append(status)
-                if status in ["completed", "failed", "stopped"]:
-                    updates.append("completed_at = ?")
-                    params.append(datetime.now())  # type: ignore[arg-type]
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
-            if updates:
-                params.append(study_id)
-                cursor.execute(
-                    f"UPDATE optuna_studies SET {', '.join(updates)} WHERE id = %s",
-                    params,
-                )
-                conn.commit()
-
-            cursor.close()
-
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error updating study: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
-        finally:
-            if conn:
-                conn.close()

@@ -89,8 +89,8 @@ The Alchemist provides:
    ```env
    SERVER_IP=0.0.0.0
    SERVER_PORT=1234
-   DB_HOST=mariadb
-   DB_PORT=3306
+   DB_HOST=postgres
+   DB_PORT=5432
    DB_NAME=db_forex
    DB_USER=forex_user
    DB_PASSWORD=forex_password
@@ -105,9 +105,8 @@ The Alchemist provides:
    python scripts/run-migrations.py
    
    # Option 2: Run scripts manually
-   mysql -u root -p db_forex < src/database/scripts/01_create.sql
-   mysql -u root -p db_forex < src/database/scripts/02_procedures.sql
-   mysql -u root -p db_forex < src/database/scripts/06_safety_infrastructure.sql
+   # Run migrations using the migration script
+   python scripts/run-migrations.py
    ```
 
 3. **Start the Docker environment**:

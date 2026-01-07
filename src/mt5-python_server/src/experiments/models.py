@@ -8,8 +8,10 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 from enum import Enum
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)
 
@@ -124,46 +126,38 @@ class ExperimentRepository:
         :param experiment: Experiment instance
         :return: Experiment ID
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 INSERT INTO experiments (
                     name, description, features, currency_pairs, training_mode,
                     hyperparameters, status, mlflow_run_id, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    experiment.name,
-                    experiment.description,
-                    json.dumps(experiment.features),
-                    json.dumps(experiment.currency_pairs),
-                    experiment.training_mode,
-                    json.dumps(experiment.hyperparameters),
-                    experiment.status.value,
-                    experiment.mlflow_run_id,
-                    experiment.created_at,
-                ),
-            )
+                ) VALUES (:name, :description, :features, :currency_pairs, :training_mode,
+                    :hyperparameters, :status, :mlflow_run_id, :created_at)
+                RETURNING id
+            """
 
-            experiment_id = cursor.lastrowid
-            conn.commit()
-            cursor.close()
+            params = {
+                "name": experiment.name,
+                "description": experiment.description,
+                "features": json.dumps(experiment.features),
+                "currency_pairs": json.dumps(experiment.currency_pairs),
+                "training_mode": experiment.training_mode,
+                "hyperparameters": json.dumps(experiment.hyperparameters),
+                "status": experiment.status.value,
+                "mlflow_run_id": experiment.mlflow_run_id,
+                "created_at": experiment.created_at,
+            }
 
-            logger.info(f"Created experiment {experiment_id}: {experiment.name}")
-            return experiment_id
+            result = self.db.execute_one(query, params)
+            if result:
+                experiment_id = result[0]
+                logger.info(f"Created experiment {experiment_id}: {experiment.name}")
+                return experiment_id
+            raise RuntimeError("Failed to create experiment")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error creating experiment: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def get_experiment(self, experiment_id: int) -> Optional[Experiment]:
         """
@@ -172,23 +166,16 @@ class ExperimentRepository:
         :param experiment_id: Experiment ID
         :return: Experiment instance or None
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, name, description, features, currency_pairs, training_mode,
                        hyperparameters, status, mlflow_run_id, created_at, started_at, completed_at
                 FROM experiments
-                WHERE id = %s
-                """,
-                (experiment_id,),
-            )
+                WHERE id = :experiment_id
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            params = {"experiment_id": experiment_id}
+            row = self.db.execute_one(query, params)
 
             if not row:
                 return None
@@ -226,14 +213,11 @@ class ExperimentRepository:
                 completed_at=completed_at,
             )
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(
                 f"Error getting experiment {experiment_id}: {e}", exc_info=True
             )
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def update_experiment_status(
         self,
@@ -253,47 +237,41 @@ class ExperimentRepository:
         :param completed_at: Optional completion timestamp
         :return: True if successful
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+            # Whitelist of allowed columns
+            allowed_columns = {
+                "status": status.value,
+                "mlflow_run_id": mlflow_run_id,
+                "started_at": started_at,
+                "completed_at": completed_at,
+            }
 
-            # Build update query dynamically
-            updates: List[str] = ["status = ?"]
-            params: List[Union[str, int, datetime]] = [status.value]
+            # Filter out None values
+            updates_dict = {k: v for k, v in allowed_columns.items() if v is not None}
 
-            if mlflow_run_id is not None:
-                updates.append("mlflow_run_id = ?")
-                params.append(mlflow_run_id)
+            if not updates_dict:
+                return False  # Nothing to update
 
-            if started_at is not None:
-                updates.append("started_at = ?")
-                params.append(started_at)
+            # Build query safely with named parameters
+            updates = []
+            params: Dict[str, Any] = {"experiment_id": experiment_id}
+            for col, val in updates_dict.items():
+                updates.append(f"{col} = :{col}")
+                params[col] = val
 
-            if completed_at is not None:
-                updates.append("completed_at = ?")
-                params.append(completed_at)
-
-            params.append(experiment_id)
-
-            cursor.execute(
-                f"UPDATE experiments SET {', '.join(updates)} WHERE id = %s", params
+            query = (
+                f"UPDATE experiments SET {', '.join(updates)} WHERE id = :experiment_id"
             )
 
-            conn.commit()
-            cursor.close()
+            with self.db.execute_query() as conn:
+                conn.execute(text(query), params)
 
             logger.info(f"Updated experiment {experiment_id} status to {status.value}")
             return True
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error updating experiment status: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             return False
-        finally:
-            if conn:
-                conn.close()
 
     def list_experiments(
         self, status: Optional[ExperimentStatus] = None
@@ -304,34 +282,25 @@ class ExperimentRepository:
         :param status: Optional status filter
         :return: List of Experiment instances
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             if status:
-                cursor.execute(
-                    """
+                query = """
                     SELECT id, name, description, features, currency_pairs, training_mode,
                            hyperparameters, status, mlflow_run_id, created_at, started_at, completed_at
                     FROM experiments
-                    WHERE status = %s
+                    WHERE status = :status
                     ORDER BY created_at DESC
-                    """,
-                    (status.value,),
-                )
+                """
+                params = {"status": status.value}
+                rows = self.db.execute_with_result(query, params)
             else:
-                cursor.execute(
-                    """
+                query = """
                     SELECT id, name, description, features, currency_pairs, training_mode,
                            hyperparameters, status, mlflow_run_id, created_at, started_at, completed_at
                     FROM experiments
                     ORDER BY created_at DESC
-                    """
-                )
-
-            rows = cursor.fetchall()
-            cursor.close()
+                """
+                rows = self.db.execute_with_result(query)
 
             experiments = []
             for row in rows:
@@ -371,9 +340,6 @@ class ExperimentRepository:
 
             return experiments
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error listing experiments: {e}", exc_info=True)
             return []
-        finally:
-            if conn:
-                conn.close()

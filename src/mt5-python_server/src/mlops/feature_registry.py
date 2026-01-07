@@ -12,7 +12,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-import mariadb
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from database import Database
 
@@ -86,60 +87,56 @@ class FeatureRegistry:
         :param code_commit: Optional git commit hash
         :return: Registered FeaturePipelineVersion
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
             # Check if version already exists
-            cursor.execute(
-                "SELECT id FROM feature_pipelines WHERE version = %s", (version,)
+            existing = self.db.execute_one(
+                "SELECT id FROM feature_pipelines WHERE version = :version",
+                {"version": version},
             )
-            existing = cursor.fetchone()
 
             if existing:
                 logger.warning(
                     f"Pipeline version {version} already exists, updating..."
                 )
                 # Update existing version
-                cursor.execute(
-                    """
+                query = """
                     UPDATE feature_pipelines
-                    SET pipeline_hash = %s,
-                        feature_list = %s,
-                        feature_definitions = %s,
-                        code_commit = %s
-                    WHERE version = %s
-                    """,
-                    (
-                        pipeline_hash,
-                        json.dumps(feature_list),
-                        json.dumps(feature_definitions),
-                        code_commit,
-                        version,
-                    ),
-                )
+                    SET pipeline_hash = :pipeline_hash,
+                        feature_list = :feature_list,
+                        feature_definitions = :feature_definitions,
+                        code_commit = :code_commit
+                    WHERE version = :version
+                """
+                params = {
+                    "pipeline_hash": pipeline_hash,
+                    "feature_list": json.dumps(feature_list),
+                    "feature_definitions": json.dumps(feature_definitions),
+                    "code_commit": code_commit,
+                    "version": version,
+                }
+                with self.db.execute_query() as conn:
+                    conn.execute(text(query), params)
                 pipeline_id = existing[0]
             else:
                 # Insert new version
-                cursor.execute(
-                    """
+                query = """
                     INSERT INTO feature_pipelines
                     (version, pipeline_hash, feature_list, feature_definitions, code_commit)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        version,
-                        pipeline_hash,
-                        json.dumps(feature_list),
-                        json.dumps(feature_definitions),
-                        code_commit,
-                    ),
-                )
-                pipeline_id = cursor.lastrowid
-
-            conn.commit()
-            cursor.close()
+                    VALUES (:version, :pipeline_hash, :feature_list, :feature_definitions, :code_commit)
+                    RETURNING id
+                """
+                params = {
+                    "version": version,
+                    "pipeline_hash": pipeline_hash,
+                    "feature_list": json.dumps(feature_list),
+                    "feature_definitions": json.dumps(feature_definitions),
+                    "code_commit": code_commit,
+                }
+                result = self.db.execute_one(query, params)
+                if result:
+                    pipeline_id = result[0]
+                else:
+                    raise RuntimeError("Failed to insert pipeline version")
 
             logger.info(
                 f"Registered feature pipeline version {version} (ID: {pipeline_id})"
@@ -153,14 +150,9 @@ class FeatureRegistry:
                 )
             return registered_version
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error registering pipeline version: {e}", exc_info=True)
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
 
     def get_pipeline_version(self, version: str) -> Optional[FeaturePipelineVersion]:
         """
@@ -169,23 +161,15 @@ class FeatureRegistry:
         :param version: Version string (e.g., "v1.2.0")
         :return: FeaturePipelineVersion or None if not found
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, pipeline_hash, feature_list, feature_definitions,
                        code_commit, created_at
                 FROM feature_pipelines
-                WHERE version = %s
-                """,
-                (version,),
-            )
+                WHERE version = :version
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            row = self.db.execute_one(query, {"version": version})
 
             if row:
                 (
@@ -216,12 +200,9 @@ class FeatureRegistry:
 
             return None
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error retrieving pipeline version: {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def get_pipeline_by_hash(
         self, pipeline_hash: str
@@ -232,25 +213,17 @@ class FeatureRegistry:
         :param pipeline_hash: Pipeline hash string
         :return: FeaturePipelineVersion or None if not found
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, pipeline_hash, feature_list, feature_definitions,
                        code_commit, created_at
                 FROM feature_pipelines
-                WHERE pipeline_hash = %s
+                WHERE pipeline_hash = :pipeline_hash
                 ORDER BY created_at DESC
                 LIMIT 1
-                """,
-                (pipeline_hash,),
-            )
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            row = self.db.execute_one(query, {"pipeline_hash": pipeline_hash})
 
             if row:
                 (
@@ -281,12 +254,9 @@ class FeatureRegistry:
 
             return None
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error retrieving pipeline by hash: {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def get_latest_version(self) -> Optional[FeaturePipelineVersion]:
         """
@@ -294,23 +264,16 @@ class FeatureRegistry:
 
         :return: FeaturePipelineVersion or None if no versions exist
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, pipeline_hash, feature_list, feature_definitions,
                        code_commit, created_at
                 FROM feature_pipelines
                 ORDER BY created_at DESC
                 LIMIT 1
-                """,
-            )
+            """
 
-            row = cursor.fetchone()
-            cursor.close()
+            row = self.db.execute_one(query)
 
             if row:
                 (
@@ -341,12 +304,9 @@ class FeatureRegistry:
 
             return None
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error retrieving latest version: {e}", exc_info=True)
             return None
-        finally:
-            if conn:
-                conn.close()
 
     def list_versions(self) -> List[FeaturePipelineVersion]:
         """
@@ -354,22 +314,15 @@ class FeatureRegistry:
 
         :return: List of FeaturePipelineVersion objects
         """
-        conn = None
         try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
+            query = """
                 SELECT id, version, pipeline_hash, feature_list, feature_definitions,
                        code_commit, created_at
                 FROM feature_pipelines
                 ORDER BY created_at DESC
-                """,
-            )
+            """
 
-            rows = cursor.fetchall()
-            cursor.close()
+            rows = self.db.execute_with_result(query)
 
             versions = []
             for row in rows:
@@ -403,12 +356,9 @@ class FeatureRegistry:
 
             return versions
 
-        except mariadb.Error as e:
+        except SQLAlchemyError as e:
             logger.error(f"Error listing versions: {e}", exc_info=True)
             return []
-        finally:
-            if conn:
-                conn.close()
 
     def get_features_for_version(self, version: str) -> List[str]:
         """

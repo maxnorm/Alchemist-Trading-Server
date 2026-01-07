@@ -677,36 +677,32 @@ class KillSwitch:
             return
 
         try:
-            conn = self.database.get_connection()
-            cursor = conn.cursor()
+            from sqlalchemy import text
+            from sqlalchemy.exc import SQLAlchemyError
 
             query = """
                 INSERT INTO kill_switch_events (
                     trigger_source, reason, positions_closed, approver, created_at, resolved_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (:trigger_source, :reason, :positions_closed, :approver, :created_at, :resolved_at)
             """
 
-            cursor.execute(
-                query,
-                (
-                    event.trigger_type,
-                    event.reason,
-                    event.positions_closed,
-                    event.approver,
-                    event.timestamp,
-                    event.reset_timestamp,
-                ),
-            )
+            params = {
+                "trigger_source": event.trigger_type,
+                "reason": event.reason,
+                "positions_closed": event.positions_closed,
+                "approver": event.approver,
+                "created_at": event.timestamp,
+                "resolved_at": event.reset_timestamp,
+            }
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with self.database.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.debug(
                 f"Logged kill switch event to database: {event.trigger_type}"
             )
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(
                 f"Failed to log kill switch event to database: {e}", exc_info=True
             )
@@ -718,36 +714,36 @@ class KillSwitch:
             return
 
         try:
-            conn = self.database.get_connection()
-            cursor = conn.cursor()
+            from sqlalchemy import text
+            from sqlalchemy.exc import SQLAlchemyError
 
             # Find the most recent event with matching trigger_source and reason
             # and update its resolved_at timestamp
             query = """
                 UPDATE kill_switch_events
-                SET resolved_at = ?, approver = ?
-                WHERE trigger_source = ? AND reason = ? AND resolved_at IS NULL
-                ORDER BY created_at DESC
-                LIMIT 1
+                SET resolved_at = :resolved_at, approver = :approver
+                WHERE trigger_source = :trigger_source AND reason = :reason AND resolved_at IS NULL
+                AND id = (
+                    SELECT id FROM kill_switch_events
+                    WHERE trigger_source = :trigger_source AND reason = :reason AND resolved_at IS NULL
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                )
             """
 
-            cursor.execute(
-                query,
-                (
-                    event.reset_timestamp,
-                    event.approver,
-                    event.trigger_type,
-                    event.reason,
-                ),
-            )
+            params = {
+                "resolved_at": event.reset_timestamp,
+                "approver": event.approver,
+                "trigger_source": event.trigger_type,
+                "reason": event.reason,
+            }
 
-            conn.commit()
-            cursor.close()
-            conn.close()
+            with self.database.execute_query() as conn:
+                conn.execute(text(query), params)
 
             self.logger.debug("Updated kill switch resolution in database")
 
-        except Exception as e:
+        except SQLAlchemyError as e:
             self.logger.error(
                 f"Failed to update kill switch resolution in database: {e}",
                 exc_info=True,

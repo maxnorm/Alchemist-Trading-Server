@@ -1,4 +1,5 @@
-USE db_forex;
+-- PostgreSQL migration: Seed data
+-- Note: Database connection should be to db_forex
 
 INSERT INTO currency(nom, iso_code)
 VALUES

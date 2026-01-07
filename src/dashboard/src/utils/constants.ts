@@ -1,5 +1,31 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-export const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+// Use relative paths when behind gateway, absolute for dev
+const getBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL
+  if (envUrl) return envUrl
+  // In production (behind gateway), use relative path
+  // In development, fallback to localhost
+  return window.location.origin.includes('localhost') ? 'http://localhost:8000' : ''
+}
+
+const getWsUrl = () => {
+  const envUrl = import.meta.env.VITE_WS_URL
+  if (envUrl) {
+    // If env URL is relative (starts with /), make it absolute
+    if (envUrl.startsWith('/')) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${protocol}//${window.location.host}${envUrl}`
+    }
+    return envUrl
+  }
+  // Use same protocol as current page
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return window.location.origin.includes('localhost') 
+    ? 'ws://localhost:8000' 
+    : `${protocol}//${window.location.host}/ws`
+}
+
+export const API_BASE_URL = getBaseUrl()
+export const WS_BASE_URL = getWsUrl()
 
 export const API_ENDPOINTS = {
   features: '/api/v1/features',

@@ -1,5 +1,4 @@
-USE db_forex;
-
+-- PostgreSQL migration: Indexes
 -- Time-series queries on ticks_forex
 CREATE INDEX IF NOT EXISTS idx_ticks_datetime ON ticks_forex(datetime);
 

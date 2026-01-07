@@ -1,16 +1,21 @@
-USE db_forex;
+-- PostgreSQL migration: Trade table
 
-CREATE OR REPLACE TABLE trade(
-    id INT PRIMARY KEY AUTO_INCREMENT,
+CREATE TABLE IF NOT EXISTS trade(
+    id SERIAL PRIMARY KEY,
     ticket INT NOT NULL,
     ordertype INT NOT NULL,
     symbol VARCHAR(10) NOT NULL,
-    volume DOUBLE NOT NULL,
-    openprice DOUBLE NOT NULL,
-    closeprice DOUBLE NULL,
-    stoploss DOUBLE NULL,
-    takeprofit DOUBLE NULL,
+    volume DOUBLE PRECISION NOT NULL,
+    openprice DOUBLE PRECISION NOT NULL,
+    closeprice DOUBLE PRECISION NULL,
+    stoploss DOUBLE PRECISION NULL,
+    takeprofit DOUBLE PRECISION NULL,
     profit DECIMAL NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add trigger for updated_at column
+CREATE TRIGGER update_trade_updated_at
+    BEFORE UPDATE ON trade
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
