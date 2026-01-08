@@ -139,11 +139,11 @@ def calculate_pip_value_from_digits(digits: int) -> float:
     Calculate pip value from symbol digits.
 
     For forex pairs:
-    - digits <= 3 (JPY pairs): pip = 0.01 (pip is at 2nd decimal place)
+    - digits <= 3 (JPY pairs, Gold/XAU pairs): pip = 0.01 (pip is at 2nd decimal place)
     - digits >= 4 (standard pairs): pip = 0.0001 (pip is at 4th decimal place)
 
     :param digits: Number of decimal places for the symbol
-    :return: Pip value (0.01 for JPY-like, 0.0001 for standard)
+    :return: Pip value (0.01 for JPY-like/XAU, 0.0001 for standard)
     """
     if digits <= 3:
         return 0.01  # JPY-like pairs (USDJPY, EURJPY, etc.)
@@ -157,10 +157,11 @@ def infer_pip_value_from_price(price: float) -> float:
 
     Automatically detects pip value based on price format:
     - JPY pairs: typically 50-200 range, 2-3 decimal places → pip = 0.01
+    - Gold (XAU) pairs: typically 2000-2500 range, 2-3 decimal places → pip = 0.01
     - Other pairs: typically 0.5-2.0 range, 4-5 decimal places → pip = 0.0001
 
     :param price: Price value (bid or ask)
-    :return: Pip value (0.01 for JPY-like, 0.0001 for standard)
+    :return: Pip value (0.01 for JPY-like/XAU, 0.0001 for standard)
     """
     # Convert to string to count significant decimal places
     # Use high precision format then strip trailing zeros
@@ -174,14 +175,15 @@ def infer_pip_value_from_price(price: float) -> float:
 
     # Infer pip value based on price magnitude and decimal places
     # JPY pairs: high price (>10) with 2-3 decimals → pip = 0.01
+    # Gold (XAU) pairs: high price (>10) with 2-3 decimals → pip = 0.01
     # Standard pairs: low price (<10) with 4-5 decimals → pip = 0.0001
-    # More robust: prioritize price magnitude for JPY pairs
+    # More robust: prioritize price magnitude for JPY/XAU pairs
     if price > 10:
-        # High price likely JPY pair
+        # High price likely JPY or XAU pair
         if decimal_places <= 3:
-            return 0.01  # JPY-like pairs
+            return 0.01  # JPY-like or XAU pairs
         else:
-            # Unusual case: high price with many decimals, but still likely JPY
+            # Unusual case: high price with many decimals, but still likely JPY/XAU
             return 0.01
     elif price < 10 and decimal_places >= 4:
         return 0.0001  # Standard pairs

@@ -74,8 +74,9 @@ class RiskManager:
         # Determine pip value based on pair type
         # Most pairs: 1 pip = 0.0001 (4 decimal places)
         # JPY pairs: 1 pip = 0.01 (2 decimal places)
+        # Gold (XAU) pairs: 1 pip = 0.01 (2-3 decimal places, similar to JPY)
         pip_value = 0.0001
-        if "JPY" in pair.symbol:
+        if "JPY" in pair.symbol or "XAU" in pair.symbol:
             pip_value = 0.01
 
         # Calculate lot size
