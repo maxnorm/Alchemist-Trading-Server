@@ -8,10 +8,11 @@ services:
         ports:
             - "80:80"
             - "443:443"  # For future HTTPS
+            - "8080:8080"  # MT5 EA connection port
         volumes:
             - "./src/gateway/nginx.conf:/etc/nginx/nginx.conf:ro"
             - "./src/gateway/conf.d:/etc/nginx/conf.d:ro"
-            - "gateway_logs:/var/log/nginx"
+            - "./logs/gateway:/var/log/nginx"  # Bind mount to sync logs to codebase
         depends_on:
             - dashboard
             - api
@@ -29,7 +30,8 @@ services:
     postgres:
         container_name: "postgres"
         image: timescale/timescaledb:latest-pg16
-        # REMOVED: ports - no external access
+        ports:
+            - "5432:5432" # For local access - REMOVE THIS LINE FOR PRODUCTION
         environment:
             POSTGRES_USER: forex_user
             POSTGRES_PASSWORD: forex_password
@@ -53,7 +55,7 @@ services:
         container_name: "server"
         build:
             context: .
-            dockerfile: Dockerfile
+            dockerfile: ./src/trading_server/Dockerfile
         # REMOVED: ports - no external access
         depends_on:
             postgres:
@@ -65,6 +67,7 @@ services:
             DB_PASSWORD: forex_password
             DB_NAME: db_forex
             LOG_DIR: /app/logs
+            STREAMER_AUTH_TOKEN: ${STREAMER_AUTH_TOKEN}
         volumes:
             - "./logs:/app/logs"
             - "./models:/app/models"
@@ -245,4 +248,3 @@ volumes:
     mlflow_data:
     prometheus_data:
     grafana_data:
-    gateway_logs:

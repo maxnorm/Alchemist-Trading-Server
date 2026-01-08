@@ -132,3 +132,62 @@ def get_market_feed_status(
         "feed_live": feed_live,
         "ready": market_open and feed_live,
     }
+
+
+def calculate_pip_value_from_digits(digits: int) -> float:
+    """
+    Calculate pip value from symbol digits.
+
+    For forex pairs:
+    - digits <= 3 (JPY pairs): pip = 0.01 (pip is at 2nd decimal place)
+    - digits >= 4 (standard pairs): pip = 0.0001 (pip is at 4th decimal place)
+
+    :param digits: Number of decimal places for the symbol
+    :return: Pip value (0.01 for JPY-like, 0.0001 for standard)
+    """
+    if digits <= 3:
+        return 0.01  # JPY-like pairs (USDJPY, EURJPY, etc.)
+    else:
+        return 0.0001  # Standard pairs (EURUSD, GBPUSD, etc.)
+
+
+def infer_pip_value_from_price(price: float) -> float:
+    """
+    Infer pip value from price decimal precision.
+
+    Automatically detects pip value based on price format:
+    - JPY pairs: typically 50-200 range, 2-3 decimal places → pip = 0.01
+    - Other pairs: typically 0.5-2.0 range, 4-5 decimal places → pip = 0.0001
+
+    :param price: Price value (bid or ask)
+    :return: Pip value (0.01 for JPY-like, 0.0001 for standard)
+    """
+    # Convert to string to count significant decimal places
+    # Use high precision format then strip trailing zeros
+    price_str = f"{price:.10f}".rstrip("0").rstrip(".")
+
+    # Count decimal places
+    if "." in price_str:
+        decimal_places = len(price_str.split(".")[1])
+    else:
+        decimal_places = 0
+
+    # Infer pip value based on price magnitude and decimal places
+    # JPY pairs: high price (>10) with 2-3 decimals → pip = 0.01
+    # Standard pairs: low price (<10) with 4-5 decimals → pip = 0.0001
+    # More robust: prioritize price magnitude for JPY pairs
+    if price > 10:
+        # High price likely JPY pair
+        if decimal_places <= 3:
+            return 0.01  # JPY-like pairs
+        else:
+            # Unusual case: high price with many decimals, but still likely JPY
+            return 0.01
+    elif price < 10 and decimal_places >= 4:
+        return 0.0001  # Standard pairs
+    else:
+        # Default heuristic: use decimal places
+        if decimal_places <= 3:
+            return 0.01
+        else:
+            return 0.0001

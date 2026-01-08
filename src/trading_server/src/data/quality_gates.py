@@ -11,6 +11,7 @@ import pytz
 
 # Import contract validation
 from .contracts import get_contract_registry
+from utils.market_utils import infer_pip_value_from_price
 
 
 class QualityGate:
@@ -106,6 +107,17 @@ class QualityGate:
         """
         self.metrics["total_processed"] += 1
 
+        # Parse datetime string to datetime object if needed (contract validator requires datetime object)
+        # EA sends datetime as string in MT5 format ("YYYY.MM.DD HH:MM:SS.mmm"), must convert to datetime object
+        datetime_value = tick.get("datetime")
+        if datetime_value is not None and not isinstance(datetime_value, datetime):
+            try:
+                mt5_timezone_offset = tick.get("_mt5_timezone_offset")
+                tick["datetime"] = self._parse_datetime(datetime_value, mt5_timezone_offset)
+            except (ValueError, TypeError) as e:
+                # If parsing fails, contract validation will catch it with a better error message
+                pass
+
         # Check 0: Schema Contract Validation (NEW)
         # This validates structure, types, formats, and basic constraints
         contract_registry = get_contract_registry()
@@ -125,7 +137,7 @@ class QualityGate:
             # Get MT5 timezone offset if available
             mt5_timezone_offset = tick.get("_mt5_timezone_offset")
             tick_datetime = self._parse_datetime(
-                tick.get("datetime") or tick.get("date_time"), mt5_timezone_offset
+                tick.get("datetime"), mt5_timezone_offset
             )
             ask = float(tick.get("ask", 0))
             bid = float(tick.get("bid", 0))
@@ -180,7 +192,7 @@ class QualityGate:
             return "Missing symbol"
 
         # Check datetime
-        if not tick.get("datetime") and not tick.get("date_time"):
+        if not tick.get("datetime"):
             return "Missing datetime"
 
         # Check ask
@@ -342,6 +354,10 @@ class QualityGate:
                         self.last_seen_prices[symbol] = (bid, ask)
                         return None
                     # Price is same - this is a true duplicate
+                    # CRITICAL FIX: Update state even when rejecting to prevent same tick from being processed repeatedly
+                    # This prevents the same tick from being rejected hundreds of times if it's re-queued
+                    self.last_seen_timestamps[symbol] = tick_dt
+                    self.last_seen_prices[symbol] = (bid, ask)
                     return (
                         f"Duplicate tick: {time_diff_microseconds:.0f}μs from last tick "
                         f"(tolerance: {self.duplicate_tolerance_seconds*1_000_000:.0f}μs), same price"
@@ -356,6 +372,10 @@ class QualityGate:
                 # Timestamp within tolerance but no price info available to compare
                 # Without price info, we can't determine if it's a duplicate
                 # For safety, reject it as a potential duplicate
+                # CRITICAL FIX: Update state even when rejecting to prevent same tick from being processed repeatedly
+                self.last_seen_timestamps[symbol] = tick_dt
+                if bid is not None and ask is not None:
+                    self.last_seen_prices[symbol] = (bid, ask)
                 return (
                     f"Duplicate tick: {time_diff_microseconds:.0f}μs from last tick "
                     f"(tolerance: {self.duplicate_tolerance_seconds*1_000_000:.0f}μs), no price info to compare"
@@ -389,13 +409,20 @@ class QualityGate:
         if spread <= 0:
             return "Invalid spread: ask <= bid"
 
+        # Infer pip value from price (more maintainable than hardcoding currencies)
+        mid_price = (bid + ask) / 2
+        pip_value = infer_pip_value_from_price(mid_price)
+
         # Check for unrealistic spread - more lenient in capture-all mode
-        # For EUR/USD, 1 pip = 0.0001, so 10 pips = 0.0010
-        spread_threshold = (
-            0.01 if self.capture_all_mode else 0.001
-        )  # 100 pips vs 10 pips
-        if spread > spread_threshold:
-            return f"Unrealistic spread: {spread:.6f} (> {spread_threshold} / {int(spread_threshold * 10000)} pips)"
+        # Maximum spread: 100 pips in capture-all mode, 10 pips otherwise
+        max_spread_pips = 100 if self.capture_all_mode else 10
+        max_spread_value = pip_value * max_spread_pips
+
+        if spread > max_spread_value:
+            spread_pips = spread / pip_value
+            return (
+                f"Unrealistic spread: {spread:.6f} ({spread_pips:.1f} pips > {max_spread_pips} pips)"
+            )
 
         # In capture-all mode: Only check for extreme outliers (>10% price change)
         if self.capture_all_mode:
@@ -498,40 +525,6 @@ class QualityGate:
         :param mt5_timezone_offset: Optional MT5 timezone offset in hours (for MT5 timestamps)
         :return: Parsed datetime (timezone-aware in UTC)
         """
-        # #region agent log
-        import json
-        import os
-        import time
-
-        try:
-            current_file_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(
-                os.path.dirname(os.path.dirname(current_file_dir))
-            )
-            log_path = os.path.join(project_root, ".cursor", "debug.log")
-            os.makedirs(os.path.dirname(log_path), exist_ok=True)
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "H1",
-                            "location": "quality_gates.py:_parse_datetime",
-                            "message": "Parsing datetime",
-                            "data": {
-                                "dt_value": str(dt_value),
-                                "mt5_timezone_offset": mt5_timezone_offset,
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
-
         if isinstance(dt_value, datetime):
             # If already a datetime object, ensure it's timezone-aware and in UTC
             from utils.time_utils import ensure_utc_timezone

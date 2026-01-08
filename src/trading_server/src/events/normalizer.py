@@ -88,11 +88,11 @@ class EventNormalizer(IEventNormalizer):
             source="mt5",
             schema={
                 "symbol": str,
-                "date_time": str,  # MT5 format: "YYYY.MM.DD HH:MM:SS"
+                "datetime": str,  #"YYYY.MM.DD HH:MM:SS"
                 "ask": float,
                 "bid": float,
             },
-            required_fields=["symbol", "date_time", "ask", "bid"],
+            required_fields=["symbol", "ask", "bid"],  # datetime handled flexibly in _normalize_mt5
         )
 
     def normalize(self, raw_event: Dict, source: str) -> Dict[str, Any]:
@@ -186,8 +186,8 @@ class EventNormalizer(IEventNormalizer):
         :param receive_time: When we received the event (optional)
         :return: Normalized event dictionary
         """
-        # Extract fields (handle both "date_time" and "datetime")
-        date_time_value = raw_event.get("date_time") or raw_event.get("datetime")
+        # Extract fields (use "datetime" field name)
+        date_time_value = raw_event.get("datetime")
         symbol = raw_event.get("symbol", "")
         ask = raw_event.get("ask", 0.0)
         bid = raw_event.get("bid", 0.0)
@@ -234,6 +234,9 @@ class EventNormalizer(IEventNormalizer):
                 f"(raw: {date_time_str_for_logging}, normalized: {timestamp})"
             )
 
+        # Extract digits if available (for accurate pip calculation)
+        digits = raw_event.get("_digits")
+
         # Create canonical event with event_time (preserve original timestamp)
         canonical_event = {
             "timestamp": timestamp,  # event_time (preserved)
@@ -247,6 +250,10 @@ class EventNormalizer(IEventNormalizer):
                 "original_timestamp": date_time_str_for_logging,
             },
         }
+
+        # Add digits to payload if available (for quality gates to use)
+        if digits is not None:
+            canonical_event["payload"]["digits"] = int(digits)
 
         return canonical_event
 

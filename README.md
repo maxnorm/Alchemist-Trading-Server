@@ -135,10 +135,34 @@ The Alchemist provides:
    - Add your endpoint: `http://<your-ip>:1234` (if needed for web requests)
 
 4. **Load the Expert Advisors**:
-   - Copy the EAs from `src/mql5_code/EAs/` to your MT5 `Experts` folder
-   - In the EA inputs, set:
-     - `ip`: Your Docker host IP (e.g., `localhost` or your machine's IP)
-     - `port`: `1234` (must match SERVER_PORT in .env)
+   - Copy the EAs from `src/utils/MT5-EA/EAs/` to your MT5 `Experts` folder
+   
+   **For Tick Streamer (mt5_tick_streamer.mq5):**
+   - Set connection details (see options below)
+   - Set `streamer_token`: Token from `STREAMER_AUTH_TOKEN` in your `.env` file
+   - Generate token: `openssl rand -hex 32` or `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+   - No account registration needed
+   
+   **For Trading Operations (mt5_trading_operation.mq5):**
+   - Set connection details (see options below)
+   - Register account via API to get `auth_token`
+   - Set `auth_token`: Account auth token from API
+   
+   **Connection Options:**
+   
+   **Option 1 (Direct IP - Simplest, No DNS Required):**
+   - `ip`: Your server's IP address (e.g., `192.168.1.100` or your public IP)
+   - `port`: `8080`
+   - Works immediately, no configuration needed
+   
+   **Option 2 (With DNS - Production):**
+   - `ip`: `mt5.yourdomain.com` (requires DNS A record setup)
+   - `port`: `8080`
+   - Requires DNS A record: `mt5.yourdomain.com` → Your server's public IP
+   
+   **Option 3 (Local Testing with /etc/hosts):**
+   - Add entry to hosts file: `127.0.0.1 mt5.yourdomain.com`
+   - Then use: `ip`: `mt5.yourdomain.com` and `port`: `8080`
 
 5. **Attach EAs to charts**:
    - `mt5_tick_streamer.mq5`: Attach to any chart for the symbol you want to stream

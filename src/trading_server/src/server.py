@@ -358,44 +358,44 @@ class Server:
 
     def __auth_streamer(self, client, infos):
         """
-        Authentification step for a tick streamer
-        Send an authentification codes if succesfull or not
-
+        Authenticate tick streamer using environment variable token
+        
         Expected message format:
             {
                 "auth_code": 1,
                 "symbol": Currency pair symbol,
                 "digits": Number of digits,
-                "login": Account login,
-                "auth_token": Account auth token
+                "streamer_token": Streamer authentication token
             }
 
-        Successfull authentification response:
+        Successful authentication response:
             {
                 "auth_status": 0
             }
         """
-        from infrastructure.db_integration import get_account_auth_token
+        # Get token from environment
+        expected_token = os.getenv("STREAMER_AUTH_TOKEN")
+        if not expected_token:
+            self.__invalid_auth(client, "Streamer authentication not configured")
+            return
 
-        # Require minimum fields for secure authentication
-        required_fields = {"symbol", "digits", "login", "auth_token"}
+        # Validate required fields
+        required_fields = {"symbol", "digits", "streamer_token"}
         if not required_fields.issubset(infos.keys()):
             self.__invalid_auth(
                 client,
-                "Invalid message format. Expected symbol, digits, login and auth_token for streamer authentication",
+                "Invalid message format. Expected symbol, digits, and streamer_token",
             )
             return
 
-        login = infos["login"]
-        provided_token = infos.get("auth_token")
-
-        # Validate auth token against database
-        expected_token = get_account_auth_token(login)
-        if not expected_token or not provided_token or expected_token != provided_token:
+        # Validate token
+        provided_token = infos.get("streamer_token")
+        if provided_token != expected_token:
             self.__invalid_auth(client, "Authentication failed")
             return
 
-        if len(infos) >= 4:
+        # Authentication successful - proceed with streamer setup
+        if len(infos) >= 3:
             data = {"auth_status": Socket.SUCCESSFUL_AUTH.value}
             try:
                 client.send(bytes(json.dumps(data) + "\n", "utf-8"))

@@ -1,9 +1,10 @@
-//+------------------------------------------------------------------+
-//|                                                 socket_utils.mqh |
-//|                                                                  |
-//| Utility functions for socket communication: sending and          |
-//| receiving JSON messages to/from the server                       |
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------------------------------------+
+//| socket_utils.mqh                                                                               |
+//| https://github.com/maxnorm/Alchemist-AI/blob/main/src/utils/MT5-EA/Include/socket_utils.mqh    |
+//|                                                                                                |
+//| Utility functions for socket communication: sending and                                        |
+//| receiving JSON messages to/from the server                                                     |
+//+------------------------------------------------------------------------------------------------+
 #property copyright "Alchemist Capital Management"
 #property link      "https://github.com/maxnorm/Alchemist-AI"
 #property version   "1.00"

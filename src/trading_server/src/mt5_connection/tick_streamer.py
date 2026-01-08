@@ -18,48 +18,6 @@ from data.quality_gates import QualityGate
 from events.normalizer import EventNormalizer
 
 
-# Helper function for debug logging
-def _write_debug_log(
-    session_id, run_id, hypothesis_id, location, message, data, timestamp=None
-):
-    """Write debug log entry"""
-    try:
-        if timestamp is None:
-            from utils.time_utils import get_utc_time
-
-            timestamp = int(get_utc_time().timestamp() * 1000)
-        # Use absolute path from system reminder - calculate dynamically
-        import os
-
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(current_file_dir))
-        )
-        log_path = os.path.join(project_root, ".cursor", "debug.log")
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": session_id,
-                        "runId": run_id,
-                        "hypothesisId": hypothesis_id,
-                        "location": location,
-                        "message": message,
-                        "data": data,
-                        "timestamp": timestamp,
-                    }
-                )
-                + "\n"
-            )
-    except Exception as e:
-        # Log to stderr for debugging instrumentation issues
-        import sys
-
-        sys.stderr.write(f"Debug log write failed: {e}\n")
-
-
 class MT5TickStreamer:
     """
     MT5 terminal connection for tick streaming
@@ -213,20 +171,6 @@ class MT5TickStreamer:
             # Get current UTC time (timezone-aware)
             utc_now = get_utc_time()
 
-            # #region agent log
-            _write_debug_log(
-                "debug-session",
-                "run1",
-                "H2",
-                "tick_streamer.py:__detect_mt5_timezone",
-                "Starting timezone detection",
-                {
-                    "mt5_timestamp_str": mt5_timestamp_str,
-                    "utc_now": utc_now.isoformat(),
-                },
-            )
-            # #endregion
-
             # Try different timezone offsets to find the best match
             # Common broker timezones: UTC, GMT+2, GMT+3
             best_offset = 0.0
@@ -241,17 +185,6 @@ class MT5TickStreamer:
                 if diff_seconds < min_diff:
                     min_diff = diff_seconds
                     best_offset = offset_hours
-
-            # #region agent log
-            _write_debug_log(
-                "debug-session",
-                "run1",
-                "H2",
-                "tick_streamer.py:__detect_mt5_timezone",
-                "Timezone detection result",
-                {"best_offset": best_offset, "min_diff_seconds": min_diff},
-            )
-            # #endregion
 
             # If best match is still > 1 hour off, log warning
             if min_diff > 3600:
@@ -468,23 +401,6 @@ class MT5TickStreamer:
         :param is_stale: Flag if original timestamp was stale (optional)
         :param stale_age_seconds: Age of stale timestamp in seconds (optional)
         """
-        # #region agent log
-        _write_debug_log(
-            "debug-session",
-            "run1",
-            "C",
-            "tick_streamer.py:349",
-            "__add_tick_to_buffer called",
-            {
-                "symbol": symbol,
-                "date_time": (
-                    str(date_time) if isinstance(date_time, datetime) else date_time
-                ),
-                "bid": bid,
-                "ask": ask,
-            },
-        )
-        # #endregion
         # Normalize timestamp to UTC (returns datetime object, preserves microseconds)
         normalized_date_time = self.__normalize_mt5_timestamp(date_time)
 
@@ -529,21 +445,6 @@ class MT5TickStreamer:
                     stale_age_seconds,
                 )
             )
-            # #region agent log
-            _write_debug_log(
-                "debug-session",
-                "run1",
-                "C",
-                "tick_streamer.py:354",
-                "Tick added to buffer",
-                {
-                    "symbol": symbol,
-                    "buffer_size": len(self.__tick_buffer),
-                    "batch_size": self.__batch_size,
-                    "buffer_max_size": self.__buffer_max_size,
-                },
-            )
-            # #endregion
 
             # Flush if buffer reaches max size
             if len(self.__tick_buffer) >= self.__buffer_max_size:
@@ -574,19 +475,6 @@ class MT5TickStreamer:
 
         ticks_to_flush = self.__tick_buffer.copy()
         self.__tick_buffer.clear()
-        # #region agent log
-        _write_debug_log(
-            "debug-session",
-            "run1",
-            "D",
-            "tick_streamer.py:428",
-            "Flushing buffer to queue",
-            {
-                "tick_count": len(ticks_to_flush),
-                "symbols": [t[0] for t in ticks_to_flush],
-            },
-        )
-        # #endregion
 
         # Non-blocking queue put (with timeout)
         try:
@@ -653,16 +541,6 @@ class MT5TickStreamer:
         if not ticks:
             return
 
-        # #region agent log
-        _write_debug_log(
-            "debug-session",
-            "run1",
-            "E",
-            "tick_streamer.py:468",
-            "__flush_ticks_to_db called",
-            {"tick_count": len(ticks), "symbols": [t[0] for t in ticks]},
-        )
-        # #endregion
         try:
             with self.__logger.performance_context(
                 "flush_ticks_to_db", count=len(ticks)
@@ -710,16 +588,6 @@ class MT5TickStreamer:
                     old_format_ticks = [(t[0], t[1], t[2], t[3]) for t in ticks]
                     result = self.__db.insert_forex_ticks_batch(old_format_ticks)
 
-                # #region agent log
-                _write_debug_log(
-                    "debug-session",
-                    "run1",
-                    "E",
-                    "tick_streamer.py:481",
-                    "Database insert result",
-                    {"result": result, "tick_count": len(ticks)},
-                )
-                # #endregion
                 if result > 0:
                     self.__logger.log_event(
                         event_type="ticks_flushed",
@@ -913,9 +781,19 @@ class MT5TickStreamer:
                 cum_data += data
 
                 if self.__stop_char in cum_data:
-                    final_data = cum_data[: cum_data.index(self.__stop_char)]
+                    stop_index = cum_data.index(self.__stop_char)
+                    final_data = cum_data[:stop_index]
+                    cum_data = cum_data[stop_index + 1:]
 
-                    if self.__verbose:
+                    # Remove null bytes and other control characters from the beginning/end
+                    # strip() only removes whitespace, not null bytes
+                    final_data = final_data.lstrip('\x00').rstrip('\x00').strip()
+                    
+                    # Skip empty or whitespace-only messages
+                    if not final_data:
+                        continue
+
+                    if self.__verbose and final_data.strip():
                         with self.__console_lock:
                             print_with_datetime(final_data)
 
@@ -923,40 +801,14 @@ class MT5TickStreamer:
                         tick_info = json.loads(final_data)
                         if len(tick_info) == 4:
                             symbol = tick_info["symbol"]
-                            date_time = tick_info["date_time"]
+                            date_time = tick_info["datetime"]
                             ask = tick_info["ask"]
                             bid = tick_info["bid"]
-
-                            # #region agent log
-                            _write_debug_log(
-                                "debug-session",
-                                "run1",
-                                "Z",
-                                "tick_streamer.py:656",
-                                "Tick received from socket",
-                                {
-                                    "symbol": symbol,
-                                    "date_time": date_time,
-                                    "bid": bid,
-                                    "ask": ask,
-                                },
-                            )
-                            # #endregion
 
                             # Validate tick data quality
                             validate_result = self.__validate_tick(
                                 symbol, date_time, ask, bid
                             )
-                            # #region agent log
-                            _write_debug_log(
-                                "debug-session",
-                                "run1",
-                                "Z",
-                                "tick_streamer.py:664",
-                                "Basic validation result",
-                                {"symbol": symbol, "is_valid": validate_result},
-                            )
-                            # #endregion
                             if not validate_result:
                                 continue  # Skip invalid tick
 
@@ -968,34 +820,22 @@ class MT5TickStreamer:
                             if not self.__timezone_detected:
                                 self.__detect_mt5_timezone(date_time)
 
-                            # #region agent log
-                            _write_debug_log(
-                                "debug-session",
-                                "run1",
-                                "H1",
-                                "tick_streamer.py:720",
-                                "Before quality gate",
-                                {
-                                    "date_time": date_time,
-                                    "mt5_timezone_offset": self.__mt5_timezone_offset,
-                                    "timezone_detected": self.__timezone_detected,
-                                },
-                            )
-                            # #endregion
-
                             # Capture receive_time (when we received the tick)
                             receive_time = get_utc_time()
 
                             # Quality gate validation
                             tick_info_dict = {
                                 "symbol": symbol,
-                                "date_time": date_time,  # Original event_time (preserved)
+                                "datetime": date_time,  # EA now sends "datetime" (schema contract compliant)
                                 "ask": ask,
                                 "bid": bid,
                                 "_mt5_timezone_offset": (
                                     self.__mt5_timezone_offset
                                 ),  # Pass detected offset to normalizer
                                 "_receive_time": receive_time,  # Pass receive_time to normalizer
+                                "_digits": (
+                                    self.__asset.digits if self.__asset else None
+                                ),  # Pass digits for accurate pip calculation
                             }
                             current_time = receive_time
                             is_valid, rejection_reason, timestamp_metadata = (
@@ -1003,24 +843,6 @@ class MT5TickStreamer:
                                     tick_info_dict, symbol, current_time
                                 )
                             )
-                            # #region agent log
-                            _write_debug_log(
-                                "debug-session",
-                                "run1",
-                                "A",
-                                "tick_streamer.py:679",
-                                "Quality gate validation result",
-                                {
-                                    "symbol": symbol,
-                                    "is_valid": is_valid,
-                                    "rejection_reason": rejection_reason,
-                                    "bid": bid,
-                                    "ask": ask,
-                                    "has_metadata": timestamp_metadata is not None,
-                                },
-                                int(current_time.timestamp() * 1000),
-                            )
-                            # #endregion
                             if not is_valid:
                                 # Insert into quarantine before skipping
                                 if hasattr(self, "_MT5TickStreamer__db") and self.__db:
@@ -1059,6 +881,7 @@ class MT5TickStreamer:
                                     self.__logger.warning(
                                         f"Tick rejected by quality gate for {symbol}: {rejection_reason}"
                                     )
+                                # cum_data already cleared above when extracting final_data
                                 continue  # Skip tick rejected by quality gate
 
                             # Pass timestamp_metadata to normalizer (preserve original event_time)
@@ -1102,34 +925,10 @@ class MT5TickStreamer:
                                 normalized_tick = self.event_normalizer.normalize(
                                     tick_info_dict, source="mt5"
                                 )
-                                # #region agent log
-                                _write_debug_log(
-                                    "debug-session",
-                                    "run1",
-                                    "B",
-                                    "tick_streamer.py:709",
-                                    "Normalization completed",
-                                    {
-                                        "symbol": symbol,
-                                        "has_normalized_tick": normalized_tick
-                                        is not None,
-                                    },
-                                )
-                                # #endregion
                                 # Validate normalized event
                                 validate_result = self.event_normalizer.validate(
                                     normalized_tick
                                 )
-                                # #region agent log
-                                _write_debug_log(
-                                    "debug-session",
-                                    "run1",
-                                    "B",
-                                    "tick_streamer.py:713",
-                                    "Event quality gate validation result",
-                                    {"symbol": symbol, "is_valid": validate_result},
-                                )
-                                # #endregion
                                 if not validate_result:
                                     self.__logger.warning(
                                         f"Normalized tick failed validation for {symbol}, skipping"
@@ -1155,19 +954,6 @@ class MT5TickStreamer:
                             self.__asset.update(bid, ask)
                             # Add to buffer instead of direct insert
                             # Store normalized tick if available, otherwise use original format
-                            # #region agent log
-                            _write_debug_log(
-                                "debug-session",
-                                "run1",
-                                "C",
-                                "tick_streamer.py:735",
-                                "About to add tick to buffer",
-                                {
-                                    "symbol": symbol,
-                                    "has_normalized_tick": normalized_tick is not None,
-                                },
-                            )
-                            # #endregion
                             if normalized_tick:
                                 # Extract normalized timestamp (event_time - preserved)
                                 normalized_date_time = normalized_tick["timestamp"]
@@ -1281,8 +1067,8 @@ class MT5TickStreamer:
                             error=f"Error processing tick: {e}",
                             exc_info=True,
                         )
-
-                    cum_data = ""
+                    # Note: cum_data is now cleared when extracting final_data (line 920)
+                    # This ensures rejected ticks don't get reprocessed
         except Exception as e:
             self.__logger.log_error(
                 event_type="tick_reception_loop_error",

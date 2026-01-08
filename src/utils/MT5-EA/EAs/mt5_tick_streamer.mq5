@@ -1,9 +1,10 @@
-//+------------------------------------------------------------------+
-//|                                            mt5-tick-streamer.mq5 |
-//|                                                                  |
-//| Expert Advisor for streaming real-time tick data (bid/ask prices)|
-//| to the trading server via socket connection                      |
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------------------------------------+
+//| mt5-tick-streamer.mq5                                                                          |
+//| https://github.com/maxnorm/Alchemist-AI/blob/main/src/utils/MT5-EA/EAs/mt5_tick_streamer.mq5   |
+//|                                                                                                |
+//| Expert Advisor for streaming real-time tick data (bid/ask prices)                              |
+//| to the trading server via socket connection                                                    |
+//+------------------------------------------------------------------------------------------------+
 #property copyright "Alchemist Capital Management"
 #property link      "https://github.com/maxnorm/Alchemist-AI"
 #property version   "1.00"
@@ -13,8 +14,7 @@
 
 input string ip = "127.0.0.1";
 input int port = 8080;
-input long account_login = 0;
-input string auth_token = "";
+input string streamer_token = "";
 
 string separator = "|";
 
@@ -75,7 +75,8 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
-// Send each tick in the format [symbol, time, ask, bid]"
+// Send each tick in the format {symbol, datetime, ask, bid}
+// datetime format: "YYYY.MM.DD HH:MM:SS.mmm" (MT5 format, server will parse to UTC)
 void OnTick()
   {
 //---
@@ -108,7 +109,7 @@ void OnTick()
       
       // Format timestamp with milliseconds: "YYYY.MM.DD HH:MM:SS.mmm"
       string time_str = TimeToString(tick_time, TIME_DATE|TIME_SECONDS);
-      json["date_time"] = StringFormat("%s.%03d", time_str, milliseconds);
+      json["datetime"] = StringFormat("%s.%03d", time_str, milliseconds);
       json["ask"] = tick.ask;
       json["bid"] = tick.bid;
 
@@ -121,17 +122,14 @@ void OnTick()
   }
 //+------------------------------------------------------------------+
 
-// Authentication to the server as a terminal
+// Authentication to the server as a streamer
 bool auth()
    {
       CJAVal json;
       json["auth_code"] = auth_code;
       json["symbol"] = symbol;
       json["digits"] = digits;
-      // If account_login input is not set, fall back to terminal login
-      long login = account_login > 0 ? account_login : AccountInfoInteger(ACCOUNT_LOGIN);
-      json["login"] = login;
-      json["auth_token"] = auth_token;
+      json["streamer_token"] = streamer_token;
 
       send_msg(socket, json, false);
       CJAVal msg = receive_msg(socket);

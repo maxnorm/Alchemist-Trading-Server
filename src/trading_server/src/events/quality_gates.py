@@ -200,12 +200,31 @@ class EventQualityGates:
                         f"Invalid spread: bid={bid}, ask={ask} (ask must be > bid)",
                     )
 
-                # Check for unrealistic spread (> 10 pips = 0.001 for most pairs)
+                # Check for unrealistic spread (use pip-based validation for JPY pairs)
                 spread = ask - bid
-                if spread > 0.001:
+                # Use digits if available (more accurate), otherwise infer from price
+                from utils.market_utils import (
+                    calculate_pip_value_from_digits,
+                    infer_pip_value_from_price,
+                )
+
+                digits = payload.get("digits")
+                if digits is not None:
+                    # Use digits for accurate pip calculation
+                    pip_value = calculate_pip_value_from_digits(int(digits))
+                else:
+                    # Fall back to inference from price
+                    mid_price = (bid + ask) / 2
+                    pip_value = infer_pip_value_from_price(mid_price)
+
+                max_spread_pips = 10  # Maximum 10 pips
+                max_spread_value = pip_value * max_spread_pips
+
+                if spread > max_spread_value:
+                    spread_pips = spread / pip_value
                     return (
                         False,
-                        f"Unrealistic spread: {spread:.6f} (> 0.001 / 10 pips)",
+                        f"Unrealistic spread: {spread:.6f} ({spread_pips:.1f} pips > {max_spread_pips} pips)",
                     )
 
             except (ValueError, TypeError) as e:

@@ -77,6 +77,12 @@ CIRCUIT_BREAKER_MAX_DRAWDOWN_PCT=20.0
 # MyFxBook (optional)
 MYFXBOOK_EMAIL=your_email@example.com
 MYFXBOOK_PASSWORD=your_password
+
+# Streamer Authentication (Required for tick streamers)
+# Generate a secure random token (minimum 32 characters)
+# Example: openssl rand -hex 32
+# Never commit this to git!
+STREAMER_AUTH_TOKEN=your_secure_random_token_here
 ```
 
 ## Database Migrations
@@ -125,10 +131,76 @@ python scripts/run-migrations.py
    - Tools → Options → Expert Advisors
    - Enable "Allow algorithmic trading"
 
-4. **Test Connection**
-   - Start the server: `docker compose up server`
-   - Check logs for connection status
-   - Verify in dashboard
+4. **Configure MT5 Gateway Connection**
+
+   The MT5 EAs connect to the server through the gateway on port 8080. You have three connection options:
+
+   **Option 1: Direct IP Connection (Simplest, No DNS Required)**
+   - In EA inputs, set:
+     - `ip`: Your server's IP address (e.g., `192.168.1.100` or your public IP)
+     - `port`: `8080`
+   - Works immediately, no DNS setup needed
+   - Recommended for development and testing
+
+   **Option 2: Subdomain with DNS (Production)**
+   - Configure DNS A record: `mt5.yourdomain.com` → Your server's public IP address
+   - In EA inputs, set:
+     - `ip`: `mt5.yourdomain.com`
+     - `port`: `8080`
+   - Free DNS options: Cloudflare (free tier), DuckDNS, No-IP
+   - Recommended for production deployments
+
+   **Option 3: Local Testing with /etc/hosts**
+   - Add entry to hosts file:
+     - Linux/Mac: `/etc/hosts`: `127.0.0.1 mt5.yourdomain.com`
+     - Windows: `C:\Windows\System32\drivers\etc\hosts`: `127.0.0.1 mt5.yourdomain.com`
+   - In EA inputs, set:
+     - `ip`: `mt5.yourdomain.com`
+     - `port`: `8080`
+   - Useful for local development
+
+5. **Configure Streamer Authentication**
+
+   **For Tick Streamers (mt5_tick_streamer.mq5):**
+   - Generate a secure token: `openssl rand -hex 32` or `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+   - Set `STREAMER_AUTH_TOKEN` in your `.env` file (see Environment Variables section)
+   - In EA inputs, set:
+     - `streamer_token`: The token from your `.env` file
+   - No account registration needed for streamers
+   - Same token works for all tick streamers (28+ pairs)
+
+   **For Trading Operations (mt5_trading_operation.mq5):**
+   - Still uses account-based authentication
+   - Register account via API to get `auth_token`
+   - In EA inputs, set:
+     - `auth_token`: Account auth token from API
+
+6. **Connection Limits and Rate Limiting**
+   - Gateway supports up to 100 concurrent connections per IP
+   - Sufficient for 28+ tick streamers (major currency pairs) + additional exotic pairs + trading operation EAs
+   - Rate limiting: 5 authentication attempts per minute (burst: 5)
+   - Limits can be adjusted in `src/gateway/conf.d/stream/mt5.conf` if needed
+
+7. **Test Connection**
+   - Start the services: `docker compose up -d`
+   - Check gateway logs: `./logs/gateway/mt5_access.log` and `./logs/gateway/mt5_error.log`
+   - Verify connection in trading server logs
+   - Monitor connection status in dashboard
+
+### MT5 Gateway Logs
+
+Gateway logs are accessible in the codebase:
+- Access logs: `./logs/gateway/mt5_access.log` - All connection attempts
+- Error logs: `./logs/gateway/mt5_error.log` - Failed connections and errors
+
+View logs in real-time:
+```bash
+# Access logs
+tail -f logs/gateway/mt5_access.log
+
+# Error logs
+tail -f logs/gateway/mt5_error.log
+```
 
 ## Monitoring
 
@@ -148,9 +220,13 @@ docker compose logs -f
 # Specific service
 docker compose logs -f server
 docker compose logs -f api
+docker compose logs -f gateway
 ```
 
-Log files are also stored in `logs/` directory.
+Log files are also stored in `logs/` directory:
+- Trading server logs: `logs/` (tick_streamer.log, mt5_price_connector.log, etc.)
+- Gateway logs: `logs/gateway/` (mt5_access.log, mt5_error.log, gateway_access.log, gateway_error.log)
+- API logs: Check container logs or application logs
 
 ### Metrics
 

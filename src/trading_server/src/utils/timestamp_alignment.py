@@ -54,7 +54,7 @@ class TimestampAlignmentService:
             source="mt5",
             config=SourceTimestampConfig(
                 source="mt5",
-                timestamp_field="date_time",
+                timestamp_field="datetime",
                 timestamp_format="%Y.%m.%d %H:%M:%S",
                 staleness_threshold_seconds=300.0,
                 alignment_strategy="preserve",
@@ -108,7 +108,6 @@ class TimestampAlignmentService:
             # Default: try common timestamp fields
             timestamp_field = (
                 raw_event.get("timestamp")
-                or raw_event.get("date_time")
                 or raw_event.get("datetime")
             )
             if timestamp_field:

@@ -1,9 +1,10 @@
-//+------------------------------------------------------------------+
-//|                                        mt5_trading_operation.mq5 |
-//|                                                                  | 
-//| Expert Advisor for executing trading operations via socket       |
-//| connection. Handles account info requests, order opening/closing |
-//+------------------------------------------------------------------+
+//+---------------------------------------------------------------------------------------------------+
+//| mt5_trading_operation.mq5                                                                         |
+//| https://github.com/maxnorm/Alchemist-AI/blob/main/src/utils/MT5-EA/EAs/mt5_trading_operation.mq5  |
+//|                                                                                                   |
+//| Expert Advisor for executing trading operations via socket                                        |
+//| connection. Handles account info requests, order opening/closing                                  |
+//+---------------------------------------------------------------------------------------------------+
 #property copyright "Alchemist Capital Management"
 #property link      "https://github.com/maxnorm/Alchemist-AI"
 #property version   "1.00"

@@ -15,46 +15,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from utils.time_utils import print_with_datetime, normalize_to_utc, ensure_utc_timezone
 
 
-# Helper function for debug logging
-def _write_debug_log(
-    session_id, run_id, hypothesis_id, location, message, data, timestamp=None
-):
-    """Write debug log entry"""
-    try:
-        if timestamp is None:
-            from utils.time_utils import get_utc_time
-
-            timestamp = int(get_utc_time().timestamp() * 1000)
-        # Use absolute path from system reminder - calculate dynamically
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(current_file_dir))
-        )
-        log_path = os.path.join(project_root, ".cursor", "debug.log")
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        "sessionId": session_id,
-                        "runId": run_id,
-                        "hypothesisId": hypothesis_id,
-                        "location": location,
-                        "message": message,
-                        "data": data,
-                        "timestamp": timestamp,
-                    }
-                )
-                + "\n"
-            )
-    except Exception as e:
-        # Log to stderr for debugging instrumentation issues
-        import sys
-
-        sys.stderr.write(f"Debug log write failed: {e}\n")
-
-
 class Database:
     """
     Database class
@@ -494,31 +454,10 @@ class Database:
         :param ticks: List of tuples, each tuple contains (symbol, date_time, ask, bid)
         :return: Number of successfully inserted ticks, or -1 on error
         """
-        # #region agent log
-        _write_debug_log(
-            "debug-session",
-            "run1",
-            "F",
-            "database.py:269",
-            "insert_forex_ticks_batch called",
-            {"tick_count": len(ticks) if ticks else 0},
-        )
-        # #endregion
         if not ticks:
             return 0
 
         try:
-            # #region agent log
-            _write_debug_log(
-                "debug-session",
-                "run1",
-                "F",
-                "database.py:281",
-                "Database connection obtained",
-                {"has_connection": True},
-            )
-            # #endregion
-
             # Normalize all timestamps to UTC (returns datetime objects, preserves microseconds)
             tick_data = []
             for symbol, date_time, ask, bid in ticks:
@@ -581,16 +520,6 @@ class Database:
                         rowcount = result.rowcount
 
                         # Check if a row was actually inserted
-                        # #region agent log
-                        _write_debug_log(
-                            "debug-session",
-                            "run1",
-                            "F",
-                            "database.py:319",
-                            "Insert attempt result",
-                            {"symbol": symbol_upper, "rowcount": rowcount},
-                        )
-                        # #endregion
                         if rowcount > 0:
                             insert_count += 1
                         else:
@@ -605,16 +534,6 @@ class Database:
                     except SQLAlchemyError as e:
                         symbol = base_currency + quoted_currency
                         failed_symbols.add(symbol)
-                        # #region agent log
-                        _write_debug_log(
-                            "debug-session",
-                            "run1",
-                            "F",
-                            "database.py:357",
-                            "Database insert error",
-                            {"symbol": symbol, "error": str(e)},
-                        )
-                        # #endregion
                         print_with_datetime(f"Error inserting tick for {symbol}: {e}")
                         continue
 
@@ -624,21 +543,6 @@ class Database:
                     f"symbol(s): {', '.join(sorted(failed_symbols))}. "
                     f"These currency pairs may not exist in the forex_pairs table."
                 )
-
-            # #region agent log
-            _write_debug_log(
-                "debug-session",
-                "run1",
-                "G",
-                "database.py:341",
-                "Transaction committed",
-                {
-                    "insert_count": insert_count,
-                    "total_ticks": len(ticks),
-                    "failed_symbols": list(failed_symbols),
-                },
-            )
-            # #endregion
 
             with self.__metrics_lock:
                 self.__metrics["batch_inserts"] += 1
@@ -653,16 +557,6 @@ class Database:
             return insert_count
 
         except Exception as e:
-            # #region agent log
-            _write_debug_log(
-                "debug-session",
-                "run1",
-                "F",
-                "database.py:400",
-                "Database insert exception",
-                {"error": str(e), "error_type": type(e).__name__},
-            )
-            # #endregion
             print_with_datetime(f"Error in batch insert: {e}")
             with self.__metrics_lock:
                 self.__metrics["insert_failures"] += len(ticks)
