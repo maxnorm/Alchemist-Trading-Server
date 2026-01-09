@@ -59,6 +59,37 @@ def create_composition_root(verbose: bool = False):
 
     server = Server(verbose=verbose, database=database, scraper=scraper)
 
+    # Start clock sync monitor
+    try:
+        from monitoring.clock_sync_monitor import ClockSyncMonitor
+        clock_monitor = ClockSyncMonitor(
+            check_interval_seconds=int(os.getenv("CLOCK_SYNC_CHECK_INTERVAL", "300")),
+            drift_threshold_seconds=float(os.getenv("CLOCK_SYNC_DRIFT_THRESHOLD", "1.0")),
+            enabled=os.getenv("CLOCK_SYNC_MONITOR_ENABLED", "true").lower() == "true",
+        )
+        clock_monitor.start()
+        if verbose:
+            print("Clock sync monitor started")
+    except Exception as e:
+        if verbose:
+            print(f"Warning: Could not start clock sync monitor: {e}")
+
+    # Start gap detector
+    try:
+        from monitoring.gap_detector import GapDetector
+        gap_detector = GapDetector(
+            gap_threshold_minutes=float(os.getenv("GAP_THRESHOLD_MINUTES", "5.0")),
+            check_interval_minutes=float(os.getenv("GAP_CHECK_INTERVAL_MINUTES", "5.0")),
+            lookback_minutes=float(os.getenv("GAP_LOOKBACK_MINUTES", "10.0")),
+            enabled=os.getenv("GAP_DETECTOR_ENABLED", "true").lower() == "true",
+        )
+        gap_detector.start()
+        if verbose:
+            print("Gap detector started")
+    except Exception as e:
+        if verbose:
+            print(f"Warning: Could not start gap detector: {e}")
+
     return server
 
 

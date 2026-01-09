@@ -57,45 +57,117 @@ class MT5TickConnector(IDataSourceConnector):
         # Track latest timestamp
         self._latest_timestamp: Optional[datetime] = None
 
+        # Reconnection configuration
+        self._max_reconnect_attempts = int(
+            config.extra_config.get("max_reconnect_attempts", 10)
+        )
+        self._reconnect_backoff_base = float(
+            config.extra_config.get("reconnect_backoff_base", 1.0)
+        )
+        self._reconnect_backoff_max = float(
+            config.extra_config.get("reconnect_backoff_max", 60.0)
+        )
+        self._reconnect_attempts = 0
+        self._reconnect_enabled = config.extra_config.get("auto_reconnect", True)
+
+        # Connection state management
+        try:
+            from mt5_connection.connection_state import (
+                ConnectionStateManager,
+                ConnectionState,
+            )
+
+            self._state_manager = ConnectionStateManager(symbol)
+        except ImportError:
+            self._state_manager = None
+
     def connect(self) -> bool:
         """
-        Establish connection to MT5 data source
+        Establish connection to MT5 data source with retry logic
 
         :return: True if connection successful, False otherwise
         """
         if self.is_connected():
             return True
 
-        try:
-            # If streamer not provided, create one
-            if self.streamer is None:
-                from database import Database
-
-                db = Database()
-
-                self.streamer = MT5TickStreamer(
-                    sock=self.socket,
-                    asset=self.currency_pair,
-                    stop_char="\n",
-                    verbose=False,
-                    console_lock=None,
-                    db=db,
-                )
-
-            # Start streamer thread
-            self._streamer_thread = threading.Thread(
-                target=self._stream_worker, daemon=True
+        if self._state_manager:
+            self._state_manager.transition_to(
+                ConnectionState.CONNECTING, reason="Connection attempt"
             )
-            self._streamer_thread.start()
 
-            self._is_connected = True
-            self.logger.info(f"Connected to MT5 tick stream for {self.symbol}")
-            return True
+        attempt = 0
+        while attempt < self._max_reconnect_attempts:
+            try:
+                # If streamer not provided, create one
+                if self.streamer is None:
+                    from database import Database
 
-        except Exception as e:
-            self.logger.error(f"Failed to connect to MT5: {e}", exc_info=True)
-            self._is_connected = False
-            return False
+                    db = Database()
+
+                    self.streamer = MT5TickStreamer(
+                        sock=self.socket,
+                        asset=self.currency_pair,
+                        stop_char="\n",
+                        verbose=False,
+                        console_lock=None,
+                        db=db,
+                    )
+
+                # Start streamer thread
+                self._streamer_thread = threading.Thread(
+                    target=self._stream_worker, daemon=True
+                )
+                self._streamer_thread.start()
+
+                self._is_connected = True
+                self._reconnect_attempts = 0
+
+                if self._state_manager:
+                    self._state_manager.transition_to(
+                        ConnectionState.CONNECTED, reason="Connection successful"
+                    )
+
+                self.logger.info(f"Connected to MT5 tick stream for {self.symbol}")
+                return True
+
+            except Exception as e:
+                attempt += 1
+                self._reconnect_attempts = attempt
+
+                if self._state_manager:
+                    if attempt < self._max_reconnect_attempts:
+                        self._state_manager.transition_to(
+                            ConnectionState.RECONNECTING,
+                            reason=f"Connection failed: {e}, retrying",
+                        )
+                    else:
+                        self._state_manager.transition_to(
+                            ConnectionState.FAILED,
+                            reason=f"Max reconnection attempts reached: {e}",
+                        )
+
+                if attempt < self._max_reconnect_attempts:
+                    # Calculate backoff delay
+                    backoff = min(
+                        self._reconnect_backoff_base * (2 ** (attempt - 1)),
+                        self._reconnect_backoff_max,
+                    )
+                    self.logger.warning(
+                        f"Connection attempt {attempt}/{self._max_reconnect_attempts} "
+                        f"failed for {self.symbol}: {e}. Retrying in {backoff:.1f}s"
+                    )
+                    import time
+
+                    time.sleep(backoff)
+                else:
+                    self.logger.error(
+                        f"Failed to connect to MT5 after {attempt} attempts: {e}",
+                        exc_info=True,
+                    )
+                    self._is_connected = False
+                    return False
+
+        return False
 
     def disconnect(self) -> None:
         """Close connection to MT5 data source"""
@@ -247,52 +319,79 @@ class MT5TickConnector(IDataSourceConnector):
     def _stream_worker(self) -> None:
         """
         Worker thread that receives ticks from streamer and normalizes them
+        Handles reconnection on connection loss
         """
         if self.streamer is None:
             return
 
-        # Start receiving ticks
-        # Note: This is a simplified approach - in practice, we'd need to
-        # intercept ticks from the streamer. For now, we'll use a callback approach
-        # or modify the streamer to support event listeners.
-
-        # For now, we'll use the streamer's receive_tick method
-        # and intercept normalized events from the normalizer
-        # This requires the streamer to be modified to emit normalized events
-
-        # Alternative: Use the streamer's internal event queue if available
-        # or create a wrapper that captures ticks before they're processed
-
-        # Since we can't easily intercept ticks from MT5TickStreamer without
-        # modifying it significantly, we'll use a polling approach or
-        # rely on the streamer's normalization that we added earlier
-
-        # For this implementation, we'll create a simple polling mechanism
-        # that checks for new ticks (this is a placeholder - actual implementation
-        # would need to hook into the streamer's tick processing)
-
         self.logger.info("Stream worker started")
-
-        # In a real implementation, we would:
-        # 1. Hook into the streamer's tick processing
-        # 2. Capture raw ticks before normalization
-        # 3. Normalize them using our normalizer
-        # 4. Put them in the event queue
-
-        # For now, this is a bridge implementation that works with the
-        # existing streamer architecture
 
         while not self._shutdown_flag.is_set():
             try:
-                # This is a placeholder - actual implementation would
-                # receive ticks from the streamer
-                # For now, we'll rely on the streamer's own normalization
-                # that we integrated earlier
-                pass
+                # Start receiving ticks
+                # Note: receive_tick() will block until connection is lost
+                if self.streamer:
+                    self.streamer.receive_tick()
+
+                # If we get here, connection was lost
+                if self._shutdown_flag.is_set():
+                    break
+
+                # Attempt reconnection if enabled
+                if self._reconnect_enabled and not self._shutdown_flag.is_set():
+                    if self._state_manager:
+                        self._state_manager.transition_to(
+                            ConnectionState.RECONNECTING,
+                            reason="Connection lost, attempting reconnection",
+                        )
+
+                    self.logger.warning(
+                        f"Connection lost for {self.symbol}, attempting reconnection..."
+                    )
+                    self._is_connected = False
+
+                    # Attempt to reconnect
+                    if self.connect():
+                        self.logger.info(f"Reconnected to MT5 tick stream for {self.symbol}")
+                        continue
+                    else:
+                        self.logger.error(
+                            f"Failed to reconnect to MT5 tick stream for {self.symbol}"
+                        )
+                        break
+                else:
+                    # Reconnection disabled or shutdown requested
+                    break
 
             except Exception as e:
                 self.logger.error(f"Error in stream worker: {e}", exc_info=True)
-                break
+
+                # Attempt reconnection on error if enabled
+                if (
+                    self._reconnect_enabled
+                    and not self._shutdown_flag.is_set()
+                    and self._reconnect_attempts < self._max_reconnect_attempts
+                ):
+                    if self._state_manager:
+                        self._state_manager.transition_to(
+                            ConnectionState.RECONNECTING,
+                            reason=f"Error in stream worker: {e}",
+                        )
+
+                    self.logger.warning(
+                        f"Error in stream worker for {self.symbol}, attempting reconnection..."
+                    )
+                    self._is_connected = False
+
+                    if self.connect():
+                        self.logger.info(
+                            f"Reconnected to MT5 tick stream for {self.symbol} after error"
+                        )
+                        continue
+                    else:
+                        break
+                else:
+                    break
 
         self.logger.info("Stream worker stopped")
 

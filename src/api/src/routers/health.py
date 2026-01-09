@@ -77,6 +77,73 @@ async def health_check_db():
         )
 
 
+@router.get("/health/clock-sync")
+async def health_check_clock_sync():
+    """Clock synchronization health check"""
+    try:
+        # Import clock sync monitor from trading server
+        # Note: This requires the trading server to be running and accessible
+        # For now, we'll create a simple check that can be enhanced later
+        import sys
+        import os
+        
+        # Try to import clock sync monitor
+        try:
+            # Add trading server src to path if needed
+            trading_server_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+                "trading_server", "src"
+            )
+            if trading_server_path not in sys.path:
+                sys.path.insert(0, trading_server_path)
+            
+            from monitoring.clock_sync_monitor import ClockSyncMonitor
+            
+            # Get singleton instance or create new one
+            # In production, this should be a shared instance
+            monitor = ClockSyncMonitor()
+            status = monitor.get_status()
+            
+            is_healthy = monitor.is_healthy()
+            
+            if is_healthy:
+                return {
+                    "status": "healthy",
+                    "service": "clock_sync",
+                    "last_drift_seconds": status.get("last_drift_seconds"),
+                    "last_status": status.get("last_status"),
+                    "check_count": status.get("check_count"),
+                }
+            else:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "unhealthy",
+                        "service": "clock_sync",
+                        "last_drift_seconds": status.get("last_drift_seconds"),
+                        "last_status": status.get("last_status"),
+                        "warning": "Clock synchronization issue detected",
+                    },
+                )
+        except ImportError:
+            # Clock sync monitor not available
+            return {
+                "status": "unknown",
+                "service": "clock_sync",
+                "message": "Clock sync monitor not available",
+            }
+    except Exception as e:
+        logger.error(f"Clock sync health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "service": "clock_sync",
+                "error": str(e),
+            },
+        )
+
+
 @router.get("/health/mlflow")
 async def health_check_mlflow():
     """MLflow health check"""

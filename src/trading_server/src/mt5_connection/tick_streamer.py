@@ -100,6 +100,17 @@ class MT5TickStreamer:
         self.__no_tick_warning_logged = False
         self.__last_feed_live_state = None
 
+        # Connection health tracking
+        self.__last_heartbeat_time = get_utc_time()  # Track last successful operation
+        self.__connection_health_check_interval = float(
+            os.getenv("CONNECTION_HEALTH_CHECK_INTERVAL", "30.0")
+        )  # Check every 30 seconds
+        self.__connection_stale_threshold = float(
+            os.getenv("CONNECTION_STALE_THRESHOLD_SECONDS", "60.0")
+        )  # Consider stale if no ticks for 60 seconds
+        self.__last_health_check_time = get_utc_time()
+        self.__connection_health_warnings = 0
+
         # Buffer overflow protection
         self.__buffer_overflow_count = 0
 
@@ -680,8 +691,16 @@ class MT5TickStreamer:
 
         try:
             while not self.__shutdown_flag.is_set():
-                # Periodically check if we should expect ticks (market open vs closed)
                 current_time = get_utc_time()
+
+                # Connection health check (every 30 seconds)
+                if (
+                    current_time - self.__last_health_check_time
+                ).total_seconds() >= self.__connection_health_check_interval:
+                    self.__last_health_check_time = current_time
+                    self._check_connection_health(current_time)
+
+                # Periodically check if we should expect ticks (market open vs closed)
                 if (
                     current_time - last_market_check
                 ).total_seconds() >= 300:  # Check every 5 minutes
@@ -763,11 +782,20 @@ class MT5TickStreamer:
                     continue
                 except socket.error as e:
                     # Socket error (connection lost, etc.)
-                    self.__logger.log_error(
-                        event_type="socket_error",
-                        error=f"Socket error while receiving tick data: {e}",
-                        exc_info=True,
-                    )
+                    if self._use_structured:
+                        self.__logger.log_event(
+                            event_type="connection_lost",
+                            message=f"Socket connection lost: {e}",
+                            symbol=self.__asset.symbol if self.__asset else "unknown",
+                            metrics={"error": str(e)},
+                            level="ERROR",
+                        )
+                    else:
+                        self.__logger.log_error(
+                            event_type="socket_error",
+                            error=f"Socket error while receiving tick data: {e}",
+                            exc_info=True,
+                        )
                     break  # Exit the loop
                 except Exception as e:
                     # Unexpected error
@@ -910,6 +938,27 @@ class MT5TickStreamer:
                                 is_stale = False
                                 stale_age_seconds = None
 
+                            # Log negative latency detection
+                            if latency_seconds is not None and latency_seconds < 0:
+                                if self._use_structured:
+                                    self.__logger.log_event(
+                                        event_type="negative_latency_detected",
+                                        message=f"Negative latency detected for {symbol}: {latency_seconds:.3f}s",
+                                        symbol=symbol,
+                                        metrics={
+                                            "latency_seconds": latency_seconds,
+                                            "event_time": date_time,
+                                            "receive_time": receive_time.isoformat() if isinstance(receive_time, datetime) else str(receive_time),
+                                            "time_diff_seconds": (receive_time - self.__normalize_mt5_timestamp(date_time)).total_seconds() if isinstance(receive_time, datetime) else None,
+                                        },
+                                        level="WARNING",
+                                    )
+                                else:
+                                    self.__logger.warning(
+                                        f"Negative latency detected for {symbol}: {latency_seconds:.3f}s "
+                                        f"(event_time: {date_time}, receive_time: {receive_time})"
+                                    )
+
                             # Add acceptance logging
                             if self._use_structured:
                                 self.__logger.log_event(
@@ -1000,7 +1049,11 @@ class MT5TickStreamer:
 
                             # Update last tick time and reset warning flag
                             self.__last_tick_time = get_utc_time()
+                            self.__last_heartbeat_time = self.__last_tick_time
                             self.__no_tick_warning_logged = False
+                            # Reset health warnings on successful tick
+                            if self.__connection_health_warnings > 0:
+                                self.__connection_health_warnings = 0
                             # Mark feed as live when a fresh tick arrives
                             if self.__last_feed_live_state is not True:
                                 if self.__logger and hasattr(

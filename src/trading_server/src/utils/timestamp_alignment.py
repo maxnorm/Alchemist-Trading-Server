@@ -157,6 +157,13 @@ class TimestampAlignmentService:
         # Calculate latency
         latency_seconds = (receive_time - event_time).total_seconds()
 
+        # Check for negative latency (future timestamp - clock sync issue)
+        has_negative_latency = latency_seconds < 0
+        if has_negative_latency:
+            # Log warning but don't reject - this is a clock sync issue, not data quality issue
+            # The data is still valid, just the timestamps are misaligned
+            pass  # Logging will be handled by caller
+
         # Check if stale
         staleness_threshold = config.staleness_threshold_seconds if config else 300.0
         is_stale = latency_seconds > staleness_threshold

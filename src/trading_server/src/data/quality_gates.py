@@ -259,6 +259,24 @@ class QualityGate:
 
         age_seconds = (current_time - tick_datetime).total_seconds()
 
+        # Check for negative latency (future timestamp - clock sync issue)
+        # This indicates event_time is in the future relative to receive_time
+        if age_seconds < 0:
+            # Negative latency detected - this is a clock synchronization issue
+            # We still accept the data but flag it in metadata
+            negative_latency_seconds = abs(age_seconds)
+            timestamp_metadata = {
+                "is_stale": False,
+                "stale_age_seconds": None,
+                "has_negative_latency": True,
+                "negative_latency_seconds": negative_latency_seconds,
+                "latency_seconds": age_seconds,  # Negative value
+                "receive_time": current_time.isoformat() if isinstance(current_time, datetime) else str(current_time),
+                "timestamp_source": "event",
+            }
+            # Return metadata but don't reject - this is a clock sync issue, not data quality issue
+            return (None, timestamp_metadata)
+
         # If tick is stale, return metadata instead of overriding timestamp
         if age_seconds > self.staleness_threshold_seconds:
             # Check if price has changed (for acceptance decision)
