@@ -1,0 +1,164 @@
+{
+  "dashboard": {
+    "title": "Data Quality Dashboard",
+    "tags": ["data-quality", "observability"],
+    "timezone": "browser",
+    "schemaVersion": 27,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Data Freshness",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "data_freshness_seconds",
+            "legendFormat": "{{source}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Data Volume",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(data_volume_total[5m])",
+            "legendFormat": "{{source}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Quality Score",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "data_quality_score",
+            "legendFormat": "{{source}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "Quarantine Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "data_quarantine_rate",
+            "legendFormat": "{{source}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "Drift PSI Score",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "data_drift_psi_score",
+            "legendFormat": "{{feature_name}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "KS Statistic",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "data_drift_ks_statistic",
+            "legendFormat": "{{feature_name}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "Drift Detections",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "data_drift_detections_total",
+            "legendFormat": "{{feature_name}}/{{symbol}}/{{severity}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "Lineage Runs",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "lineage_runs_total",
+            "legendFormat": "{{job_name}}/{{status}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "Backfill Progress",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "data_collection_backfill_progress",
+            "legendFormat": "{{connector_type}}/{{symbol}}"
+          },
+          {
+            "expr": "backfill_progress_percent",
+            "legendFormat": "{{symbol}}/{{data_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}
+      },
+      {
+        "id": 10,
+        "title": "Backfill Records Processed",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "data_collection_backfill_records",
+            "legendFormat": "{{connector_type}}/{{symbol}}"
+          },
+          {
+            "expr": "rate(backfill_records_processed_total[5m])",
+            "legendFormat": "{{symbol}}/{{data_type}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}
+      },
+      {
+        "id": 11,
+        "title": "Data Gaps Detected",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "data_gaps_detected_total",
+            "legendFormat": "{{data_type}}/{{symbol}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 32}
+      },
+      {
+        "id": 12,
+        "title": "Gap Fill Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "gap_fill_success_rate",
+            "legendFormat": "{{data_type}}/{{strategy}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 32}
+      }
+    ]
+  }
+}

@@ -69,6 +69,8 @@ db.sqlite3-journal
 # Application logs (keep directory structure)
 logs/*.log
 logs/*.log.*
+airflow_logs/*
+airflow_plugins/*
 
 # Trained models (persisted via Docker volume)
 models/*
