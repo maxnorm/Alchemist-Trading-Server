@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
 
 from data_providers.registry import DataProviderRegistry
-from data_providers.base_provider import Feature
+from domain.models.feature import Feature
 from data_providers.price_provider import PriceDataProvider
 from data_providers.indicator_provider import IndicatorProvider
 from models.currency_pair import CurrencyPair

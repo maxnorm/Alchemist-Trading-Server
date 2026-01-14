@@ -4,15 +4,15 @@ Gap Detection Service
 Detects data gaps in tick data collection and sends alerts.
 """
 
-import os
 import threading
-import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from utils.time_utils import get_utc_time
 from utils.market_utils import check_if_market_open
 from utils.logging_config import get_logger
 from database import Database
+from monitoring.metrics import data_gaps_detected_total
+from infrastructure.messaging.alert_publisher import AlertPublisher
 
 
 class GapDetector:
@@ -46,11 +46,15 @@ class GapDetector:
             self._use_structured = hasattr(self.logger, "log_event")
         except Exception:
             import logging
+
             self.logger = logging.getLogger("gap_detector")
             self._use_structured = False
 
         # Database connection
         self.db = Database()
+
+        # Alert publisher for Redis Pub/Sub
+        self._alert_publisher: Optional[AlertPublisher] = None
 
         # Monitoring state
         self._monitoring_thread: Optional[threading.Thread] = None
@@ -134,24 +138,25 @@ class GapDetector:
         # Query for gaps using SQL
         query = """
         WITH tick_times AS (
-            SELECT 
-                symbol,
-                datetime,
-                LAG(datetime) OVER (PARTITION BY symbol ORDER BY datetime) AS prev_datetime
-            FROM ticks_forex
-            WHERE datetime >= %s
+            SELECT
+                fp.symbol,
+                tf.datetime,
+                LAG(tf.datetime) OVER (PARTITION BY fp.symbol ORDER BY tf.datetime) AS prev_datetime
+            FROM ticks_forex tf
+            JOIN forex_pairs fp ON tf.forex_pairs_id = fp.id
+            WHERE tf.datetime >= :lookback_time
         ),
         gaps AS (
-            SELECT 
+            SELECT
                 symbol,
                 prev_datetime AS gap_start,
                 datetime AS gap_end,
                 EXTRACT(EPOCH FROM (datetime - prev_datetime)) AS gap_seconds
             FROM tick_times
             WHERE prev_datetime IS NOT NULL
-                AND EXTRACT(EPOCH FROM (datetime - prev_datetime)) > %s
+                AND EXTRACT(EPOCH FROM (datetime - prev_datetime)) > :gap_threshold
         )
-        SELECT 
+        SELECT
             symbol,
             gap_start,
             gap_end,
@@ -162,18 +167,19 @@ class GapDetector:
         """
 
         try:
-            # Use execute_many with parameterized query
-            gaps = self.db.execute_many(
+            # Use execute_with_result with parameterized query
+            gaps = self.db.execute_with_result(
                 query,
                 {
-                    'lookback_time': lookback_time,
-                    'gap_threshold': self.gap_threshold_seconds
-                }
+                    "lookback_time": lookback_time,
+                    "gap_threshold": self.gap_threshold_seconds,
+                },
             )
 
             detected_gaps = []
             for gap in gaps:
                 gap_info = {
+                    "data_type": "tick",
                     "symbol": gap[0],
                     "gap_start": gap[1],
                     "gap_end": gap[2],
@@ -187,6 +193,30 @@ class GapDetector:
             # Log and alert on gaps
             if detected_gaps:
                 self._log_gaps(detected_gaps, system_wide_gaps)
+
+                # Emit metrics for detected gaps
+                try:
+                    # Group gaps by data_type and symbol for metrics
+                    gap_counts: Dict[tuple, int] = {}
+                    for gap in detected_gaps:
+                        key = (gap["data_type"], gap["symbol"])
+                        gap_counts[key] = gap_counts.get(key, 0) + 1
+
+                    for (data_type, symbol), count in gap_counts.items():
+                        data_gaps_detected_total.labels(
+                            data_type=data_type, symbol=symbol
+                        ).inc(count)
+                except Exception as metric_error:
+                    if self._use_structured:
+                        self.logger.log_event(
+                            event_type="gap_metric_error",
+                            message=f"Failed to emit gap metrics: {metric_error}",
+                            level="WARNING",
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to emit gap metrics: {metric_error}"
+                        )
 
             self._last_check_time = current_time
             return detected_gaps
@@ -202,6 +232,368 @@ class GapDetector:
                 self.logger.error(f"Error querying for gaps: {e}", exc_info=True)
             return []
 
+    def detect_bar_gaps(
+        self, symbol: Optional[str] = None, timeframe: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Detect gaps in bar (OHLCV) data
+
+        :param symbol: Optional symbol to filter by (e.g., "EURUSD")
+        :param timeframe: Optional timeframe to filter by (e.g., "M1", "M5", "H1")
+        :return: List of detected gaps
+        """
+        current_time = get_utc_time()
+        lookback_time = current_time - timedelta(seconds=self.lookback_seconds)
+
+        # Build query with optional filters
+        symbol_filter = ""
+        timeframe_filter = ""
+        params = {
+            "lookback_time": lookback_time,
+            "gap_threshold": self.gap_threshold_seconds,
+        }
+
+        if symbol:
+            symbol_filter = "AND fp.symbol = :symbol"
+            params["symbol"] = symbol.upper()
+
+        if timeframe:
+            timeframe_filter = "AND bf.timeframe = :timeframe"
+            params["timeframe"] = timeframe
+
+        query = f"""
+        WITH bar_times AS (
+            SELECT
+                fp.symbol,
+                bf.timeframe,
+                bf.datetime,
+                LAG(bf.datetime) OVER (PARTITION BY fp.symbol, bf.timeframe ORDER BY bf.datetime) AS prev_datetime
+            FROM bars_forex bf
+            JOIN forex_pairs fp ON bf.forex_pairs_id = fp.id
+            WHERE bf.datetime >= :lookback_time
+                {symbol_filter}
+                {timeframe_filter}
+        ),
+        gaps AS (
+            SELECT
+                symbol,
+                timeframe,
+                prev_datetime AS gap_start,
+                datetime AS gap_end,
+                EXTRACT(EPOCH FROM (datetime - prev_datetime)) AS gap_seconds
+            FROM bar_times
+            WHERE prev_datetime IS NOT NULL
+                AND EXTRACT(EPOCH FROM (datetime - prev_datetime)) > :gap_threshold
+        )
+        SELECT
+            symbol,
+            timeframe,
+            gap_start,
+            gap_end,
+            gap_seconds
+        FROM gaps
+        ORDER BY gap_seconds DESC
+        LIMIT 100
+        """
+
+        try:
+            gaps = self.db.execute_with_result(query, params)
+
+            detected_gaps = []
+            for gap in gaps:
+                gap_info = {
+                    "data_type": "bar",
+                    "symbol": gap[0],
+                    "timeframe": gap[1],
+                    "gap_start": gap[2],
+                    "gap_end": gap[3],
+                    "gap_seconds": float(gap[4]),
+                }
+                detected_gaps.append(gap_info)
+
+            if detected_gaps:
+                self._log_gaps(detected_gaps, [])
+
+                # Emit metrics for detected gaps
+                try:
+                    gap_counts: Dict[tuple, int] = {}
+                    for gap in detected_gaps:
+                        key = (gap["data_type"], gap["symbol"])
+                        gap_counts[key] = gap_counts.get(key, 0) + 1
+
+                    for (data_type, symbol), count in gap_counts.items():
+                        data_gaps_detected_total.labels(
+                            data_type=data_type, symbol=symbol
+                        ).inc(count)
+                except Exception as metric_error:
+                    if self._use_structured:
+                        self.logger.log_event(
+                            event_type="gap_metric_error",
+                            message=f"Failed to emit bar gap metrics: {metric_error}",
+                            level="WARNING",
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to emit bar gap metrics: {metric_error}"
+                        )
+
+            return detected_gaps
+
+        except Exception as e:
+            if self._use_structured:
+                self.logger.log_event(
+                    event_type="gap_detection_query_error",
+                    message=f"Error querying for bar gaps: {e}",
+                    level="ERROR",
+                )
+            else:
+                self.logger.error(f"Error querying for bar gaps: {e}", exc_info=True)
+            return []
+
+    def detect_news_gaps(self, symbol: Optional[str] = None) -> List[Dict]:
+        """
+        Detect gaps in news article data
+
+        :param symbol: Optional symbol to filter by (e.g., "EURUSD")
+        :return: List of detected gaps
+        """
+        current_time = get_utc_time()
+        lookback_time = current_time - timedelta(seconds=self.lookback_seconds)
+
+        # News gaps are detected based on expected frequency
+        # For news, we expect at least one article per hour during market hours
+        # Gaps are periods with no news for > 2 hours
+        symbol_filter = ""
+        params = {
+            "lookback_time": lookback_time,
+            "gap_threshold": max(
+                self.gap_threshold_seconds, 2 * 3600
+            ),  # At least 2 hours for news
+        }
+
+        if symbol:
+            symbol_filter = "AND na.symbol = :symbol"
+            params["symbol"] = symbol.upper()
+
+        query = f"""
+        WITH news_times AS (
+            SELECT
+                COALESCE(na.symbol, '*') AS symbol,
+                na.timestamp,
+                LAG(na.timestamp) OVER (PARTITION BY COALESCE(na.symbol, '*') ORDER BY na.timestamp) AS prev_timestamp
+            FROM news_articles na
+            WHERE na.timestamp >= :lookback_time
+                {symbol_filter}
+        ),
+        gaps AS (
+            SELECT
+                symbol,
+                prev_timestamp AS gap_start,
+                timestamp AS gap_end,
+                EXTRACT(EPOCH FROM (timestamp - prev_timestamp)) AS gap_seconds
+            FROM news_times
+            WHERE prev_timestamp IS NOT NULL
+                AND EXTRACT(EPOCH FROM (timestamp - prev_timestamp)) > :gap_threshold
+        )
+        SELECT
+            symbol,
+            gap_start,
+            gap_end,
+            gap_seconds
+        FROM gaps
+        ORDER BY gap_seconds DESC
+        LIMIT 100
+        """
+
+        try:
+            gaps = self.db.execute_with_result(query, params)
+
+            detected_gaps = []
+            for gap in gaps:
+                gap_info = {
+                    "data_type": "news",
+                    "symbol": gap[0],
+                    "gap_start": gap[1],
+                    "gap_end": gap[2],
+                    "gap_seconds": float(gap[3]),
+                }
+                detected_gaps.append(gap_info)
+
+            if detected_gaps:
+                self._log_gaps(detected_gaps, [])
+
+                # Emit metrics for detected gaps
+                try:
+                    gap_counts: Dict[tuple, int] = {}
+                    for gap in detected_gaps:
+                        key = (gap["data_type"], gap["symbol"])
+                        gap_counts[key] = gap_counts.get(key, 0) + 1
+
+                    for (data_type, symbol), count in gap_counts.items():
+                        data_gaps_detected_total.labels(
+                            data_type=data_type, symbol=symbol
+                        ).inc(count)
+                except Exception as metric_error:
+                    if self._use_structured:
+                        self.logger.log_event(
+                            event_type="gap_metric_error",
+                            message=f"Failed to emit news gap metrics: {metric_error}",
+                            level="WARNING",
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to emit news gap metrics: {metric_error}"
+                        )
+
+            return detected_gaps
+
+        except Exception as e:
+            if self._use_structured:
+                self.logger.log_event(
+                    event_type="gap_detection_query_error",
+                    message=f"Error querying for news gaps: {e}",
+                    level="ERROR",
+                )
+            else:
+                self.logger.error(f"Error querying for news gaps: {e}", exc_info=True)
+            return []
+
+    def detect_economic_gaps(
+        self, series_id: Optional[str] = None, source: Optional[str] = None
+    ) -> List[Dict]:
+        """
+        Detect gaps in economic indicator data
+
+        :param series_id: Optional series_id to filter by (e.g., "FEDFUNDS")
+        :param source: Optional source to filter by (e.g., "FRED", "ECB")
+        :return: List of detected gaps
+        """
+        current_time = get_utc_time()
+        lookback_time = current_time - timedelta(seconds=self.lookback_seconds)
+
+        # Economic indicators have different frequencies (daily, weekly, monthly, etc.)
+        # Gaps are detected per series_id, as each series has its own expected frequency
+        series_filter = ""
+        source_filter = ""
+        params = {
+            "lookback_time": lookback_time,
+            "gap_threshold": max(
+                self.gap_threshold_seconds, 7 * 24 * 3600
+            ),  # At least 7 days for economic data
+        }
+
+        if series_id:
+            series_filter = "AND ei.series_id = :series_id"
+            params["series_id"] = series_id
+
+        if source:
+            source_filter = "AND ei.source = :source"
+            params["source"] = source
+
+        query = f"""
+        WITH economic_times AS (
+            SELECT
+                ei.series_id,
+                ei.source,
+                ei.timestamp,
+                LAG(ei.timestamp) OVER (PARTITION BY ei.series_id ORDER BY ei.timestamp) AS prev_timestamp
+            FROM economic_indicators ei
+            WHERE ei.timestamp >= :lookback_time
+                {series_filter}
+                {source_filter}
+        ),
+        gaps AS (
+            SELECT
+                series_id,
+                source,
+                prev_timestamp AS gap_start,
+                timestamp AS gap_end,
+                EXTRACT(EPOCH FROM (timestamp - prev_timestamp)) AS gap_seconds
+            FROM economic_times
+            WHERE prev_timestamp IS NOT NULL
+                AND EXTRACT(EPOCH FROM (timestamp - prev_timestamp)) > :gap_threshold
+        )
+        SELECT
+            series_id,
+            source,
+            gap_start,
+            gap_end,
+            gap_seconds
+        FROM gaps
+        ORDER BY gap_seconds DESC
+        LIMIT 100
+        """
+
+        try:
+            gaps = self.db.execute_with_result(query, params)
+
+            detected_gaps = []
+            for gap in gaps:
+                gap_info = {
+                    "data_type": "economic",
+                    "series_id": gap[0],
+                    "source": gap[1],
+                    "symbol": gap[0],  # Use series_id as symbol for metrics
+                    "gap_start": gap[2],
+                    "gap_end": gap[3],
+                    "gap_seconds": float(gap[4]),
+                }
+                detected_gaps.append(gap_info)
+
+            if detected_gaps:
+                self._log_gaps(detected_gaps, [])
+
+                # Emit metrics for detected gaps
+                try:
+                    gap_counts: Dict[tuple, int] = {}
+                    for gap in detected_gaps:
+                        key = (gap["data_type"], gap["symbol"])
+                        gap_counts[key] = gap_counts.get(key, 0) + 1
+
+                    for (data_type, symbol), count in gap_counts.items():
+                        data_gaps_detected_total.labels(
+                            data_type=data_type, symbol=symbol
+                        ).inc(count)
+                except Exception as metric_error:
+                    if self._use_structured:
+                        self.logger.log_event(
+                            event_type="gap_metric_error",
+                            message=f"Failed to emit economic gap metrics: {metric_error}",
+                            level="WARNING",
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Failed to emit economic gap metrics: {metric_error}"
+                        )
+
+            return detected_gaps
+
+        except Exception as e:
+            if self._use_structured:
+                self.logger.log_event(
+                    event_type="gap_detection_query_error",
+                    message=f"Error querying for economic gaps: {e}",
+                    level="ERROR",
+                )
+            else:
+                self.logger.error(
+                    f"Error querying for economic gaps: {e}", exc_info=True
+                )
+            return []
+
+    def detect_all_gaps(self) -> Dict[str, List[Dict]]:
+        """
+        Detect gaps across all data types
+
+        :return: Dictionary with gaps by data type
+        """
+        return {
+            "ticks": self.detect_gaps(),
+            "bars": self.detect_bar_gaps(),
+            "news": self.detect_news_gaps(),
+            "economic": self.detect_economic_gaps(),
+        }
+
     def _detect_system_wide_gaps(self, gaps: List[Dict]) -> List[Dict]:
         """
         Detect system-wide gaps (multiple symbols gap simultaneously)
@@ -215,6 +607,7 @@ class GapDetector:
             gap_start = gap["gap_start"]
             if isinstance(gap_start, str):
                 from datetime import datetime
+
                 gap_start = datetime.fromisoformat(gap_start.replace("Z", "+00:00"))
 
             # Round to nearest minute for grouping
@@ -243,7 +636,7 @@ class GapDetector:
 
     def _send_alert(self, alert_type: str, message: str, severity: str, metrics: Dict):
         """
-        Send alert via WebSocket (if API is available)
+        Send alert via Redis Pub/Sub (if Redis is available)
 
         :param alert_type: Type of alert
         :param message: Alert message
@@ -251,43 +644,28 @@ class GapDetector:
         :param metrics: Additional metrics
         """
         try:
-            # Try to import and use WebSocket alert system
-            import sys
-            import os
+            # Lazy initialization of alert publisher
+            if self._alert_publisher is None:
+                self._alert_publisher = AlertPublisher.get_instance()
 
-            # Add API src to path
-            api_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))),
-                "api", "src"
+            # Publish alert to Redis
+            success = self._alert_publisher.publish_alert(
+                alert_type=alert_type,
+                message=message,
+                severity=severity,
+                metrics=metrics,
             )
-            if api_path not in sys.path:
-                sys.path.insert(0, api_path)
 
-            try:
-                from websocket.channels import broadcast_alert
-                import asyncio
-
-                # Create event loop if needed
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
-                # Broadcast alert
-                if loop.is_running():
-                    # If loop is running, schedule coroutine
-                    asyncio.create_task(
-                        broadcast_alert(alert_type, message, severity)
+            if not success:
+                # Alert system not available - log warning
+                if self._use_structured:
+                    self.logger.log_event(
+                        event_type="alert_send_failed",
+                        message="Failed to send alert: Redis unavailable",
+                        level="WARNING",
                     )
                 else:
-                    # If loop is not running, run coroutine
-                    loop.run_until_complete(
-                        broadcast_alert(alert_type, message, severity)
-                    )
-            except ImportError:
-                # WebSocket system not available - log only
-                pass
+                    self.logger.warning("Failed to send alert: Redis unavailable")
         except Exception as e:
             # Alert system not available - log warning
             if self._use_structured:
@@ -309,28 +687,47 @@ class GapDetector:
         # Log individual gaps
         for gap in gaps:
             self._gap_count += 1
+            data_type = gap.get("data_type", "tick")
+
+            # Build identifier based on data type
+            if data_type == "tick" or data_type == "bar":
+                identifier = gap.get("symbol", "unknown")
+                if data_type == "bar" and "timeframe" in gap:
+                    identifier = f"{identifier} ({gap['timeframe']})"
+            elif data_type == "news":
+                identifier = gap.get("symbol", "*")
+            elif data_type == "economic":
+                identifier = f"{gap.get('series_id', 'unknown')} ({gap.get('source', 'unknown')})"
+            else:
+                identifier = "unknown"
+
             if self._use_structured:
                 self.logger.log_event(
                     event_type="data_gap_detected",
                     message=(
-                        f"Data gap detected for {gap['symbol']}: "
+                        f"Data gap detected for {data_type} data ({identifier}): "
                         f"{gap['gap_seconds']/60:.1f} minutes"
                     ),
-                    symbol=gap["symbol"],
+                    data_type=data_type,
+                    identifier=identifier,
                     metrics={
                         "gap_seconds": gap["gap_seconds"],
-                        "gap_start": gap["gap_start"].isoformat()
-                        if isinstance(gap["gap_start"], datetime)
-                        else str(gap["gap_start"]),
-                        "gap_end": gap["gap_end"].isoformat()
-                        if isinstance(gap["gap_end"], datetime)
-                        else str(gap["gap_end"]),
+                        "gap_start": (
+                            gap["gap_start"].isoformat()
+                            if isinstance(gap["gap_start"], datetime)
+                            else str(gap["gap_start"])
+                        ),
+                        "gap_end": (
+                            gap["gap_end"].isoformat()
+                            if isinstance(gap["gap_end"], datetime)
+                            else str(gap["gap_end"])
+                        ),
                     },
                     level="WARNING",
                 )
             else:
                 self.logger.warning(
-                    f"Data gap detected for {gap['symbol']}: "
+                    f"Data gap detected for {data_type} data ({identifier}): "
                     f"{gap['gap_seconds']/60:.1f} minutes "
                     f"({gap['gap_start']} to {gap['gap_end']})"
                 )
@@ -338,10 +735,11 @@ class GapDetector:
             # Send alert for individual gap
             self._send_alert(
                 alert_type="data_gap_detected",
-                message=f"Data gap detected for {gap['symbol']}: {gap['gap_seconds']/60:.1f} minutes",
+                message=f"Data gap detected for {data_type} data ({identifier}): {gap['gap_seconds']/60:.1f} minutes",
                 severity="warning",
                 metrics={
-                    "symbol": gap["symbol"],
+                    "data_type": data_type,
+                    "identifier": identifier,
                     "gap_seconds": gap["gap_seconds"],
                 },
             )
@@ -386,9 +784,7 @@ class GapDetector:
             )
 
         # Check for prolonged gaps (>30 minutes)
-        prolonged_gaps = [
-            g for g in gaps if g["gap_seconds"] > 30 * 60
-        ]
+        prolonged_gaps = [g for g in gaps if g["gap_seconds"] > 30 * 60]
         for gap in prolonged_gaps:
             self._send_alert(
                 alert_type="prolonged_gap",

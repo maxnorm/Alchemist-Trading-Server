@@ -33,7 +33,7 @@ The Alchemist provides:
 └────────┬────────┘
          │
 ┌────────▼────────┐
-│ Trading Server  │ (Port 1234)
+│ Trading Server  │ (Port 8080)
 └────────┬────────┘
          │
     ┌────┴────┐
@@ -88,7 +88,7 @@ The Alchemist provides:
 1. **Create a `.env` file** in the project root with the following variables:
    ```env
    SERVER_IP=0.0.0.0
-   SERVER_PORT=1234
+   SERVER_PORT=8080
    DB_HOST=postgres
    DB_PORT=5432
    DB_NAME=db_forex
@@ -97,9 +97,21 @@ The Alchemist provides:
    MYFXBOOK_EMAIL=your_email@example.com
    MYFXBOOK_PASSWORD=your_password
    URL_MYFXBOOK=https://www.myfxbook.com/
+   CLERK_SECRET_KEY=your_clerk_secret_key
+   CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
    ```
 
-2. **Run database migrations** (if not already done):
+2. **Seed Clerk user account for local development** (optional):
+   ```bash
+   # Creates a default dev account (dev@localhost / dev123)
+   python scripts/seed_clerk_user.py
+   
+   # Or with custom credentials
+   CLERK_SEED_EMAIL=admin@localhost CLERK_SEED_PASSWORD=admin123 python scripts/seed_clerk_user.py
+   ```
+   See [Developer Guide](docs/DEVELOPER_GUIDE.md#seeding-clerk-user-account) for more details.
+
+3. **Run database migrations** (if not already done):
    ```bash
    # Option 1: Use migration runner (recommended)
    python scripts/run-migrations.py
@@ -109,16 +121,16 @@ The Alchemist provides:
    python scripts/run-migrations.py
    ```
 
-3. **Start the Docker environment**:
+4. **Start the Docker environment**:
    ```bash
    docker compose up -d --build
    ```
 
-4. **Verify the server is running**:
+5. **Verify the server is running**:
    ```bash
    docker logs server
    ```
-   You should see: `Server socket bind to 0.0.0.0:1234`
+   You should see: `Server socket bind to 0.0.0.0:8080`
 
 ## MT5 Platform Configuration
 
@@ -132,7 +144,7 @@ The Alchemist provides:
 3. **Configure Expert Advisors**:
    - Navigate to: Tools -> Options -> Expert Advisors
    - Enable "Allow WebRequest for listed URL"
-   - Add your endpoint: `http://<your-ip>:1234` (if needed for web requests)
+   - Add your endpoint: `http://<your-ip>:8080` (if needed for web requests)
 
 4. **Load the Expert Advisors**:
    - Copy the EAs from `src/utils/MT5-EA/EAs/` to your MT5 `Experts` folder

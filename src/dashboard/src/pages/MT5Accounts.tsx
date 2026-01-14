@@ -104,9 +104,9 @@ export default function MT5Accounts() {
 
   const eaConfigSnippet =
     registrationResult &&
-    `ip = ${registrationResult.server_host || 'YOUR_MT5_SERVER_HOST'}
-port = ${registrationResult.server_port || 1234}
-auth_token = ${registrationResult.auth_token}`
+    `ip = ${registrationResult.server_host}
+    port = ${registrationResult.server_port}
+    auth_token = ${registrationResult.auth_token}`
 
   return (
     <div className="space-y-6">
@@ -154,7 +154,7 @@ auth_token = ${registrationResult.auth_token}`
                 <div>
                   <label className="block text-sm font-medium mb-1">Account type</label>
                   <select
-                    className="w-full rounded-md border border-input bg-background px-3 py-2"
+                    className="w-full rounded-md border border-input bg-background pl-3 pr-8 py-2"
                     value={registerForm.account_type}
                     onChange={(e) =>
                       setRegisterForm((f) => ({
@@ -266,7 +266,7 @@ auth_token = ${registrationResult.auth_token}`
           </CardHeader>
           <CardContent className="space-y-4">
             <select
-              className="w-full rounded-md border border-input bg-background px-3 py-2"
+              className="w-full rounded-md border border-input bg-background pl-3 pr-8 py-2"
               value={assignModelId || ''}
               onChange={(e) => setAssignModelId(Number(e.target.value) || null)}
             >

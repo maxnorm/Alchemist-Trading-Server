@@ -10,7 +10,6 @@ from typing import Dict, List, Optional
 
 from codes.socket_code import Socket
 from models.currency_pair import CurrencyPair
-from data_providers.price_provider import PriceDataProvider
 from mt5_connection.tick_streamer import MT5TickStreamer
 from connectors.mt5_tick_connector import MT5TickConnector
 from connectors.base import ConnectorConfig, IDataSourceConnector
@@ -35,7 +34,6 @@ class StreamerManager:
         self.console_lock = console_lock
         self.streamers: List[MT5TickStreamer] = []
         self.currency_pairs: Dict[str, CurrencyPair] = {}
-        self.price_data_providers: List[PriceDataProvider] = []
         self.connectors: Dict[str, IDataSourceConnector] = {}  # symbol -> connector
 
     def authenticate_streamer(self, client: socket.socket, infos: Dict) -> bool:
@@ -55,10 +53,6 @@ class StreamerManager:
         # Create currency pair
         pair = CurrencyPair(infos["symbol"], infos["digits"])
         self.currency_pairs[infos["symbol"]] = pair
-
-        # Create price data provider
-        price_provider = PriceDataProvider(pair)
-        self.price_data_providers.append(price_provider)
 
         # Create and start streamer
         streamer = MT5TickStreamer(
@@ -83,10 +77,6 @@ class StreamerManager:
         self.connectors[infos["symbol"]] = connector
 
         return True
-
-    def get_price_data_providers(self) -> List[PriceDataProvider]:
-        """Get all price data providers"""
-        return self.price_data_providers.copy()
 
     def get_currency_pairs(self) -> Dict[str, CurrencyPair]:
         """Get all currency pairs"""

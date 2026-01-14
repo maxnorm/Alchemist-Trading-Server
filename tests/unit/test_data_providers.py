@@ -14,7 +14,7 @@ import numpy as np
 # Add source to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
 
-from data_providers.base_provider import DataProvider, Feature
+from domain.models.feature import Feature
 from data_providers.registry import DataProviderRegistry
 from data_providers.price_provider import PriceDataProvider
 from data_providers.indicator_provider import IndicatorProvider

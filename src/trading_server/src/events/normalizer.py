@@ -88,11 +88,15 @@ class EventNormalizer(IEventNormalizer):
             source="mt5",
             schema={
                 "symbol": str,
-                "datetime": str,  #"YYYY.MM.DD HH:MM:SS"
+                "datetime": str,  # "YYYY.MM.DD HH:MM:SS"
                 "ask": float,
                 "bid": float,
             },
-            required_fields=["symbol", "ask", "bid"],  # datetime handled flexibly in _normalize_mt5
+            required_fields=[
+                "symbol",
+                "ask",
+                "bid",
+            ],  # datetime handled flexibly in _normalize_mt5
         )
 
     def normalize(self, raw_event: Dict, source: str) -> Dict[str, Any]:

@@ -71,7 +71,7 @@ class TestExperimentBuilder(unittest.TestCase):
         self.mock_catalog = Mock()
         
         # Mock feature catalog
-        from data_providers.base_provider import Feature
+        from domain.models.feature import Feature
         mock_features = [
             Feature(name="price_mid", data_type=float, source="MT5", description="Mid price"),
             Feature(name="rsi_14", data_type=float, source="Indicators", description="RSI 14")

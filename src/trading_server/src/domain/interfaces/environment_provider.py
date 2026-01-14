@@ -20,12 +20,12 @@ class IEnvironmentProvider(Protocol):
         ...
 
     def create_environment(
-        self, account, data_providers, window_size: int = 50
+        self, account, connectors, window_size: int = 50
     ) -> LiveTradingEnv:
         """
         Create a new trading environment
         :param account: Account instance
-        :param data_providers: List of data providers
+        :param connectors: List of data source connectors
         :param window_size: Window size for state
         :return: Created LiveTradingEnv instance
         """

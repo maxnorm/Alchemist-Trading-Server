@@ -811,12 +811,12 @@ class MT5TickStreamer:
                 if self.__stop_char in cum_data:
                     stop_index = cum_data.index(self.__stop_char)
                     final_data = cum_data[:stop_index]
-                    cum_data = cum_data[stop_index + 1:]
+                    cum_data = cum_data[stop_index + 1 :]
 
                     # Remove null bytes and other control characters from the beginning/end
                     # strip() only removes whitespace, not null bytes
-                    final_data = final_data.lstrip('\x00').rstrip('\x00').strip()
-                    
+                    final_data = final_data.lstrip("\x00").rstrip("\x00").strip()
+
                     # Skip empty or whitespace-only messages
                     if not final_data:
                         continue
@@ -948,8 +948,21 @@ class MT5TickStreamer:
                                         metrics={
                                             "latency_seconds": latency_seconds,
                                             "event_time": date_time,
-                                            "receive_time": receive_time.isoformat() if isinstance(receive_time, datetime) else str(receive_time),
-                                            "time_diff_seconds": (receive_time - self.__normalize_mt5_timestamp(date_time)).total_seconds() if isinstance(receive_time, datetime) else None,
+                                            "receive_time": (
+                                                receive_time.isoformat()
+                                                if isinstance(receive_time, datetime)
+                                                else str(receive_time)
+                                            ),
+                                            "time_diff_seconds": (
+                                                (
+                                                    receive_time
+                                                    - self.__normalize_mt5_timestamp(
+                                                        date_time
+                                                    )
+                                                ).total_seconds()
+                                                if isinstance(receive_time, datetime)
+                                                else None
+                                            ),
                                         },
                                         level="WARNING",
                                     )

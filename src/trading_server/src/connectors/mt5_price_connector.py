@@ -6,7 +6,7 @@ Replaces PriceDataProvider with iterator-based pattern
 import threading
 import queue
 import time
-from typing import Dict, Any, Iterator, Optional
+from typing import Dict, Any, Iterator, Optional, Tuple
 from datetime import datetime
 from utils.logging_config import get_logger
 from utils.time_utils import get_utc_time
@@ -52,6 +52,17 @@ class MT5PriceConnector(IDataSourceConnector):
         # Track latest timestamp
         self._latest_timestamp: Optional[datetime] = None
         self._last_update_time: Optional[float] = None
+
+        # Initialize lineage service
+        try:
+            from infrastructure.lineage.lineage_service import LineageService
+
+            self.lineage_service = LineageService()
+            self.current_run_id: Optional[str] = None
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize lineage service: {e}")
+            self.lineage_service = None
+            self.current_run_id = None
 
     def connect(self) -> bool:
         """
@@ -123,22 +134,76 @@ class MT5PriceConnector(IDataSourceConnector):
             if not self.connect():
                 raise ConnectionError("Failed to connect to MT5 price stream")
 
-        # Stream events from queue
-        while not self._shutdown_flag.is_set():
+        # Start lineage run
+        run_id = None
+        if self.lineage_service:
             try:
-                # Get event from queue with timeout
-                event = self._event_queue.get(timeout=1.0)
-                if event is None:  # Shutdown signal
-                    break
-
-                yield event
-                self._event_queue.task_done()
-
-            except queue.Empty:
-                continue
+                job_name = f"mt5_price_collection_{self.config.symbol}"
+                run_id = self.lineage_service.start_run(
+                    job_name=job_name,
+                    namespace="trading_data",
+                    inputs=[],
+                    metadata={
+                        "symbol": self.config.symbol,
+                        "source": "mt5",
+                        "data_type": "price",
+                        "mode": "stream",
+                    },
+                )
+                self.current_run_id = run_id
             except Exception as e:
-                self.logger.error(f"Error streaming event: {e}", exc_info=True)
-                continue
+                self.logger.warning(f"Failed to start lineage run: {e}")
+
+        event_count = 0
+        try:
+            # Stream events from queue
+            while not self._shutdown_flag.is_set():
+                try:
+                    # Get event from queue with timeout
+                    event = self._event_queue.get(timeout=1.0)
+                    if event is None:  # Shutdown signal
+                        break
+
+                    yield event
+                    event_count += 1
+                    self._event_queue.task_done()
+
+                except queue.Empty:
+                    continue
+                except Exception as e:
+                    self.logger.error(f"Error streaming event: {e}", exc_info=True)
+                    continue
+
+            # Complete lineage run
+            if self.lineage_service and run_id:
+                try:
+                    dataset_name = f"prices_forex_{self.config.symbol}"
+                    self.lineage_service.emit_dataset(
+                        dataset_name=dataset_name,
+                        namespace="trading_data",
+                        schema=self.get_schema(),
+                    )
+                    self.lineage_service.complete_run(
+                        run_id=run_id,
+                        outputs=[
+                            {
+                                "dataset_id": f"trading_data:{dataset_name}",
+                                "namespace": "trading_data",
+                            }
+                        ],
+                        metadata={"event_count": event_count},
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to complete lineage run: {e}")
+
+        except Exception as e:
+            # Fail lineage run on error
+            if self.lineage_service and run_id:
+                try:
+                    self.lineage_service.fail_run(run_id, str(e))
+                except Exception as lineage_error:
+                    self.logger.warning(f"Failed to fail lineage run: {lineage_error}")
+            raise
 
     def batch(
         self, start_time: datetime, end_time: datetime
@@ -153,10 +218,33 @@ class MT5PriceConnector(IDataSourceConnector):
         if start_time >= end_time:
             raise ValueError("start_time must be < end_time")
 
+        # Start lineage run
+        run_id = None
+        if self.lineage_service:
+            try:
+                job_name = f"mt5_price_batch_{self.config.symbol}"
+                run_id = self.lineage_service.start_run(
+                    job_name=job_name,
+                    namespace="trading_data",
+                    inputs=[],
+                    metadata={
+                        "symbol": self.config.symbol,
+                        "source": "mt5",
+                        "data_type": "price",
+                        "mode": "batch",
+                        "start_time": start_time.isoformat(),
+                        "end_time": end_time.isoformat(),
+                    },
+                )
+                self.current_run_id = run_id
+            except Exception as e:
+                self.logger.warning(f"Failed to start lineage run: {e}")
+
         # Query database for historical ticks
         from database import Database
 
         db = Database()
+        event_count = 0
 
         try:
             # Calculate hours to look back
@@ -204,9 +292,38 @@ class MT5PriceConnector(IDataSourceConnector):
 
                 # Validate
                 if self.normalizer.validate(normalized):
+                    event_count += 1
                     yield normalized
 
+            # Complete lineage run
+            if self.lineage_service and run_id:
+                try:
+                    dataset_name = f"prices_forex_{self.config.symbol}"
+                    self.lineage_service.emit_dataset(
+                        dataset_name=dataset_name,
+                        namespace="trading_data",
+                        schema=self.get_schema(),
+                    )
+                    self.lineage_service.complete_run(
+                        run_id=run_id,
+                        outputs=[
+                            {
+                                "dataset_id": f"trading_data:{dataset_name}",
+                                "namespace": "trading_data",
+                            }
+                        ],
+                        metadata={"event_count": event_count},
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to complete lineage run: {e}")
+
         except Exception as e:
+            # Fail lineage run on error
+            if self.lineage_service and run_id:
+                try:
+                    self.lineage_service.fail_run(run_id, str(e))
+                except Exception as lineage_error:
+                    self.logger.warning(f"Failed to fail lineage run: {lineage_error}")
             self.logger.error(f"Error fetching historical data: {e}", exc_info=True)
             raise
 
@@ -237,6 +354,30 @@ class MT5PriceConnector(IDataSourceConnector):
         :return: Datetime of most recent price update, or None if no data
         """
         return self._latest_timestamp
+
+    def backfill(
+        self, start_time: datetime, end_time: datetime, batch_size: int = 1000
+    ) -> Iterator[Dict[str, Any]]:
+        """
+        Backfill is not supported for MT5PriceConnector.
+        Use MT5TickConnector for historical backfill.
+
+        :raises NotImplementedError: This connector does not support backfill
+        """
+        raise NotImplementedError(
+            "MT5PriceConnector does not support backfill. Use MT5TickConnector instead."
+        )
+
+    def get_available_range(self) -> Tuple[datetime, datetime]:
+        """
+        Get available range is not supported for MT5PriceConnector.
+        Use MT5TickConnector for historical data range queries.
+
+        :raises NotImplementedError: This connector does not support range queries
+        """
+        raise NotImplementedError(
+            "MT5PriceConnector does not support get_available_range. Use MT5TickConnector instead."
+        )
 
     def _on_price_update(self, pair: CurrencyPair) -> None:
         """

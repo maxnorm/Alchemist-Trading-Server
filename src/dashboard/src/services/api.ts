@@ -10,8 +10,9 @@ import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
 import type { PaperSession, ValidationResult } from '@/types/model'
 import type { PerformanceBreakdown } from '@/types/performance'
 
-class ApiClient {
+export class ApiClient {
   private client: AxiosInstance
+  private getToken: (() => Promise<string | null>) | null = null
 
   constructor() {
     this.client = axios.create({
@@ -22,13 +23,15 @@ class ApiClient {
       timeout: 30000,
     })
 
-    // Request interceptor
+    // Request interceptor - add Clerk token
     this.client.interceptors.request.use(
-      (config) => {
-        // Add auth token if available (for future use)
-        const token = localStorage.getItem('auth_token')
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
+      async (config) => {
+        // Get token from Clerk if token getter is set
+        if (this.getToken) {
+          const token = await this.getToken()
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`
+          }
         }
         return config
       },
@@ -39,7 +42,12 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        if (error.response) {
+        if (error.response?.status === 401) {
+          // Token expired or invalid - redirect to sign-in
+          if (window.location.pathname !== '/sign-in') {
+            window.location.href = '/sign-in'
+          }
+        } else if (error.response) {
           // Server responded with error
           const errorData = error.response.data as { detail?: string } | undefined
           const message = errorData?.detail || error.message
@@ -53,6 +61,11 @@ class ApiClient {
         }
       }
     )
+  }
+
+  // Method to set token getter (called from useClerkApi hook)
+  setTokenGetter(getToken: () => Promise<string | null>) {
+    this.getToken = getToken
   }
 
   // Features
@@ -371,6 +384,36 @@ class ApiClient {
       `${API_ENDPOINTS.trading}/currency-pairs`
     )
     return Array.isArray(response.data?.pairs) ? response.data.pairs : []
+  }
+
+  // Positions
+  async getPositions(): Promise<any[]> {
+    const response = await this.client.get<any[]>(`${API_ENDPOINTS.trading}/positions`)
+    return Array.isArray(response.data) ? response.data : []
+  }
+
+  // Trade History
+  async getTradeHistory(filters?: {
+    symbol?: string;
+    startDate?: string;
+    endDate?: string;
+    experimentId?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ trades: Trade[]; total: number }> {
+    const response = await this.client.get<{ trades: Trade[]; total: number }>(
+      `${API_ENDPOINTS.trading}/history`,
+      { params: filters }
+    )
+    return response.data
+  }
+
+  // Parameter Importance (Optuna)
+  async getParameterImportance(experimentId: number): Promise<any> {
+    const response = await this.client.get(
+      `${API_ENDPOINTS.experiments}/${experimentId}/optuna/importance`
+    )
+    return response.data
   }
 }
 

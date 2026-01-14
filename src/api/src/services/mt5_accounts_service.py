@@ -40,6 +40,7 @@ def get_all_accounts(
     db: Session,
     connected_only: bool = False,
     account_type: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> List[MT5AccountResponse]:
     """Get all MT5 accounts with optional filtering"""
     query = db.query(MT5Account)
@@ -50,6 +51,10 @@ def get_all_accounts(
 
     if account_type:
         query = query.filter(MT5Account.account_type == account_type)
+
+    if user_id:
+        # Filter by user ownership
+        query = query.filter(MT5Account.user_id == user_id)
 
     accounts = query.filter(MT5Account.is_active == True).order_by(MT5Account.created_at.desc()).all()
 
@@ -76,6 +81,91 @@ def get_account_by_id(db: Session, account_id: int) -> Optional[MT5AccountRespon
 def get_account_by_login(db: Session, login: int) -> Optional[MT5Account]:
     """Get MT5 account by login (returns ORM model)"""
     return db.query(MT5Account).filter(MT5Account.account_login == login).first()
+
+
+def verify_account_ownership(db: Session, account_id: int, user_id: str) -> bool:
+    """Verify that user owns the account"""
+    account = db.query(MT5Account).filter(
+        MT5Account.id == account_id,
+        MT5Account.user_id == user_id,
+        MT5Account.is_active == True
+    ).first()
+    return account is not None
+
+
+def create_account_for_user(
+    db: Session,
+    request: MT5AccountCreateRequest,
+    user_id: str,
+    created_by: Optional[str] = None,
+) -> MT5AccountResponse:
+    """Create a new MT5 account with user association"""
+    # Check if account already exists
+    existing = get_account_by_login(db, request.account_login)
+    if existing:
+        # Update existing account
+        existing.account_type = (
+            request.account_type.value
+            if hasattr(request.account_type, "value")
+            else request.account_type
+        )
+        existing.broker_name = request.broker_name
+        existing.broker_server = request.broker_server
+        existing.account_currency = request.account_currency
+        existing.account_leverage = request.account_leverage
+        existing.is_active = True
+        existing.last_seen_at = datetime.utcnow()
+
+        # Link to user if not already linked (allows claiming)
+        if not existing.user_id:
+            existing.user_id = user_id
+            existing.created_by = created_by or user_id
+
+        # Ensure existing accounts have an auth token
+        if not existing.auth_token:
+            existing.auth_token = _generate_auth_token()
+
+        db.commit()
+        db.refresh(existing)
+        account_dict = _account_to_dict(existing, db)
+        return MT5AccountResponse(**account_dict)
+
+    # Create new account
+    account = MT5Account(
+        account_login=request.account_login,
+        account_type=(
+            request.account_type.value
+            if hasattr(request.account_type, "value")
+            else request.account_type
+        ),
+        broker_name=request.broker_name,
+        broker_server=request.broker_server,
+        account_currency=request.account_currency,
+        account_leverage=request.account_leverage,
+        account_name=request.account_name,
+        user_id=user_id,
+        created_by=created_by or user_id,
+        is_active=True,
+        last_seen_at=datetime.utcnow(),
+        auth_token=_generate_auth_token(),
+    )
+
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+
+    # Log connection if provided
+    if request.connection_ip or request.terminal_id:
+        log_connection(
+            db,
+            account.id,
+            terminal_id=request.terminal_id,
+            ea_version=request.ea_version,
+            connection_ip=request.connection_ip,
+        )
+
+    account_dict = _account_to_dict(account, db)
+    return MT5AccountResponse(**account_dict)
 
 
 def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountResponse:
@@ -357,6 +447,24 @@ def get_current_assignment(db: Session, account_id: int) -> Optional[ModelAssign
     )
 
 
+def regenerate_account_token(db: Session, account_id: int, user_id: str) -> Optional[str]:
+    """Regenerate auth token for an account (requires ownership verification)"""
+    # Verify ownership
+    if not verify_account_ownership(db, account_id, user_id):
+        return None
+
+    account = db.query(MT5Account).filter(MT5Account.id == account_id).first()
+    if not account:
+        return None
+
+    # Generate new token
+    account.auth_token = _generate_auth_token()
+    db.commit()
+    db.refresh(account)
+
+    return account.auth_token
+
+
 def pause_trading(db: Session, account_id: int) -> Optional[MT5ConnectionStatusResponse]:
     """Pause trading on an account (mark connection as paused)"""
     # This is a placeholder - actual implementation would depend on trading control logic
@@ -523,6 +631,8 @@ def _account_to_dict(account: MT5Account, db: Session) -> dict:
         "last_seen_at": account.last_seen_at,
         "created_at": account.created_at,
         "updated_at": account.updated_at,
+        "user_id": account.user_id,
+        "created_by": account.created_by,
         "connection_status": connection_status,
         "current_model_id": current_model_id,
         "current_model_version": current_model_version,

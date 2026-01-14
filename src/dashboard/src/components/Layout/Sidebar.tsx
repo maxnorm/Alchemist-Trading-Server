@@ -32,21 +32,25 @@ export function Sidebar() {
   return (
     <div
       className={cn(
-        'flex h-screen flex-col border-r bg-card transition-all duration-300',
+        'flex h-screen flex-col border-r border-border transition-all duration-300',
+        'bg-mono-200 dark:bg-mono-200',
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >
-      <div className="flex h-16 items-center border-b px-4">
+      {/* Header with terminal aesthetic */}
+      <div className="flex h-16 items-center border-b border-border px-4 bg-mono-300 dark:bg-mono-300">
         {!sidebarCollapsed && (
-          <h1 className="text-xl font-bold">Alchemist</h1>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            ALCHEMIST
+          </h1>
         )}
         <button
           onClick={toggleSidebar}
-          className="ml-auto rounded-md p-2 hover:bg-accent"
+          className="ml-auto rounded-sm p-2 hover:bg-orange-400/10 transition-colors"
           aria-label="Toggle sidebar"
         >
           <svg
-            className="h-5 w-5"
+            className="h-5 w-5 text-muted-foreground"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -60,7 +64,9 @@ export function Sidebar() {
           </svg>
         </button>
       </div>
-      <nav className="flex-1 space-y-1 p-4">
+
+      {/* Navigation with orange accent for active state */}
+      <nav className="flex-1 space-y-1 p-3">
         {navigation.map((item) => {
           const isActive = 
             (item.href === '/dashboard' && (location.pathname === '/' || location.pathname === '/dashboard')) ||
@@ -71,14 +77,14 @@ export function Sidebar() {
               key={item.name}
               to={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-lg text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-sm text-sm font-medium transition-colors',
                 'border-l-2',
                 sidebarCollapsed 
                   ? 'justify-center px-2 py-3' 
                   : 'px-3 py-2',
                 isActive
-                  ? 'border-primary text-foreground bg-accent/50'
-                  : 'border-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? 'border-orange-400 text-orange-400 bg-orange-400/10'
+                  : 'border-transparent text-muted-foreground hover:bg-mono-300 hover:text-foreground'
               )}
               title={sidebarCollapsed ? item.name : undefined}
             >

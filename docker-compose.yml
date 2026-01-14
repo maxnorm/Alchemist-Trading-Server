@@ -14,11 +14,13 @@ services:
             - "./src/gateway/conf.d:/etc/nginx/conf.d:ro"
             - "./logs/gateway:/var/log/nginx"  # Bind mount to sync logs to codebase
         depends_on:
-            - dashboard
-            - api
+            dashboard:
+                condition: service_healthy
+            api:
+                condition: service_healthy
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/gateway/health"]
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/gateway/health"]
             interval: 30s
             timeout: 10s
             retries: 3
@@ -33,16 +35,16 @@ services:
         ports:
             - "5432:5432" # For local access - REMOVE THIS LINE FOR PRODUCTION
         environment:
-            POSTGRES_USER: forex_user
-            POSTGRES_PASSWORD: forex_password
-            POSTGRES_DB: db_forex
+            POSTGRES_USER: ${DB_USER}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+            POSTGRES_DB: ${DB_NAME}
         volumes:
             - "./src/database/scripts:/docker-entrypoint-initdb.d"
             - "./src/database/postgresql.conf:/etc/postgresql/postgresql.conf:ro"
             - "postgres_data:/var/lib/postgresql/data"
         command: postgres -c config_file=/etc/postgresql/postgresql.conf
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U forex_user -d db_forex"]
+            test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
             interval: 10s
             timeout: 5s
             retries: 5
@@ -56,18 +58,29 @@ services:
         build:
             context: .
             dockerfile: ./src/trading_server/Dockerfile
-        # REMOVED: ports - no external access
         depends_on:
             postgres:
                 condition: service_healthy
+            redis:
+                condition: service_healthy
         environment:
-            DB_HOST: postgres
-            DB_PORT: 5432
-            DB_USER: forex_user
-            DB_PASSWORD: forex_password
-            DB_NAME: db_forex
+            DB_HOST: ${DB_HOST}
+            DB_PORT: ${DB_PORT}
+            DB_USER: ${DB_USER}
+            DB_PASSWORD: ${DB_PASSWORD}
+            DB_NAME: ${DB_NAME}
             LOG_DIR: /app/logs
             STREAMER_AUTH_TOKEN: ${STREAMER_AUTH_TOKEN}
+            SERVER_IP: ${SERVER_IP}
+            SERVER_PORT: ${SERVER_PORT}
+            MYFXBOOK_EMAIL: ${MYFXBOOK_EMAIL:-}
+            MYFXBOOK_PASSWORD: ${MYFXBOOK_PASSWORD:-}
+            URL_MYFXBOOK: ${URL_MYFXBOOK:-}
+            FRED_API_KEY: ${FRED_API_KEY:-}
+            NEWSAPI_API_KEY: ${NEWSAPI_API_KEY:-}
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+            REDIS_DB: 0
         volumes:
             - "./logs:/app/logs"
             - "./models:/app/models"
@@ -82,11 +95,11 @@ services:
             postgres:
                 condition: service_healthy
         environment:
-            PGHOST: postgres
-            PGPORT: 5432
-            PGUSER: forex_user
-            PGPASSWORD: forex_password
-            PGDATABASE: db_forex
+            PGHOST: ${DB_HOST}
+            PGPORT: ${DB_PORT}
+            PGUSER: ${DB_USER}
+            PGPASSWORD: ${DB_PASSWORD}
+            PGDATABASE: ${DB_NAME}
             DB_BACKUP_DIR: /backups
             DB_BACKUP_RETENTION_DAYS: 7
         volumes:
@@ -103,12 +116,11 @@ services:
             - backup
 
     # ============================================
-    # MLflow (Internal Only - Optional to expose via gateway)
+    # MLflow (Internal Only)
     # ============================================
     mlflow:
         container_name: "mlflow"
         image: ghcr.io/mlflow/mlflow:v2.10.0
-        # REMOVED: ports - access via gateway if needed
         environment:
             MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow/mlflow.db
             MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
@@ -116,12 +128,12 @@ services:
             - "mlflow_data:/mlflow"
         command: >
             mlflow server
-            --host 0.0.0.0
-            --port 5000
+            --host ${MLFLOW_HOST:-0.0.0.0}
+            --port ${MLFLOW_PORT:-5000}
             --backend-store-uri sqlite:///mlflow/mlflow.db
             --default-artifact-root /mlflow/artifacts
         healthcheck:
-            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+            test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${MLFLOW_PORT:-5000}/health').read()\" || exit 1"]
             interval: 30s
             timeout: 10s
             retries: 3
@@ -136,53 +148,69 @@ services:
         build:
             context: ./src/api
             dockerfile: Dockerfile
-        # REMOVED: ports - access via gateway
         depends_on:
             postgres:
                 condition: service_healthy
             mlflow:
                 condition: service_healthy
+            redis:
+                condition: service_healthy
         environment:
-            DATABASE_URL: postgresql+psycopg2://forex_user:forex_password@postgres:5432/db_forex
-            DB_HOST: postgres
-            DB_PORT: 5432
-            DB_USER: forex_user
-            DB_PASSWORD: forex_password
-            DB_NAME: db_forex
-            MLFLOW_TRACKING_URI: http://mlflow:5000
-            API_HOST: 0.0.0.0
-            API_PORT: 8000
-            LOG_LEVEL: INFO
-            KILL_SWITCH_FILE: /app/logs/kill_switch.flag
+            API_HOST: ${API_HOST}
+            API_PORT: ${API_PORT}
+            DB_HOST: ${DB_HOST}
+            DB_PORT: ${DB_PORT}
+            DB_USER: ${DB_USER}
+            DB_PASSWORD: ${DB_PASSWORD}
+            DB_NAME: ${DB_NAME}
+            MLFLOW_TRACKING_URI: ${MLFLOW_URI:-http://mlflow:5000}
+            LOG_LEVEL: ${LOG_LEVEL}
+            KILL_SWITCH_FILE: ${KILL_SWITCH_FILE:-/app/logs/kill_switch.flag}
+            CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+            CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+            CLERK_SEED_ENABLED: ${CLERK_SEED_ENABLED:-false}
+            CLERK_SEED_EMAIL: ${CLERK_SEED_EMAIL}
+            CLERK_SEED_PASSWORD: ${CLERK_SEED_PASSWORD}
+            CLERK_SEED_ROLES: ${CLERK_SEED_ROLES}
+            MT5_SERVER_PUBLIC_HOST: ${MT5_SERVER_PUBLIC_HOST:-}
+            MT5_SERVER_PUBLIC_PORT: ${MT5_SERVER_PUBLIC_PORT:-}
+            TRADING_SERVER_HOST: ${SERVER_IP:-server}
+            TRADING_SERVER_PORT: ${SERVER_PORT:-8080}
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+            REDIS_DB: 0
         volumes:
             - "./logs:/app/logs"
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+            test: ["CMD-SHELL", "curl -f http://127.0.0.1:${API_PORT}/health"]
             interval: 30s
             timeout: 10s
             retries: 5
             start_period: 60s
 
     # ============================================
-    # React Dashboard
+    # Web Dashboard
     # ============================================
     dashboard:
         container_name: "dashboard"
         build:
             context: ./src/dashboard
             dockerfile: Dockerfile
-        # REMOVED: ports - access via gateway
-        # UPDATED: Environment variables to use gateway paths
+            args:
+                VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+                VITE_API_URL: ${VITE_API_URL:-}
+                VITE_WS_URL: ${VITE_WS_URL:-}
         environment:
-            VITE_API_URL: ""
-            VITE_WS_URL: /ws
+            VITE_API_URL: ${VITE_API_URL}
+            VITE_WS_URL: ${VITE_WS_URL}
+            VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
         depends_on:
             api:
                 condition: service_started
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+            test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/health"]
             interval: 30s
             timeout: 10s
             retries: 3
@@ -194,11 +222,16 @@ services:
     prometheus:
         container_name: "prometheus"
         image: prom/prometheus:latest
-        # REMOVED: ports - internal only
+        environment:
+            API_PORT: ${API_PORT}
+            SERVER_PORT: ${SERVER_PORT}
+            PROMETHEUS_PORT: ${PROMETHEUS_PORT}
         volumes:
-            - "./src/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+            - "./src/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml.template:ro"
+            - "./src/monitoring/prometheus/entrypoint.sh:/entrypoint.sh:ro"
             - "./src/monitoring/prometheus/alerts:/etc/prometheus/alerts:ro"
             - "prometheus_data:/prometheus"
+        entrypoint: ["/bin/sh", "/entrypoint.sh"]
         command:
             - '--config.file=/etc/prometheus/prometheus.yml'
             - '--storage.tsdb.path=/prometheus'
@@ -208,24 +241,22 @@ services:
             - api
         restart: unless-stopped
         healthcheck:
-            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+            test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:${PROMETHEUS_PORT:-9090}/-/healthy"]
             interval: 30s
             timeout: 10s
             retries: 3
             start_period: 30s
 
     # ============================================
-    # Grafana (Internal Only - Optional to expose via gateway)
+    # Grafana (Internal Only)
     # ============================================
     grafana:
         container_name: "grafana"
         image: grafana/grafana:latest
-        # REMOVED: ports - access via gateway if needed
         environment:
-            - GF_SECURITY_ADMIN_USER=admin
-            - GF_SECURITY_ADMIN_PASSWORD=admin
+            - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+            - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
             - GF_INSTALL_PLUGINS=
-            # Configure Grafana to work behind reverse proxy
             - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
             - GF_SERVER_SERVE_FROM_SUB_PATH=true
         volumes:
@@ -242,9 +273,169 @@ services:
             retries: 3
             start_period: 30s
 
+    # ============================================
+    # Redis (Celery Broker & Message Queue)
+    # ============================================
+    redis:
+        container_name: "redis"
+        image: redis:7-alpine
+        volumes:
+            - "redis_data:/data"
+        command: redis-server --appendonly yes
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        restart: unless-stopped
+
+    # ============================================
+    # Airflow Services
+    # ============================================
+    airflow-init:
+        container_name: "airflow-init"
+        image: apache/airflow:2.8.0
+        environment:
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
+            - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+            - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        volumes:
+            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./airflow_logs:/opt/airflow/logs"
+            - "./airflow_plugins:/opt/airflow/plugins"
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        command: >
+            bash -c "
+            airflow db init &&
+            airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin || true
+            "
+        restart: "no"
+        profiles:
+            - init
+
+    airflow-webserver:
+        container_name: "airflow-webserver"
+        image: apache/airflow:2.8.0
+        ports:
+            - "8081:8080"
+        environment:
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor    
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
+            - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+            - AIRFLOW__CORE__LOAD_EXAMPLES=False
+            - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+            - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+        volumes:
+            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./airflow_logs:/opt/airflow/logs"
+            - "./airflow_plugins:/opt/airflow/plugins"
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        entrypoint: >
+            bash -c "
+            until airflow db check; do
+                echo 'Database not ready, waiting...'
+                sleep 5
+            done || (
+                echo 'Initializing Airflow database...'
+                airflow db init
+            ) &&
+            exec airflow webserver
+            "
+        command: []
+        healthcheck:
+            test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 60s
+        restart: unless-stopped
+
+    airflow-scheduler:
+        container_name: "airflow-scheduler"
+        image: apache/airflow:2.8.0
+        environment:
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
+            - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+            - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        volumes:
+            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./airflow_logs:/opt/airflow/logs"
+            - "./airflow_plugins:/opt/airflow/plugins"
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+            airflow-webserver:
+                condition: service_healthy
+        entrypoint: >
+            bash -c "
+            until airflow db check; do
+                echo 'Database not ready, waiting...'
+                sleep 5
+            done &&
+            exec airflow scheduler
+            "
+        command: []
+        restart: unless-stopped
+
+    airflow-worker:
+        container_name: "airflow-worker"
+        image: apache/airflow:2.8.0
+        environment:
+            - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
+            - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+            - AIRFLOW__CORE__LOAD_EXAMPLES=False
+        volumes:
+            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./airflow_logs:/opt/airflow/logs"
+            - "./airflow_plugins:/opt/airflow/plugins"
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+            airflow-webserver:
+                condition: service_healthy
+        entrypoint: >
+            bash -c "
+            until airflow db check; do
+                echo 'Database not ready, waiting...'
+                sleep 5
+            done &&
+            exec airflow celery worker
+            "
+        command: []
+        restart: unless-stopped
+
 volumes:
     postgres_data:
     backup_data:
     mlflow_data:
     prometheus_data:
     grafana_data:
+    redis_data:

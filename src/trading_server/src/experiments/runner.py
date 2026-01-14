@@ -116,18 +116,16 @@ class ExperimentRunner:
 
                 # Create environment with experiment features
                 # Note: This assumes environment factory can filter by features
-                # For now, we'll use all available providers and filter in the environment
+                # For now, we'll use all available connectors and filter in the environment
                 # TODO: Enhance environment factory to support feature selection
-                data_providers = self._get_data_providers_for_pairs(
-                    experiment.currency_pairs
-                )
+                connectors = self._get_connectors_for_pairs(experiment.currency_pairs)
                 window_size = experiment.hyperparameters.get("window_size", 50)
                 # Extract seed from hyperparameters (default: 42 for reproducibility)
                 seed = experiment.hyperparameters.get("seed", 42)
 
                 environment = self.environment_factory.create_environment(
                     account=account,
-                    connectors=data_providers,
+                    connectors=connectors,
                     window_size=window_size,
                     seed=seed,
                 )
@@ -546,7 +544,7 @@ class ExperimentRunner:
             trading_enabled=False,  # Start with trading disabled for safety
         )
 
-    def _get_data_providers_for_pairs(self, currency_pairs: list):
+    def _get_connectors_for_pairs(self, currency_pairs: list):
         """
         Get data connectors for specified currency pairs
 

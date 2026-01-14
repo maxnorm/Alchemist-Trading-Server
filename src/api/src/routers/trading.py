@@ -5,9 +5,10 @@ Trading control endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import Optional, List
+from typing import Optional, List, Dict
 from dependencies import get_db
 from services import trading_service
+from middleware.auth import get_current_user
 from services.trading_service import (
     check_kill_switch_status,
     get_open_positions,
@@ -27,7 +28,10 @@ router = APIRouter()
 
 
 @router.get("/trading/status", response_model=TradingStatusResponse)
-async def get_trading_status(db: Session = Depends(get_db)):
+async def get_trading_status(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get trading status"""
     try:
         return trading_service.get_trading_status(db)
@@ -49,6 +53,7 @@ async def get_trading_status(db: Session = Depends(get_db)):
 @router.post("/trading/start")
 async def start_trading(
     confirm: bool = Query(False, description="Confirmation required to start trading"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Start live trading"""
@@ -69,7 +74,10 @@ async def start_trading(
 
 
 @router.post("/trading/stop")
-async def stop_trading(db: Session = Depends(get_db)):
+async def stop_trading(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Stop trading"""
     # In a real implementation, this would stop the trading server
     return {"message": "Trading stopped", "status": "inactive"}
@@ -81,6 +89,7 @@ async def emergency_kill_switch(
         False, description="Confirmation required for emergency kill"
     ),
     reason: str = Query("API emergency kill", description="Reason for kill switch"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Emergency kill switch"""
@@ -98,14 +107,17 @@ async def emergency_kill_switch(
 
 
 @router.get("/trading/kill-switch/status", response_model=KillSwitchStatusResponse)
-async def get_kill_switch_status_route():
+async def get_kill_switch_status_route(
+    user: Dict = Depends(get_current_user),
+):
     """Get kill switch status"""
     return trading_service.get_kill_switch_status()
 
 
 @router.post("/trading/kill-switch/trigger")
 async def trigger_kill_switch_route(
-    reason: str = Query("API trigger", description="Reason for kill switch")
+    reason: str = Query("API trigger", description="Reason for kill switch"),
+    user: Dict = Depends(get_current_user),
 ):
     """Trigger kill switch"""
     success = trading_service.trigger_kill_switch(reason)
@@ -115,7 +127,9 @@ async def trigger_kill_switch_route(
 
 
 @router.post("/trading/kill-switch/reset")
-async def reset_kill_switch_route():
+async def reset_kill_switch_route(
+    user: Dict = Depends(get_current_user),
+):
     """Reset kill switch"""
     success = trading_service.reset_kill_switch()
     if not success:
@@ -126,13 +140,19 @@ async def reset_kill_switch_route():
 @router.get(
     "/trading/circuit-breaker/status", response_model=CircuitBreakerStatusResponse
 )
-async def get_circuit_breaker_status_route(db: Session = Depends(get_db)):
+async def get_circuit_breaker_status_route(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get circuit breaker status"""
     return trading_service.get_circuit_breaker_status(db)
 
 
 @router.post("/trading/circuit-breaker/reset")
-async def reset_circuit_breaker_route(db: Session = Depends(get_db)):
+async def reset_circuit_breaker_route(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Reset circuit breaker"""
     success = trading_service.reset_circuit_breaker(db)
     if not success:
@@ -141,7 +161,10 @@ async def reset_circuit_breaker_route(db: Session = Depends(get_db)):
 
 
 @router.get("/trading/positions", response_model=List[PositionResponse])
-async def get_positions(db: Session = Depends(get_db)):
+async def get_positions(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get open positions"""
     try:
         return get_open_positions(db)
@@ -157,6 +180,7 @@ async def get_trade_history_route(
     limit: int = Query(
         100, ge=1, le=1000, description="Maximum number of trades to return"
     ),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get trade history"""
@@ -170,7 +194,10 @@ async def get_trade_history_route(
 
 
 @router.get("/trading/currency-pairs", response_model=CurrencyPairsResponse)
-async def get_currency_pairs(db: Session = Depends(get_db)):
+async def get_currency_pairs(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get available currency pairs from database"""
     try:
         pairs = get_available_currency_pairs(db)

@@ -274,12 +274,8 @@ def main():
     print("DATA COLLECTION PIPELINE IMPROVEMENTS - TEST SUITE")
     print("="*80)
     
-    # Set environment variables if needed
-    os.environ.setdefault("DB_HOST", "localhost")
-    os.environ.setdefault("DB_PORT", "5432")
-    os.environ.setdefault("DB_USER", "forex_user")
-    os.environ.setdefault("DB_PASSWORD", "forex_password")
-    os.environ.setdefault("DB_NAME", "db_forex")
+    # Database credentials must be provided via environment variables (.env file)
+    # Required: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
     
     results = {}
     

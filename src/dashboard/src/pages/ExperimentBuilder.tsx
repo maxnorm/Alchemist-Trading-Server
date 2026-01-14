@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import toast from 'react-hot-toast'
 import { useExperimentForm } from '@/features/experiments/hooks/useExperimentForm'
 import { ExperimentFormBasicInfo } from '@/features/experiments/components/ExperimentFormBasicInfo'
 import { ExperimentFormFeatures } from '@/features/experiments/components/ExperimentFormFeatures'
 import { ExperimentFormCurrencyPairs } from '@/features/experiments/components/ExperimentFormCurrencyPairs'
+import { PageHeader } from '@/components/common/PageHeader'
+import { DenseCard, DenseCardHeader, DenseCardContent } from '@/components/common/DenseCard'
+import { AnimatedPanel } from '@/components/common/AnimatedPanel'
 
 export default function ExperimentBuilder() {
   const queryClient = useQueryClient()
@@ -51,13 +53,18 @@ export default function ExperimentBuilder() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Experiment Builder</h1>
-        <p className="text-muted-foreground">Create and configure new trading experiments</p>
-      </div>
+    <div className="space-y-4">
+      <PageHeader
+        title="Experiment Builder"
+        description="Create and configure new trading experiments"
+        actions={
+          <Button type="submit" form="experiment-form" disabled={createMutation.isPending}>
+            {createMutation.isPending ? <LoadingSpinner size="sm" /> : 'Create Experiment'}
+          </Button>
+        }
+      />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="experiment-form" onSubmit={handleSubmit} className="space-y-4">
         <ExperimentFormBasicInfo
           name={formData.name}
           description={formData.description || ''}
@@ -84,51 +91,50 @@ export default function ExperimentBuilder() {
           errors={errors}
         />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Training Mode</CardTitle>
-            <CardDescription>Choose how to train the model</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => actions.setField('training_mode', 'live')}
-                className={`flex-1 rounded-md border p-4 text-left transition-colors ${
-                  formData.training_mode === 'live'
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:bg-accent'
-                }`}
-              >
-                <div className="font-medium">Live Training</div>
-                <div className="text-sm text-muted-foreground">
-                  Train on real-time data
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => actions.setField('training_mode', 'historical')}
-                className={`flex-1 rounded-md border p-4 text-left transition-colors ${
-                  formData.training_mode === 'historical'
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border hover:bg-accent'
-                }`}
-              >
-                <div className="font-medium">Historical Backtest</div>
-                <div className="text-sm text-muted-foreground">
-                  Train on historical data
-                </div>
-              </button>
-            </div>
-          </CardContent>
-        </Card>
+        <AnimatedPanel delay={0.15}>
+          <DenseCard density="dense">
+            <DenseCardHeader
+              title="Training Mode"
+              description="Choose how to train the model"
+            />
+            <DenseCardContent>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => actions.setField('training_mode', 'live')}
+                  className={`flex-1 rounded-sm border p-4 text-left transition-colors ${
+                    formData.training_mode === 'live'
+                      ? 'border-orange-400 bg-orange-400/10 text-orange-400'
+                      : 'border-border hover:bg-mono-300'
+                  }`}
+                >
+                  <div className="font-medium">Live Training</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Train on real-time data
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => actions.setField('training_mode', 'historical')}
+                  className={`flex-1 rounded-sm border p-4 text-left transition-colors ${
+                    formData.training_mode === 'historical'
+                      ? 'border-orange-400 bg-orange-400/10 text-orange-400'
+                      : 'border-border hover:bg-mono-300'
+                  }`}
+                >
+                  <div className="font-medium">Historical Backtest</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Train on historical data
+                  </div>
+                </button>
+              </div>
+            </DenseCardContent>
+          </DenseCard>
+        </AnimatedPanel>
 
-        <div className="flex justify-end gap-4">
+        <div className="flex justify-end gap-3">
           <Button type="button" variant="outline">
             Save Draft
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? <LoadingSpinner size="sm" /> : 'Create Experiment'}
           </Button>
         </div>
       </form>

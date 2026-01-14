@@ -113,6 +113,13 @@ bool auth()
       json["login"] = AccountInfoInteger(ACCOUNT_LOGIN);
       json["auth_token"] = auth_token;
       
+      // Send account type and broker information
+      json["account_type"] = AccountInfoInteger(ACCOUNT_TRADE_MODE);  // 0=Demo, 2=Real
+      json["broker_name"] = AccountInfoString(ACCOUNT_COMPANY);
+      json["broker_server"] = AccountInfoString(ACCOUNT_SERVER);
+      json["account_name"] = AccountInfoString(ACCOUNT_NAME);
+      json["ea_version"] = "1.00";
+      
       PrintFormat("[EA] auth: Sending auth - code: %d, login: %d", auth_code, AccountInfoInteger(ACCOUNT_LOGIN));
 
       send_msg(socket, json);

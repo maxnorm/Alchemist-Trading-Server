@@ -2513,7 +2513,7 @@ volumes:
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │   │
 │  │  │   Server     │  │     API      │  │  Dashboard   │      │   │
 │  │  │  (Python)    │  │   (FastAPI)  │  │   (React)     │      │   │
-│  │  │  Port 1234   │  │  Port 8000   │  │  Port 3000    │      │   │
+│  │  │  Port 8080   │  │  Port 8000   │  │  Port 3000    │      │   │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘      │   │
 │  │                                                               │   │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │   │
@@ -2604,7 +2604,7 @@ docker compose logs -f
 
 | Service | Port | Purpose | Required |
 |---------|------|---------|----------|
-| **server** | 1234 | Python MT5 trading server | Yes |
+| **server** | 8080 | Python MT5 trading server | Yes |
 | **api** | 8000 | FastAPI REST + WebSocket | Yes |
 | **dashboard** | 3000 | React SPA | Yes |
 | **mariadb** | 3306 | Trading database | Yes |
@@ -3474,7 +3474,7 @@ echo "Restore complete!"
 ```env
 # Server Configuration
 SERVER_IP=0.0.0.0
-SERVER_PORT=1234
+SERVER_PORT=8080
 
 # Database (Trading)
 DB_HOST=mariadb

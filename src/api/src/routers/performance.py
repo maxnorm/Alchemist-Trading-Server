@@ -4,9 +4,10 @@ Performance metrics endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from dependencies import get_db
+from middleware.auth import get_current_user
 from services import performance_service
 from schemas.performance import (
     PortfolioPerformanceResponse,
@@ -27,6 +28,7 @@ async def get_portfolio_performance(
     period: str = Query(
         "all_time", description="Time period (daily, weekly, monthly, yearly, all_time)"
     ),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get portfolio performance summary"""
@@ -44,6 +46,7 @@ async def get_portfolio_performance(
 async def get_portfolio_equity_curve(
     start_date: Optional[datetime] = Query(None, description="Start date"),
     end_date: Optional[datetime] = Query(None, description="End date"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get portfolio equity curve data"""
@@ -61,6 +64,7 @@ async def get_portfolio_equity_curve(
 )
 async def get_performance_breakdown(
     period: str = Query("day", description="Breakdown period"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get P&L breakdown by period"""
@@ -73,7 +77,10 @@ async def get_performance_breakdown(
 
 
 @router.get("/performance/portfolio/allocation", response_model=AllocationResponse)
-async def get_allocation(db: Session = Depends(get_db)):
+async def get_allocation(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get allocation by pair/model"""
     try:
         return performance_service.get_allocation(db)
@@ -84,7 +91,10 @@ async def get_allocation(db: Session = Depends(get_db)):
 
 
 @router.get("/performance/models", response_model=List[ModelPerformanceResponse])
-async def list_model_performance(db: Session = Depends(get_db)):
+async def list_model_performance(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """List all model performance summaries"""
     try:
         return performance_service.list_model_performance(db)
@@ -98,6 +108,7 @@ async def list_model_performance(db: Session = Depends(get_db)):
 async def get_model_performance(
     model_id: int,
     period: str = Query("all_time", description="Time period"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get detailed model performance"""
@@ -123,6 +134,7 @@ async def get_model_equity_curve(
     model_id: int,
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get model equity curve"""
@@ -145,6 +157,7 @@ async def get_model_trades(
     offset: int = Query(0, ge=0),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get model trade history"""
@@ -163,6 +176,7 @@ async def get_model_trades(
 async def get_model_statistics(
     model_id: int,
     period: str = Query("all_time", description="Time period"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Get detailed model statistics (win streaks, avg duration, etc.)"""
@@ -175,7 +189,11 @@ async def get_model_statistics(
 
 
 @router.get("/performance/models/{model_id}/comparison")
-async def get_model_comparison(model_id: int, db: Session = Depends(get_db)):
+async def get_model_comparison(
+    model_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Compare paper vs live trading performance"""
     try:
         return performance_service.get_model_comparison(db, model_id)
@@ -186,7 +204,10 @@ async def get_model_comparison(model_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/performance/metrics/realtime")
-async def get_realtime_metrics(db: Session = Depends(get_db)):
+async def get_realtime_metrics(
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get real-time performance metrics for all active models"""
     try:
         return performance_service.get_realtime_metrics(db)
@@ -201,6 +222,7 @@ async def export_portfolio_report(
     format: str = Query("csv", description="Export format (csv or pdf)"),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Export portfolio report (PDF/CSV)"""
@@ -218,6 +240,7 @@ async def export_portfolio_report(
 async def export_model_report(
     model_id: int,
     format: str = Query("csv", description="Export format (csv or pdf)"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Export model report (PDF/CSV)"""

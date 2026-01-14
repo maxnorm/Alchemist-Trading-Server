@@ -11,13 +11,14 @@ import argparse
 from pathlib import Path
 
 # Configuration
+# Supports both PostgreSQL standard env vars (PGHOST, PGPORT, etc.) and DB_* vars
 BACKUP_DIR = os.getenv('DB_BACKUP_DIR', '/backups')
 RETENTION_DAYS = int(os.getenv('DB_BACKUP_RETENTION_DAYS', '7'))
-DB_HOST = os.getenv('PGHOST', os.getenv('DB_HOST', 'postgres'))
-DB_PORT = os.getenv('PGPORT', os.getenv('DB_PORT', '5432'))
-DB_USER = os.getenv('PGUSER', os.getenv('DB_USER', 'forex_user'))
-DB_PASSWORD = os.getenv('PGPASSWORD', os.getenv('DB_PASSWORD', 'forex_password'))
-DB_NAME = os.getenv('PGDATABASE', os.getenv('DB_NAME', 'db_forex'))
+DB_HOST = os.getenv('PGHOST') or os.getenv('DB_HOST')
+DB_PORT = os.getenv('PGPORT') or os.getenv('DB_PORT')
+DB_USER = os.getenv('PGUSER') or os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('PGPASSWORD') or os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('PGDATABASE') or os.getenv('DB_NAME')
 
 def create_backup():
     """Create a database backup"""

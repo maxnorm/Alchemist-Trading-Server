@@ -3,11 +3,12 @@ WebSocket channel handlers
 """
 
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Optional, Set
+from typing import Optional, Set, Dict
 import json
 import logging
 import re
 from websocket.manager import websocket_manager
+from services.clerk_service import clerk_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,35 @@ CHANNEL_PATTERNS = [
 
 
 async def handle_websocket(websocket: WebSocket, channel: str):
-    """Handle WebSocket connection for a specific channel"""
-    await websocket_manager.connect(websocket, channel)
+    """Handle WebSocket connection for a specific channel with Clerk authentication"""
+    # Get token from query params
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
+    try:
+        # Verify token with Clerk
+        session_data = clerk_service.verify_token(token)
+        user_id = session_data["user_id"]
+        user_data = clerk_service.get_user(user_id)
+        roles = clerk_service.extract_roles(user_data)
+
+        # Store user info in websocket state
+        websocket.state.user_id = user_id
+        websocket.state.user_email = user_data.get("email")
+        websocket.state.roles = roles
+
+        logger.info(f"WebSocket authenticated: user_id={user_id}, channel={channel}")
+
+        # Accept connection and connect to channel
+        await websocket.accept()
+        await websocket_manager.connect(websocket, channel, accept=False)
+
+    except ValueError as e:
+        logger.warning(f"WebSocket authentication failed: {e}")
+        await websocket.close(code=1008, reason="Invalid token")
+        return
 
     try:
         while True:
@@ -61,12 +89,38 @@ async def handle_generic_websocket(websocket: WebSocket):
     - {"action": "subscribe", "channel": "/ws/trading/positions"}
     - {"action": "unsubscribe", "channel": "/ws/trading/positions"}
     """
-    await websocket.accept()
-    logger.info("Generic WebSocket connection accepted")
-    
+    # Get token from query params
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
+    try:
+        # Verify token with Clerk
+        session_data = clerk_service.verify_token(token)
+        user_id = session_data["user_id"]
+        user_data = clerk_service.get_user(user_id)
+        roles = clerk_service.extract_roles(user_data)
+
+        # Store user info in websocket state
+        websocket.state.user_id = user_id
+        websocket.state.user_email = user_data.get("email")
+        websocket.state.roles = roles
+
+        logger.info(f"Generic WebSocket authenticated: user_id={user_id}")
+
+        # Accept connection
+        await websocket.accept()
+        logger.info("Generic WebSocket connection accepted")
+
+    except ValueError as e:
+        logger.warning(f"Generic WebSocket authentication failed: {e}")
+        await websocket.close(code=1008, reason="Invalid token")
+        return
+
     # Track which channels this connection is subscribed to
     subscribed_channels: Set[str] = set()
-    
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -145,7 +199,7 @@ async def handle_generic_websocket(websocket: WebSocket):
                 logger.warning(f"Invalid JSON received on generic WebSocket: {data}")
             except Exception as e:
                 logger.error(f"Error processing WebSocket message: {e}")
-                
+
     except WebSocketDisconnect:
         logger.info("Generic WebSocket disconnected")
         # Unsubscribe from all channels
@@ -210,7 +264,9 @@ async def broadcast_metrics(balance: float, equity: float, pnl: float):
     await websocket_manager.broadcast_to_channel("metrics", message)
 
 
-async def broadcast_alert(alert_type: str, message: str, severity: str = "info"):
+async def broadcast_alert(
+    alert_type: str, message: str, severity: str = "info", metrics: Optional[dict] = None
+):
     """Broadcast alert notification"""
     alert = {
         "type": "alert",
@@ -218,6 +274,8 @@ async def broadcast_alert(alert_type: str, message: str, severity: str = "info")
         "message": message,
         "severity": severity,
     }
+    if metrics:
+        alert["metrics"] = metrics
     await websocket_manager.broadcast_to_channel("alerts", alert)
 
 

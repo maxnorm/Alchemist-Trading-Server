@@ -59,8 +59,8 @@ class ActionExecutor:
             has_position = len(account.current_trade) > 0 if account else False
             # Use first pair for context if available, or None
             pair = (
-                environment.data_providers[0].currency_pair
-                if environment.data_providers
+                environment.connectors[0].currency_pair
+                if environment.connectors
                 else None
             )
             if pair is None:
@@ -102,8 +102,8 @@ class ActionExecutor:
         # Validate pair_index
         if (
             pair_index is None
-            or not environment.data_providers
-            or pair_index >= len(environment.data_providers)
+            or not environment.connectors
+            or pair_index >= len(environment.connectors)
         ):
             if hasattr(self.logger, "log_event"):
                 self.logger.log_event(
@@ -117,7 +117,7 @@ class ActionExecutor:
             return 0.0
 
         # Get currency pair for the selected pair_index
-        pair = environment.data_providers[pair_index].currency_pair
+        pair = environment.connectors[pair_index].currency_pair
 
         if pair is None:
             if hasattr(self.logger, "log_event"):

@@ -12,6 +12,7 @@ from utils.time_utils import get_utc_time
 
 class ConnectionState(Enum):
     """Connection state enumeration"""
+
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
     CONNECTED = "connected"

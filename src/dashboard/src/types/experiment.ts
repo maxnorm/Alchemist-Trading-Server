@@ -15,6 +15,7 @@ export interface Experiment {
   created_at: string
   started_at?: string
   completed_at?: string
+  updated_at?: string
 }
 
 export interface CreateExperimentDto {

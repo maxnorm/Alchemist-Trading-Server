@@ -4,7 +4,7 @@ Defines unified interface enabling plug-and-play data sources
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Iterator, Optional
+from typing import Dict, Any, Iterator, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
 
@@ -56,12 +56,40 @@ class IDataSourceConnector(ABC):
     ) -> Iterator[Dict[str, Any]]:
         """
         Fetch historical data in batches, yielding normalized events
+        Reads from database (not source API).
 
         :param start_time: Start time for historical data
         :param end_time: End time for historical data
         :return: Iterator of normalized event dictionaries
         :raises ValueError: If start_time >= end_time
         :raises ConnectionError: If connection fails
+        """
+        pass
+
+    @abstractmethod
+    def backfill(
+        self, start_time: datetime, end_time: datetime, batch_size: int = 1000
+    ) -> Iterator[Dict[str, Any]]:
+        """
+        Fetch historical data directly from source API (not database), yielding normalized events.
+        This method is used for initial data collection and backfilling missing data.
+
+        :param start_time: Start time for historical data
+        :param end_time: End time for historical data
+        :param batch_size: Number of records to fetch per batch (for rate limiting)
+        :return: Iterator of normalized event dictionaries
+        :raises ValueError: If start_time >= end_time
+        :raises ConnectionError: If connection fails
+        """
+        pass
+
+    @abstractmethod
+    def get_available_range(self) -> Tuple[datetime, datetime]:
+        """
+        Get the available data range from the source API.
+
+        :return: Tuple of (earliest_available_time, latest_available_time)
+        :raises ConnectionError: If connection fails or source unavailable
         """
         pass
 

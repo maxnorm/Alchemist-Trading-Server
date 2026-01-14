@@ -19,8 +19,6 @@ from mt5_connection.terminal import MT5Terminal
 from models.currency_pair import CurrencyPair
 from models.account import Account
 
-# DataProvider imports removed - using connectors instead
-# ConnectorRegistry is used instead of DataProviderRegistry
 from features.catalog import FeatureCatalog
 from environments.live_env import LiveTradingEnv
 from http_controller import HTTPController
@@ -42,7 +40,7 @@ class Server:
         self.__all_currency_pairs = {}
         self._connectors = (
             []
-        )  # Replaces __price_data_providers and __indicator_providers
+        )  # Unified connector pattern (replaces legacy __price_data_providers and __indicator_providers)
         self.__environments = {}
 
         self.__stop_char = "\n"
@@ -159,7 +157,7 @@ class Server:
         server_port = int(os.getenv("SERVER_PORT"))
         self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.__socket.bind((server_ip, server_port))
-        
+
         # Track account IDs for connection lifecycle management
         self.__account_ids: Dict[int, int] = {}  # login -> account_id mapping
 
@@ -359,7 +357,7 @@ class Server:
     def __auth_streamer(self, client, infos):
         """
         Authenticate tick streamer using environment variable token
-        
+
         Expected message format:
             {
                 "auth_code": 1,
@@ -423,7 +421,7 @@ class Server:
             # Connect the connector
             price_connector.connect()
 
-            # Store connector (replacing price_data_providers list)
+            # Store connector in unified connector list
             if not hasattr(self, "_connectors"):
                 self._connectors = []
             self._connectors.append(price_connector)
@@ -484,19 +482,40 @@ class Server:
                 "terminal_id": Current terminal id
             }
         """
-        from infrastructure.db_integration import get_account_auth_token
+        from infrastructure.db_integration import (
+            get_account_auth_token,
+            get_account_from_db,
+        )
 
-        if len(infos) >= 2:  # Allow for additional fields (account_type, broker_name, etc.)
+        if (
+            len(infos) >= 2
+        ):  # Allow for additional fields (account_type, broker_name, etc.)
             login = infos.get("login")
             provided_token = infos.get("auth_token")
 
             # Validate login and token before creating terminal
             if login is None:
-                self.__invalid_auth(client, "Invalid message format. Missing account login")
+                self.__invalid_auth(
+                    client, "Invalid message format. Missing account login"
+                )
                 return
 
+            # First check if account exists in database (must be pre-registered)
+            account_data = get_account_from_db(login)
+            if not account_data:
+                self.__invalid_auth(
+                    client,
+                    "Account not registered. Please register account via API first.",
+                )
+                return
+
+            # Then validate token
             expected_token = get_account_auth_token(login)
-            if not expected_token or not provided_token or expected_token != provided_token:
+            if (
+                not expected_token
+                or not provided_token
+                or expected_token != provided_token
+            ):
                 self.__invalid_auth(client, "Authentication failed")
                 return
 
@@ -565,7 +584,7 @@ class Server:
         """Handle terminal disconnection"""
         try:
             from infrastructure.db_integration import update_connection_status
-            
+
             account_id = self.__account_ids.get(login)
             if account_id:
                 update_connection_status(
@@ -574,7 +593,7 @@ class Server:
                     is_connected=False,
                     disconnect_reason="Terminal disconnected",
                 )
-                
+
                 if self.__verbose:
                     with self.__console_lock:
                         print_with_datetime(
@@ -586,11 +605,11 @@ class Server:
 
     def _persist_account_to_db(self, account, terminal, client, infos):
         """
-        Persist account information to database
+        Update account information in database (account must be pre-registered).
         """
         try:
             from infrastructure.db_integration import (
-                register_account_in_db,
+                update_account_in_db,
                 log_connection,
             )
 
@@ -610,12 +629,20 @@ class Server:
             except Exception:
                 pass
 
-            # Register account in database
-            account_id = register_account_in_db(
+            # Update account in database (only updates, never creates)
+            account_id = update_account_in_db(
                 login=account.login,
                 account_type=account_type,
-                broker_name=infos.get("broker_name") or account_info.broker_name if hasattr(account_info, 'broker_name') else None,
-                broker_server=infos.get("broker_server") or account_info.broker_server if hasattr(account_info, 'broker_server') else None,
+                broker_name=(
+                    infos.get("broker_name") or account_info.broker_name
+                    if hasattr(account_info, "broker_name")
+                    else None
+                ),
+                broker_server=(
+                    infos.get("broker_server") or account_info.broker_server
+                    if hasattr(account_info, "broker_server")
+                    else None
+                ),
                 currency=account_info.currency,
                 leverage=account_info.leverage,
                 account_name=infos.get("account_name"),
@@ -624,7 +651,7 @@ class Server:
             if account_id:
                 # Store account_id mapping for connection tracking
                 self.__account_ids[account.login] = account_id
-                
+
                 # Log connection
                 log_connection(
                     account_id=account_id,
@@ -636,16 +663,16 @@ class Server:
                 if self.__verbose:
                     with self.__console_lock:
                         print_with_datetime(
-                            f"Persisted account {account.login} to database (ID: {account_id})"
+                            f"Updated account {account.login} in database (ID: {account_id})"
                         )
-                
+
                 # Set up disconnect tracking on terminal
                 self._setup_terminal_disconnect_tracking(terminal, account.login)
             else:
                 if self.__verbose:
                     with self.__console_lock:
                         print_with_datetime(
-                            f"Warning: Failed to persist account {account.login} to database"
+                            f"Warning: Failed to update account {account.login} in database (account may not exist)"
                         )
 
         except ImportError:
@@ -653,14 +680,12 @@ class Server:
             if self.__verbose:
                 with self.__console_lock:
                     print_with_datetime(
-                        f"Database integration not available - skipping account persistence"
+                        "Database integration not available - skipping account persistence"
                     )
         except Exception as e:
             # Log error but don't fail authentication
             with self.__console_lock:
-                print_with_datetime(
-                    f"Error persisting account to database: {e}"
-                )
+                print_with_datetime(f"Error persisting account to database: {e}")
 
     def __invalid_auth(self, client, msg):
         """

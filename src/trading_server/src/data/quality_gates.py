@@ -3,15 +3,19 @@ Systematic quality pipeline for tick validation
 """
 
 import os
+import logging
 from typing import Dict, Any, Optional, Tuple, List, Union
 from datetime import datetime
 from collections import defaultdict
 import statistics
 import pytz
-
-# Import contract validation
 from .contracts import get_contract_registry
 from utils.market_utils import infer_pip_value_from_price
+
+# Import Great Expectations
+from infrastructure.data_quality.ge_context import get_ge_context
+
+logger = logging.getLogger(__name__)
 
 
 class QualityGate:
@@ -93,6 +97,18 @@ class QualityGate:
         self.price_history_ask: Dict[str, List[float]] = defaultdict(list)
         self.max_price_history = 1000  # Keep last 1000 prices per symbol
 
+        # Great Expectations integration
+        self.use_ge_validation = config.get("use_ge_validation", False)
+        if self.use_ge_validation:
+            try:
+                self.ge_context = get_ge_context()
+                logger.info("Great Expectations validation enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Great Expectations: {e}")
+                self.use_ge_validation = False
+        else:
+            self.ge_context = None
+
     def validate(
         self, tick: Dict[str, Any], symbol: str, current_time: datetime
     ) -> Tuple[bool, Optional[str], Optional[Dict]]:
@@ -113,8 +129,10 @@ class QualityGate:
         if datetime_value is not None and not isinstance(datetime_value, datetime):
             try:
                 mt5_timezone_offset = tick.get("_mt5_timezone_offset")
-                tick["datetime"] = self._parse_datetime(datetime_value, mt5_timezone_offset)
-            except (ValueError, TypeError) as e:
+                tick["datetime"] = self._parse_datetime(
+                    datetime_value, mt5_timezone_offset
+                )
+            except (ValueError, TypeError):
                 # If parsing fails, contract validation will catch it with a better error message
                 pass
 
@@ -125,6 +143,13 @@ class QualityGate:
         if not contract_valid:
             self.metrics["missing_data_rejected"] += 1
             return False, f"Schema contract violation: {contract_error}", None
+
+        # Check 0.5: Great Expectations Validation (optional)
+        if self.use_ge_validation:
+            ge_valid, ge_error = self._validate_with_ge("tick", tick)
+            if not ge_valid:
+                self.metrics["missing_data_rejected"] += 1
+                return False, f"Great Expectations validation failed: {ge_error}", None
 
         # Check 1: Missing Data (legacy check - may be redundant with contract validation)
         missing_reason = self._check_missing_data(tick, symbol)
@@ -271,7 +296,11 @@ class QualityGate:
                 "has_negative_latency": True,
                 "negative_latency_seconds": negative_latency_seconds,
                 "latency_seconds": age_seconds,  # Negative value
-                "receive_time": current_time.isoformat() if isinstance(current_time, datetime) else str(current_time),
+                "receive_time": (
+                    current_time.isoformat()
+                    if isinstance(current_time, datetime)
+                    else str(current_time)
+                ),
                 "timestamp_source": "event",
             }
             # Return metadata but don't reject - this is a clock sync issue, not data quality issue
@@ -372,8 +401,9 @@ class QualityGate:
                         self.last_seen_prices[symbol] = (bid, ask)
                         return None
                     # Price is same - this is a true duplicate
-                    # CRITICAL FIX: Update state even when rejecting to prevent same tick from being processed repeatedly
-                    # This prevents the same tick from being rejected hundreds of times if it's re-queued
+                    # CRITICAL FIX: Update state even when rejecting to prevent same tick
+                    # from being processed repeatedly. This prevents the same tick from
+                    # being rejected hundreds of times if it's re-queued
                     self.last_seen_timestamps[symbol] = tick_dt
                     self.last_seen_prices[symbol] = (bid, ask)
                     return (
@@ -438,9 +468,7 @@ class QualityGate:
 
         if spread > max_spread_value:
             spread_pips = spread / pip_value
-            return (
-                f"Unrealistic spread: {spread:.6f} ({spread_pips:.1f} pips > {max_spread_pips} pips)"
-            )
+            return f"Unrealistic spread: {spread:.6f} ({spread_pips:.1f} pips > {max_spread_pips} pips)"
 
         # In capture-all mode: Only check for extreme outliers (>10% price change)
         if self.capture_all_mode:
@@ -602,6 +630,106 @@ class QualityGate:
             self.price_history_bid[symbol].pop(0)
         if len(self.price_history_ask[symbol]) > self.max_price_history:
             self.price_history_ask[symbol].pop(0)
+
+    def _validate_with_ge(
+        self, data_type: str, data: Dict[str, Any]
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate data using Great Expectations
+
+        Note: GE validation works best with batch data. For single-record validation,
+        we perform basic checks but full GE validation with Data Docs generation
+        should be done via batch validation tasks.
+
+        :param data_type: Data type identifier
+        :param data: Data dictionary to validate
+        :return: Tuple of (is_valid, error_message)
+        """
+        if not self.use_ge_validation or not self.ge_context:
+            return True, None
+
+        try:
+            # Get expectation suite
+            suite_name = f"{data_type}_expectations"
+            context = self.ge_context.get_context()
+
+            # Ensure suite exists
+            try:
+                suite = context.get_expectation_suite(suite_name)
+            except Exception:
+                # Suite doesn't exist, create it
+                from infrastructure.data_quality.ge_expectations import (
+                    create_expectation_suite_from_contract,
+                )
+
+                suite = create_expectation_suite_from_contract(data_type)
+                if not suite:
+                    logger.debug(
+                        f"Could not create GE expectation suite for {data_type}"
+                    )
+                    return True, None  # Skip if suite creation failed
+
+            # For single-record validation, we perform basic expectation checks
+            # Full GE validation with Data Docs should be done via batch validation
+            # This is a lightweight check that doesn't require full batch setup
+
+            # Check required fields exist
+            if hasattr(suite, "expectations"):
+                for expectation in suite.expectations:
+                    expectation_type = expectation.expectation_type
+                    kwargs = expectation.kwargs
+
+                    # Check column existence
+                    if expectation_type == "expect_column_to_exist":
+                        column = kwargs.get("column")
+                        if column and column not in data:
+                            return False, f"Missing required field: {column}"
+
+                    # Check column type (basic check)
+                    elif expectation_type == "expect_column_values_to_be_of_type":
+                        column = kwargs.get("column")
+                        expected_type = kwargs.get("type_")
+                        if column and column in data:
+                            value = data[column]
+                            if expected_type == "float" and not isinstance(
+                                value, (int, float)
+                            ):
+                                return (
+                                    False,
+                                    f"Field {column} must be numeric, got {type(value).__name__}",
+                                )
+                            elif expected_type == "str" and not isinstance(value, str):
+                                return (
+                                    False,
+                                    f"Field {column} must be string, got {type(value).__name__}",
+                                )
+
+                    # Check value constraints
+                    elif expectation_type == "expect_column_values_to_be_between":
+                        column = kwargs.get("column")
+                        min_value = kwargs.get("min_value")
+                        max_value = kwargs.get("max_value")
+                        if column and column in data:
+                            value = data[column]
+                            if min_value is not None and value < min_value:
+                                return (
+                                    False,
+                                    f"Field {column} value {value} below minimum {min_value}",
+                                )
+                            if max_value is not None and value > max_value:
+                                return (
+                                    False,
+                                    f"Field {column} value {value} above maximum {max_value}",
+                                )
+
+            # Single-record validation passed
+            # Note: Data Docs generation happens during batch validation, not single-record validation
+            return True, None
+
+        except Exception as e:
+            logger.debug(f"Great Expectations validation error for {data_type}: {e}")
+            # Don't block on GE errors - contract validation is the primary validation
+            return True, None
 
     def get_metrics(self) -> Dict[str, Any]:
         """

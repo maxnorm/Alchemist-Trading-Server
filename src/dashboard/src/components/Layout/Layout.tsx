@@ -6,11 +6,11 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 
 export function Layout() {
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-mono-100 dark:bg-mono-100">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-background p-6">
+        <main className="flex-1 overflow-y-auto bg-mono-100 dark:bg-mono-100 p-4">
           {/* Suspense boundary inside Layout - header/sidebar always visible */}
           <Suspense
             fallback={

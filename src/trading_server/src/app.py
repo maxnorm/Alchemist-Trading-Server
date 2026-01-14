@@ -61,13 +61,18 @@ def create_composition_root(verbose: bool = False):
 
     # Start clock sync monitor
     try:
-        from monitoring.clock_sync_monitor import ClockSyncMonitor
+        from monitoring.clock_sync_monitor import ClockSyncMonitor, set_global_monitor
+
         clock_monitor = ClockSyncMonitor(
             check_interval_seconds=int(os.getenv("CLOCK_SYNC_CHECK_INTERVAL", "300")),
-            drift_threshold_seconds=float(os.getenv("CLOCK_SYNC_DRIFT_THRESHOLD", "1.0")),
+            drift_threshold_seconds=float(
+                os.getenv("CLOCK_SYNC_DRIFT_THRESHOLD", "1.0")
+            ),
             enabled=os.getenv("CLOCK_SYNC_MONITOR_ENABLED", "true").lower() == "true",
         )
         clock_monitor.start()
+        # Register as global monitor for HTTP endpoint access
+        set_global_monitor(clock_monitor)
         if verbose:
             print("Clock sync monitor started")
     except Exception as e:
@@ -77,9 +82,12 @@ def create_composition_root(verbose: bool = False):
     # Start gap detector
     try:
         from monitoring.gap_detector import GapDetector
+
         gap_detector = GapDetector(
             gap_threshold_minutes=float(os.getenv("GAP_THRESHOLD_MINUTES", "5.0")),
-            check_interval_minutes=float(os.getenv("GAP_CHECK_INTERVAL_MINUTES", "5.0")),
+            check_interval_minutes=float(
+                os.getenv("GAP_CHECK_INTERVAL_MINUTES", "5.0")
+            ),
             lookback_minutes=float(os.getenv("GAP_LOOKBACK_MINUTES", "10.0")),
             enabled=os.getenv("GAP_DETECTOR_ENABLED", "true").lower() == "true",
         )

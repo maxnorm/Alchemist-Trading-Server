@@ -22,6 +22,8 @@ class MT5Account(Base):
     account_leverage = Column(Integer, nullable=True)
     account_name = Column(String(100), nullable=True)  # User-friendly name
     auth_token = Column(String(128), nullable=True, index=True)
+    user_id = Column(String(255), nullable=True, index=True)  # Clerk user ID (owner)
+    created_by = Column(String(255), nullable=True)  # Clerk user ID (creator, for audit)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

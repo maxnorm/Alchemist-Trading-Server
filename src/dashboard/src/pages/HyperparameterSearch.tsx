@@ -35,7 +35,7 @@ export default function HyperparameterSearch() {
         </CardHeader>
         <CardContent>
           <select
-            className="w-full rounded-md border border-input bg-background px-3 py-2"
+            className="w-full rounded-md border border-input bg-background pl-3 pr-8 py-2"
             value={selectedExperimentId || ''}
             onChange={(e) => setSelectedExperimentId(Number(e.target.value) || null)}
           >

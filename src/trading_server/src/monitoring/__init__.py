@@ -24,7 +24,21 @@ from .metrics import (
     oms_reconciliation_errors,
     # Data Quality Metrics
     quarantine_ticks_total,
-    quarantine_rate,
+    data_freshness_seconds,
+    data_volume_total,
+    data_quality_score,
+    data_quarantine_rate,
+    # Drift Detection Metrics
+    data_drift_psi_score,
+    data_drift_ks_statistic,
+    data_drift_detections_total,
+    data_drift_alerts_total,
+    # Lineage Tracking Metrics
+    lineage_runs_total,
+    lineage_runs_duration_seconds,
+    lineage_runs_failed_total,
+    lineage_datasets_total,
+    lineage_events_emitted_total,
 )
 
 __all__ = [
@@ -44,5 +58,17 @@ __all__ = [
     "circuit_breaker_state",
     "oms_reconciliation_errors",
     "quarantine_ticks_total",
-    "quarantine_rate",
+    "data_freshness_seconds",
+    "data_volume_total",
+    "data_quality_score",
+    "data_quarantine_rate",
+    "data_drift_psi_score",
+    "data_drift_ks_statistic",
+    "data_drift_detections_total",
+    "data_drift_alerts_total",
+    "lineage_runs_total",
+    "lineage_runs_duration_seconds",
+    "lineage_runs_failed_total",
+    "lineage_datasets_total",
+    "lineage_events_emitted_total",
 ]

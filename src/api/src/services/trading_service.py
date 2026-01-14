@@ -52,14 +52,37 @@ def get_trading_status(db: Session) -> TradingStatusResponse:
         # Table might not exist yet
         pass
 
+    # Calculate total equity and balance from MT5 accounts
+    total_equity = None
+    total_balance = None
+    try:
+        result = db.execute(
+            text("""
+                SELECT 
+                    COALESCE(SUM(equity), 0) as total_equity,
+                    COALESCE(SUM(balance), 0) as total_balance
+                FROM mt5_accounts
+                WHERE is_active = TRUE
+            """)
+        )
+        row = result.fetchone()
+        if row and (row[0] is not None or row[1] is not None):
+            total_equity = float(row[0]) if row[0] is not None else None
+            total_balance = float(row[1]) if row[1] is not None else None
+    except Exception as e:
+        logger.warning(f"Failed to get equity/balance: {e}")
+
     return TradingStatusResponse(
         is_active=len(active_experiments) > 0
         and not kill_switch_active
         and not circuit_breaker_active,
         active_experiments=active_experiments,
         open_positions=open_positions,
+        active_positions=open_positions,  # Alias for dashboard compatibility
         kill_switch_active=kill_switch_active,
         circuit_breaker_active=circuit_breaker_active,
+        total_equity=total_equity,
+        total_balance=total_balance,
     )
 
 
@@ -137,9 +160,13 @@ def get_circuit_breaker_status(db: Session) -> CircuitBreakerStatusResponse:
             return CircuitBreakerStatusResponse(
                 is_active=bool(row[0]),
                 reason=row[1],
+                breaker_type=row[1],  # Alias for dashboard compatibility
                 loss_threshold=float(row[2]) if row[2] else None,
+                threshold_value=float(row[2]) if row[2] else None,  # Alias
                 current_loss=float(row[3]) if row[3] else None,
+                trigger_value=float(row[3]) if row[3] else None,  # Alias
                 activated_at=row[4] if row[4] else None,
+                triggered_at=row[4] if row[4] else None,  # Alias
             )
     except Exception as e:
         logger.warning(f"Failed to get circuit breaker status: {e}")
@@ -186,18 +213,64 @@ def get_open_positions(db: Session) -> List[PositionResponse]:
 
         positions = []
         for row in rows:
+            entry_time = row[8]
+            entry_price = float(row[5])
+            volume = float(row[6])
+            symbol = row[3]
+            
+            # Get current price from latest tick data (if available)
+            current_price = None
+            unrealized_pnl = None
+            unrealized_pnl_pct = None
+            
+            try:
+                price_result = db.execute(
+                    text("""
+                        SELECT bid, ask
+                        FROM tick_data
+                        WHERE symbol = :symbol
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    """),
+                    {"symbol": symbol}
+                )
+                price_row = price_result.fetchone()
+                if price_row:
+                    # Use mid price (average of bid/ask)
+                    bid = float(price_row[0]) if price_row[0] else None
+                    ask = float(price_row[1]) if price_row[1] else None
+                    if bid is not None and ask is not None:
+                        current_price = (bid + ask) / 2.0
+                        
+                        # Calculate unrealized P&L
+                        order_type = row[4]
+                        if current_price and entry_price:
+                            if order_type.upper() == 'BUY':
+                                unrealized_pnl = (current_price - entry_price) * volume
+                            elif order_type.upper() == 'SELL':
+                                unrealized_pnl = (entry_price - current_price) * volume
+                            
+                            if unrealized_pnl is not None and entry_price > 0:
+                                unrealized_pnl_pct = (unrealized_pnl / (entry_price * volume)) * 100
+            except Exception as e:
+                logger.debug(f"Could not get current price for {symbol}: {e}")
+            
             positions.append(
                 PositionResponse(
                     id=row[0],
                     experiment_id=row[1],
                     account_login=row[2],
-                    symbol=row[3],
+                    symbol=symbol,
                     order_type=row[4],
-                    entry_price=float(row[5]),
-                    volume=float(row[6]),
+                    entry_price=entry_price,
+                    volume=volume,
                     pnl=float(row[7]) if row[7] else None,
-                    entry_time=row[8],
+                    entry_time=entry_time,
+                    opened_at=entry_time.isoformat() if entry_time else None,
                     status=row[9],
+                    current_price=current_price,
+                    unrealized_pnl=unrealized_pnl,
+                    unrealized_pnl_pct=unrealized_pnl_pct,
                 )
             )
 
@@ -258,6 +331,10 @@ def get_available_currency_pairs(db: Session) -> List[str]:
     try:
         result = db.execute(text("SELECT symbol FROM forex_pairs ORDER BY symbol"))
         pairs = [row[0] for row in result.fetchall()]
+        # If no pairs found in database, return fallback list
+        if not pairs:
+            logger.warning("No currency pairs found in database, using fallback list")
+            return ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"]
         return pairs
     except Exception as e:
         logger.error(f"Failed to get currency pairs: {e}")

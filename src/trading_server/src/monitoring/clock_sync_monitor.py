@@ -8,7 +8,6 @@ if drift exceeds threshold.
 import socket
 import struct
 import threading
-import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, List
 from utils.time_utils import get_utc_time
@@ -56,6 +55,7 @@ class ClockSyncMonitor:
             self._use_structured = hasattr(self.logger, "log_event")
         except Exception:
             import logging
+
             self.logger = logging.getLogger("clock_sync_monitor")
             self._use_structured = False
 
@@ -123,12 +123,16 @@ class ClockSyncMonitor:
                         level="ERROR",
                     )
                 else:
-                    self.logger.error(f"Error during clock sync check: {e}", exc_info=True)
+                    self.logger.error(
+                        f"Error during clock sync check: {e}", exc_info=True
+                    )
 
             # Wait for next check or shutdown
             self._shutdown_flag.wait(self.check_interval)
 
-    def get_ntp_time(self, host: str, port: int = 123, timeout: int = 5) -> Optional[datetime]:
+    def get_ntp_time(
+        self, host: str, port: int = 123, timeout: int = 5
+    ) -> Optional[datetime]:
         """
         Get time from NTP server
 
@@ -143,7 +147,7 @@ class ClockSyncMonitor:
             client.settimeout(timeout)
 
             # Send NTP request
-            data = b'\x1b' + 47 * b'\0'
+            data = b"\x1b" + 47 * b"\0"
             client.sendto(data, (host, port))
 
             # Receive response
@@ -154,7 +158,7 @@ class ClockSyncMonitor:
             if data:
                 unpacked = struct.unpack(
                     self.NTP_PACKET_FORMAT,
-                    data[0:struct.calcsize(self.NTP_PACKET_FORMAT)]
+                    data[0 : struct.calcsize(self.NTP_PACKET_FORMAT)],
                 )
                 seconds = unpacked[10] - self.NTP_DELTA
                 fraction = unpacked[11] / 2**32
@@ -162,6 +166,7 @@ class ClockSyncMonitor:
                 return datetime.fromtimestamp(ntp_time, tz=timezone.utc)
         except Exception:
             return None
+        return None  # Explicit return for MyPy
 
     def check_clock_sync(self) -> Dict:
         """
@@ -248,7 +253,9 @@ class ClockSyncMonitor:
                     level="ERROR",
                 )
             else:
-                self.logger.error("Clock sync check failed: could not connect to any NTP servers")
+                self.logger.error(
+                    "Clock sync check failed: could not connect to any NTP servers"
+                )
 
             return {
                 "status": "error",
@@ -265,7 +272,9 @@ class ClockSyncMonitor:
         """
         return {
             "enabled": self.enabled,
-            "last_check_time": self._last_check_time.isoformat() if self._last_check_time else None,
+            "last_check_time": (
+                self._last_check_time.isoformat() if self._last_check_time else None
+            ),
             "last_drift_seconds": self._last_drift,
             "last_status": self._last_status,
             "check_count": self._check_count,
@@ -283,3 +292,26 @@ class ClockSyncMonitor:
         if self._last_status in ["ok", "warning"]:
             return True
         return False
+
+
+# Module-level singleton for global monitor access
+_global_monitor: Optional["ClockSyncMonitor"] = None
+
+
+def get_global_monitor() -> Optional["ClockSyncMonitor"]:
+    """
+    Get the global ClockSyncMonitor instance.
+
+    :return: ClockSyncMonitor instance or None if not set
+    """
+    return _global_monitor
+
+
+def set_global_monitor(monitor: "ClockSyncMonitor") -> None:
+    """
+    Set the global ClockSyncMonitor instance.
+
+    :param monitor: ClockSyncMonitor instance to register globally
+    """
+    global _global_monitor
+    _global_monitor = monitor

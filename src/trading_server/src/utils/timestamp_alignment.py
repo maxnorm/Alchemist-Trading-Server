@@ -106,10 +106,7 @@ class TimestampAlignmentService:
         config = self.source_configs.get(source)
         if config is None:
             # Default: try common timestamp fields
-            timestamp_field = (
-                raw_event.get("timestamp")
-                or raw_event.get("datetime")
-            )
+            timestamp_field = raw_event.get("timestamp") or raw_event.get("datetime")
             if timestamp_field:
                 event_time = self._parse_timestamp(timestamp_field, source)
             else:

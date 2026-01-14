@@ -8,6 +8,8 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 
+from config import settings
+
 logger = logging.getLogger(__name__)
 
 # Import metrics from trading_server monitoring module
@@ -50,7 +52,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         # Get endpoint path (simplified - remove path parameters for grouping)
         endpoint = request.url.path
         # Remove common path parameters for better grouping
-        if endpoint.startswith("/api/v1/"):
+        if endpoint.startswith(settings.api_base_path):
             # Keep the structure but simplify
             pass
 

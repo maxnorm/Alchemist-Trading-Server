@@ -370,13 +370,13 @@ class TestFeatureCatalogVersioning:
         # Mock get_features_by_pipeline_version calls
         def mock_get_features(version):
             if version == "v1.0.0":
-                from data_providers.base_provider import Feature
+                from domain.models.feature import Feature
                 return [
                     Feature("price", float, "source", "Price", "price"),
                     Feature("sma_20", float, "source", "SMA", "technical"),
                 ]
             else:  # v1.1.0
-                from data_providers.base_provider import Feature
+                from domain.models.feature import Feature
                 return [
                     Feature("price", float, "source", "Price", "price"),
                     Feature("rsi", float, "source", "RSI", "technical"),

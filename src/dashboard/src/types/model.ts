@@ -5,6 +5,7 @@ export interface Model {
   experiment_id: number
   name: string
   version: string
+  model_type?: string
   mlflow_run_id?: string
   model_path?: string
   stage: ModelStage
@@ -13,6 +14,7 @@ export interface Model {
   performance_metrics?: Record<string, unknown>
   paper_trading_results?: PaperTradingResults
   created_at: string
+  updated_at?: string
 }
 
 export interface ModelMetrics {

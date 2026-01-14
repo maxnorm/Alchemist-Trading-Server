@@ -264,7 +264,7 @@ export default function PortfolioPerformance() {
               <CardTitle>Currency Pair Allocation</CardTitle>
             </CardHeader>
             <CardContent>
-              {Object.keys(allocation.by_pair).length > 0 ? (
+              {allocation.by_pair && typeof allocation.by_pair === 'object' && Object.keys(allocation.by_pair).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(allocation.by_pair).map(([pair, value]) => (
                     <div key={pair} className="flex items-center justify-between">
@@ -283,7 +283,7 @@ export default function PortfolioPerformance() {
               <CardTitle>Model Allocation</CardTitle>
             </CardHeader>
             <CardContent>
-              {Object.keys(allocation.by_model).length > 0 ? (
+              {allocation.by_model && typeof allocation.by_model === 'object' && Object.keys(allocation.by_model).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(allocation.by_model).map(([model, value]) => (
                     <div key={model} className="flex items-center justify-between">

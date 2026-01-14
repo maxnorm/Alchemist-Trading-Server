@@ -9,11 +9,15 @@ export interface OptunaStudy {
   direction: StudyDirection
   metric: string
   n_trials: number
+  n_trials_target?: number
   status: 'running' | 'completed' | 'failed'
+  state?: 'running' | 'completed' | 'failed'
   best_params?: Record<string, unknown>
   best_value?: number
   created_at: string
   completed_at?: string
+  datetime_start?: string
+  datetime_complete?: string
 }
 
 export interface OptunaTrial {

@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, dev]
     paths:
-      - 'src/mt5-python_server/**'
+      - 'src/trading_server/**'
       - 'tests/unit/**'
       - 'tests/integration/**'
       - 'tests/e2e/**'
@@ -19,17 +19,16 @@ jobs:
     runs-on: ubuntu-latest
     
     services:
-      mariadb:
-        image: mariadb:10.9.5
+      postgres:
+        image: timescale/timescaledb:latest-pg16
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: db_forex
-          MYSQL_USER: forex_user
-          MYSQL_PASSWORD: forex_password
+          POSTGRES_USER: forex_user
+          POSTGRES_PASSWORD: forex_password
+          POSTGRES_DB: db_forex
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -u root -proot"
+          --health-cmd="pg_isready -U forex_user -d db_forex"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -44,35 +43,40 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      
       - name: Install dependencies
-        working-directory: src/mt5-python_server
+        working-directory: src/trading_server
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov pytest-asyncio
       
-      - name: Wait for MariaDB to be ready
+      - name: Wait for PostgreSQL to be ready
         run: |
-          until mysqladmin ping -h localhost -u root -proot --silent; do
-            echo "Waiting for MariaDB..."
+          until pg_isready -h localhost -U forex_user -d db_forex; do
+            echo "Waiting for PostgreSQL..."
             sleep 2
           done
-          echo "MariaDB is ready!"
+          echo "PostgreSQL is ready!"
       
       - name: Run unit tests
         env:
           DB_HOST: localhost
-          DB_PORT: 3306
+          DB_PORT: 5432
           DB_USER: forex_user
           DB_PASSWORD: forex_password
           DB_NAME: db_forex
         run: |
-          pytest tests/unit/ --cov=src/mt5-python_server/src --cov-report=xml --cov-report=term -v || exit 1
+          pytest tests/unit/ --cov=src/trading_server/src --cov-report=xml --cov-report=term -v || exit 1
       
       - name: Run integration tests
         env:
           DB_HOST: localhost
-          DB_PORT: 3306
+          DB_PORT: 5432
           DB_USER: forex_user
           DB_PASSWORD: forex_password
           DB_NAME: db_forex
@@ -82,7 +86,7 @@ jobs:
       - name: Run E2E tests
         env:
           DB_HOST: localhost
-          DB_PORT: 3306
+          DB_PORT: 5432
           DB_USER: forex_user
           DB_PASSWORD: forex_password
           DB_NAME: db_forex

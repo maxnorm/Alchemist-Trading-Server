@@ -8,6 +8,7 @@ that come through the same socket as MT5 connections.
 import os
 import socket
 import ssl
+import json
 from typing import Optional, Union, Dict, Any
 from utils.time_utils import print_with_datetime
 
@@ -179,6 +180,7 @@ class HTTPController:
     def _register_default_routes(self):
         """Register default route handlers"""
         self.register_route("GET", "/metrics", self._handle_metrics)
+        self.register_route("GET", "/health/clock-sync", self._handle_clock_sync_health)
 
     def register_route(self, method: str, path: str, handler):
         """
@@ -460,6 +462,76 @@ class HTTPController:
                 status_text="Internal Server Error",
                 headers={"Content-Type": "text/plain"},
                 body=f"Error generating metrics: {e}\r\n".encode("utf-8"),
+            )
+
+    def _handle_clock_sync_health(
+        self, request: HTTPRequest, client: socket.socket
+    ) -> HTTPResponse:
+        """
+        Handle /health/clock-sync endpoint
+
+        :param request: HTTP request
+        :param client: Client socket (for logging)
+        :return: HTTP response with clock sync status
+        """
+        try:
+            from monitoring.clock_sync_monitor import get_global_monitor
+
+            monitor = get_global_monitor()
+
+            if monitor is None:
+                # Monitor not initialized
+                response_data = {
+                    "status": "unknown",
+                    "service": "clock_sync",
+                    "message": "Clock sync monitor not available",
+                }
+                response_body = json.dumps(response_data).encode("utf-8")
+                return HTTPResponse(
+                    status_code=503,
+                    status_text="Service Unavailable",
+                    headers={"Content-Type": "application/json"},
+                    body=response_body,
+                )
+
+            # Get monitor status
+            status = monitor.get_status()
+            is_healthy = monitor.is_healthy()
+
+            # Build response
+            response_data = {
+                "status": "healthy" if is_healthy else "unhealthy",
+                "service": "clock_sync",
+                "last_drift_seconds": status.get("last_drift_seconds"),
+                "last_status": status.get("last_status"),
+                "check_count": status.get("check_count"),
+            }
+
+            response_body = json.dumps(response_data).encode("utf-8")
+
+            # Return appropriate status code
+            status_code = 200 if is_healthy else 503
+
+            return HTTPResponse(
+                status_code=status_code,
+                status_text="OK" if is_healthy else "Service Unavailable",
+                headers={"Content-Type": "application/json"},
+                body=response_body,
+            )
+
+        except Exception as e:
+            # If health check fails, return 500 error
+            response_data = {
+                "status": "error",
+                "service": "clock_sync",
+                "error": str(e),
+            }
+            response_body = json.dumps(response_data).encode("utf-8")
+            return HTTPResponse(
+                status_code=500,
+                status_text="Internal Server Error",
+                headers={"Content-Type": "application/json"},
+                body=response_body,
             )
 
     def _send_error_response(

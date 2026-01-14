@@ -16,7 +16,7 @@ from experiments.builder import ExperimentBuilder
 from experiments.runner import ExperimentRunner
 from experiments.models import Experiment, ExperimentStatus, ExperimentRepository
 from features.catalog import FeatureCatalog
-from data_providers.base_provider import Feature
+from domain.models.feature import Feature
 
 
 class TestExperimentCreation:

@@ -22,6 +22,14 @@ export interface ModelMetrics {
   total_trades: number
   profit_factor: number
   avg_trade_duration: number
+  avg_win?: number
+  avg_loss?: number
+  sortino_ratio?: number
+  calmar_ratio?: number
+  winning_trades?: number
+  losing_trades?: number
+  best_trade?: number
+  worst_trade?: number
 }
 
 export interface EquityPoint {
@@ -36,6 +44,7 @@ export interface Trade {
   id: number
   symbol: string
   order_type: 'BUY' | 'SELL'
+  side?: 'BUY' | 'SELL'
   entry_price: number
   exit_price?: number
   volume: number
@@ -43,7 +52,9 @@ export interface Trade {
   pnl_pct?: number
   entry_time: string
   exit_time?: string
+  closed_at?: string
   status: 'OPEN' | 'CLOSED'
+  duration_seconds?: number
 }
 
 export interface PerformanceBreakdown {

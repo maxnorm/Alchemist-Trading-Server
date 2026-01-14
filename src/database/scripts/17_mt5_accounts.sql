@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS mt5_accounts (
     account_currency VARCHAR(10),
     account_leverage INT,
     account_name VARCHAR(100),  -- User-friendly name (editable)
+    auth_token VARCHAR(128),  -- Per-account auth token for EA authentication
+    user_id VARCHAR(255),  -- Clerk user ID (owner)
+    created_by VARCHAR(255),  -- Clerk user ID (creator, for audit)
     is_active BOOLEAN DEFAULT TRUE,
     last_seen_at TIMESTAMP NULL,  -- Last time EA connected
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -20,6 +23,8 @@ CREATE TABLE IF NOT EXISTS mt5_accounts (
 CREATE INDEX IF NOT EXISTS idx_mt5_accounts_login ON mt5_accounts(account_login);
 CREATE INDEX IF NOT EXISTS idx_mt5_accounts_active ON mt5_accounts(is_active);
 CREATE INDEX IF NOT EXISTS idx_mt5_accounts_type ON mt5_accounts(account_type);
+CREATE INDEX IF NOT EXISTS idx_mt5_accounts_auth_token ON mt5_accounts(auth_token);
+CREATE INDEX IF NOT EXISTS idx_mt5_accounts_user_id ON mt5_accounts(user_id);
 
 -- Model assignments to MT5 accounts
 CREATE TABLE IF NOT EXISTS account_model_assignments (

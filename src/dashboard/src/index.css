@@ -3,49 +3,123 @@
 @tailwind utilities;
 
 @layer base {
+  /* ========================================
+     TERMINAL/PRINT THEME - DARK MODE FIRST
+     Orange Accent System: #FDEEDC, #FFD8A9, #F1A661, #E38B29
+     ======================================== */
+  
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    /* Primitives - Monochrome base */
+    --mono-100: 0 0% 8%;      /* Darkest - backgrounds */
+    --mono-200: 0 0% 12%;     /* Card backgrounds */
+    --mono-300: 0 0% 16%;     /* Elevated surfaces */
+    --mono-400: 0 0% 24%;     /* Borders, dividers */
+    --mono-500: 0 0% 45%;     /* Muted text */
+    --mono-600: 0 0% 65%;     /* Secondary text */
+    --mono-700: 0 0% 85%;     /* Primary text */
+    --mono-800: 0 0% 95%;     /* Brightest text */
+    
+    /* Orange accent palette */
+    --orange-100: 33 100% 93%; /* #FDEEDC - Lightest */
+    --orange-200: 33 100% 83%; /* #FFD8A9 */
+    --orange-300: 33 84% 66%;  /* #F1A661 */
+    --orange-400: 33 77% 53%;  /* #E38B29 - Primary accent */
+    
+    /* Semantic tokens */
+    --background: var(--mono-100);
+    --foreground: var(--mono-800);
+    
+    --card: var(--mono-200);
+    --card-foreground: var(--mono-800);
+    
+    --popover: var(--mono-300);
+    --popover-foreground: var(--mono-800);
+    
+    --primary: var(--orange-400);
+    --primary-foreground: var(--mono-100);
+    
+    --secondary: var(--mono-300);
+    --secondary-foreground: var(--mono-800);
+    
+    --muted: var(--mono-300);
+    --muted-foreground: var(--mono-500);
+    
+    --accent: var(--orange-400);
+    --accent-foreground: var(--mono-100);
+    
+    --destructive: 0 72% 51%;
+    --destructive-foreground: var(--mono-800);
+    
+    --success: 142 71% 45%;
+    --success-foreground: var(--mono-800);
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: var(--mono-100);
+    
+    --border: var(--mono-400);
+    --input: var(--mono-400);
+    --ring: var(--orange-400);
+    
+    --radius: 0.25rem; /* Sharper, more technical */
+    
+    /* Density variants */
+    --spacing-comfortable: 1.5rem;
+    --spacing-dense: 1rem;
+    --spacing-ultra-dense: 0.5rem;
   }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  
+  /* Light mode - inverted monochrome with adjusted orange for contrast */
+  .light {
+    /* Inverted monochrome primitives */
+    --mono-100: 0 0% 98%;     /* Lightest - page background */
+    --mono-200: 0 0% 100%;    /* White - card backgrounds */
+    --mono-300: 0 0% 96%;     /* Light gray - elevated surfaces */
+    --mono-400: 0 0% 85%;     /* Medium gray - borders */
+    --mono-500: 0 0% 60%;     /* Muted text */
+    --mono-600: 0 0% 40%;     /* Secondary text */
+    --mono-700: 0 0% 20%;     /* Primary text */
+    --mono-800: 0 0% 10%;     /* Darkest text */
+    
+    /* Orange accents adjusted for light mode contrast */
+    --orange-100: 33 100% 95%; /* Very light - subtle backgrounds */
+    --orange-200: 33 100% 85%; /* Light - hover states */
+    --orange-300: 33 84% 55%;  /* Medium - secondary accents */
+    --orange-400: 33 77% 45%;  /* Darker primary for better contrast on light */
+    
+    /* Semantic tokens for light mode */
+    --background: var(--mono-100);
+    --foreground: var(--mono-800);
+    
+    --card: var(--mono-200);
+    --card-foreground: var(--mono-800);
+    
+    --popover: var(--mono-200);
+    --popover-foreground: var(--mono-800);
+    
+    --primary: var(--orange-400);
+    --primary-foreground: 0 0% 100%; /* White text on orange */
+    
+    --secondary: var(--mono-300);
+    --secondary-foreground: var(--mono-800);
+    
+    --muted: var(--mono-300);
+    --muted-foreground: var(--mono-500);
+    
+    --accent: var(--orange-400);
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: 142 71% 35%; /* Darker green for light mode */
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 40%; /* Darker orange for light mode */
+    --warning-foreground: 0 0% 100%;
+    
+    --border: var(--mono-400);
+    --input: var(--mono-400);
+    --ring: var(--orange-400);
   }
 }
 
@@ -53,7 +127,80 @@
   * {
     @apply border-border;
   }
+  
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "tnum" 1, "cv01" 1; /* Tabular numbers, technical feel */
+  }
+  
+  /* Halftone texture utility - subtle background only */
+  .halftone-texture {
+    background-image: 
+      radial-gradient(circle at 25% 25%, hsl(var(--mono-400)) 1px, transparent 1px),
+      radial-gradient(circle at 75% 75%, hsl(var(--mono-400)) 1px, transparent 1px);
+    background-size: 8px 8px;
+    background-position: 0 0, 4px 4px;
+  }
+  
+  .halftone-texture-subtle {
+    background-image: 
+      radial-gradient(circle at 50% 50%, hsl(var(--mono-400) / 0.4) 0.5px, transparent 0.5px);
+    background-size: 4px 4px;
+  }
+  
+  /* Light mode specific texture adjustments */
+  .light .halftone-texture {
+    background-image: 
+      radial-gradient(circle at 25% 25%, hsl(var(--mono-400) / 0.5) 1px, transparent 1px),
+      radial-gradient(circle at 75% 75%, hsl(var(--mono-400) / 0.5) 1px, transparent 1px);
+  }
+  
+  .light .halftone-texture-subtle {
+    background-image: 
+      radial-gradient(circle at 50% 50%, hsl(var(--mono-400) / 0.3) 0.5px, transparent 0.5px);
+  }
+  
+  /* Terminal-style monospace for data */
+  .font-mono-data {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  
+  /* Focus states - high contrast orange ring */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-orange-400 ring-offset-2 ring-offset-background;
+  }
+
+  /* Select dropdown styling - ensure arrow has proper spacing */
+  select {
+    padding-right: 2rem !important;
+  }
+}
+
+@layer utilities {
+  /* Density utilities */
+  .spacing-comfortable {
+    padding: var(--spacing-comfortable);
+  }
+  
+  .spacing-dense {
+    padding: var(--spacing-dense);
+  }
+  
+  .spacing-ultra-dense {
+    padding: var(--spacing-ultra-dense);
+  }
+  
+  /* Print-style utilities */
+  .text-technical {
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+  }
+  
+  .border-print {
+    border-width: 1px;
+    border-style: solid;
   }
 }

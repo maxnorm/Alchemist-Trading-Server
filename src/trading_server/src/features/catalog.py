@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from data_providers.base_provider import Feature
+from domain.models.feature import Feature
 from database import Database
 
 logger = logging.getLogger(__name__)
@@ -292,7 +292,7 @@ class FeatureCatalog:
         """
         Sync catalog with features discovered from registry.
 
-        :param registry: DataProviderRegistry or ConnectorRegistry instance
+        :param registry: ConnectorRegistry instance
         """
         try:
             features = registry.discover_features()

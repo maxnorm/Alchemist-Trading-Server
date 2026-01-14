@@ -1,48 +1,23 @@
 """
 Database integration for MT5 server to persist accounts and connections
+
+Uses local database connector package for connection management.
 """
 
-import os
-import json
 from typing import Optional, Dict, Any
-from datetime import datetime
-from sqlalchemy import create_engine, text
-from sqlalchemy.pool import QueuePool
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+# Import from local database connector package
+from database.core import init_db, get_engine
 from utils.time_utils import print_with_datetime
 
 
-# Database connection (shared with API)
-_db_engine = None
-_db_url = None
-
-
 def _get_db_engine():
-    """Get or create database engine"""
-    global _db_engine, _db_url
-
-    if _db_engine is not None:
-        return _db_engine
-
-    # Construct database URL from environment variables
-    db_host = os.getenv("DB_HOST", "postgres")
-    db_port = int(os.getenv("DB_PORT", 5432))
-    db_user = os.getenv("DB_USER", "forex_user")
-    db_password = os.getenv("DB_PASSWORD", "forex_password")
-    db_name = os.getenv("DB_NAME", "db_forex")
-
-    _db_url = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-
-    _db_engine = create_engine(
-        _db_url,
-        poolclass=QueuePool,
-        pool_size=5,
-        max_overflow=10,
-        pool_pre_ping=True,
-        echo=False,
-    )
-
-    return _db_engine
+    """Get or create database engine using centralized module"""
+    # Initialize centralized database connection
+    init_db()
+    return get_engine()
 
 
 def register_account_in_db(
@@ -72,6 +47,8 @@ def register_account_in_db(
             if existing:
                 # Update existing account
                 account_id = existing[0]
+                # Preserve user_id if it exists (don't overwrite with NULL)
+                # This allows accounts to be claimed by users later
                 conn.execute(
                     text(
                         """
@@ -132,6 +109,75 @@ def register_account_in_db(
         return None
     except Exception as e:
         print_with_datetime(f"Unexpected error registering account: {e}")
+        return None
+
+
+def update_account_in_db(
+    login: int,
+    account_type: str,
+    broker_name: Optional[str] = None,
+    broker_server: Optional[str] = None,
+    currency: Optional[str] = None,
+    leverage: Optional[int] = None,
+    account_name: Optional[str] = None,
+) -> Optional[int]:
+    """
+    Update existing MT5 account in database.
+    Returns account ID if successful, None if account doesn't exist.
+    Does NOT create new accounts - account must be pre-registered via API.
+    """
+    try:
+        engine = _get_db_engine()
+
+        with engine.connect() as conn:
+            # Check if account exists
+            result = conn.execute(
+                text("SELECT id FROM mt5_accounts WHERE account_login = :login"),
+                {"login": login},
+            )
+            existing = result.fetchone()
+
+            if not existing:
+                # Account doesn't exist - return None (do not create)
+                return None
+
+            # Update existing account
+            account_id = existing[0]
+            # Preserve user_id if it exists (don't overwrite with NULL)
+            conn.execute(
+                text(
+                    """
+                    UPDATE mt5_accounts
+                    SET account_type = :account_type,
+                        broker_name = :broker_name,
+                        broker_server = :broker_server,
+                        account_currency = :currency,
+                        account_leverage = :leverage,
+                        account_name = COALESCE(:account_name, account_name),
+                        is_active = TRUE,
+                        last_seen_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = :id
+                """
+                ),
+                {
+                    "id": account_id,
+                    "account_type": account_type,
+                    "broker_name": broker_name,
+                    "broker_server": broker_server,
+                    "currency": currency,
+                    "leverage": leverage,
+                    "account_name": account_name,
+                },
+            )
+            conn.commit()
+            return account_id
+
+    except SQLAlchemyError as e:
+        print_with_datetime(f"Error updating account in database: {e}")
+        return None
+    except Exception as e:
+        print_with_datetime(f"Unexpected error updating account: {e}")
         return None
 
 
@@ -297,7 +343,9 @@ def get_account_auth_token(login: int) -> Optional[str]:
 
         with engine.connect() as conn:
             result = conn.execute(
-                text("SELECT auth_token FROM mt5_accounts WHERE account_login = :login"),
+                text(
+                    "SELECT auth_token FROM mt5_accounts WHERE account_login = :login"
+                ),
                 {"login": login},
             )
             row = result.fetchone()

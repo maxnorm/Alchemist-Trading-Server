@@ -17,14 +17,14 @@ router = APIRouter()
 
 @router.get("/health")
 async def health_check():
-    """Basic health check"""
+    """Basic health check (internal-only endpoint, not exposed through gateway)"""
     return {"status": "healthy", "service": "api"}
 
 
 @router.get("/health/db")
 async def health_check_db():
-    """Database health check with detailed diagnostics"""
-    from services.database import _engine
+    """Database health check with detailed diagnostics (internal-only endpoint, not exposed through gateway)"""
+    from database.core import get_engine
     from config import settings
     
     try:
@@ -50,15 +50,19 @@ async def health_check_db():
             }
             
             # Try to get more specific error
-            if _engine is None:
-                error_details["error"] = "Database engine not initialized"
-            else:
-                try:
-                    with _engine.connect() as conn:
-                        conn.execute(text("SELECT 1"))
-                except Exception as conn_error:
-                    error_details["error"] = f"Connection error: {str(conn_error)}"
-                    error_details["error_type"] = type(conn_error).__name__
+            try:
+                engine = get_engine()
+                if engine is None:
+                    error_details["error"] = "Database engine not initialized"
+                else:
+                    try:
+                        with engine.connect() as conn:
+                            conn.execute(text("SELECT 1"))
+                    except Exception as conn_error:
+                        error_details["error"] = f"Connection error: {str(conn_error)}"
+                        error_details["error_type"] = type(conn_error).__name__
+            except RuntimeError as e:
+                error_details["error"] = f"Database engine not initialized: {str(e)}"
             
             return JSONResponse(status_code=503, content=error_details)
     except Exception as e:
@@ -79,59 +83,53 @@ async def health_check_db():
 
 @router.get("/health/clock-sync")
 async def health_check_clock_sync():
-    """Clock synchronization health check"""
+    """Clock synchronization health check - proxies to trading server (internal-only endpoint, not exposed through gateway)"""
     try:
-        # Import clock sync monitor from trading server
-        # Note: This requires the trading server to be running and accessible
-        # For now, we'll create a simple check that can be enhanced later
-        import sys
-        import os
-        
-        # Try to import clock sync monitor
-        try:
-            # Add trading server src to path if needed
-            trading_server_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-                "trading_server", "src"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{settings.trading_server_url}/health/clock-sync"
             )
-            if trading_server_path not in sys.path:
-                sys.path.insert(0, trading_server_path)
-            
-            from monitoring.clock_sync_monitor import ClockSyncMonitor
-            
-            # Get singleton instance or create new one
-            # In production, this should be a shared instance
-            monitor = ClockSyncMonitor()
-            status = monitor.get_status()
-            
-            is_healthy = monitor.is_healthy()
-            
-            if is_healthy:
-                return {
-                    "status": "healthy",
-                    "service": "clock_sync",
-                    "last_drift_seconds": status.get("last_drift_seconds"),
-                    "last_status": status.get("last_status"),
-                    "check_count": status.get("check_count"),
-                }
+            if response.status_code == 200:
+                # Parse response and return
+                data = response.json()
+                return data
+            elif response.status_code == 503:
+                # Trading server returned unhealthy status
+                data = response.json()
+                return JSONResponse(
+                    status_code=503,
+                    content=data,
+                )
             else:
+                # Unexpected status code
                 return JSONResponse(
                     status_code=503,
                     content={
-                        "status": "unhealthy",
+                        "status": "error",
                         "service": "clock_sync",
-                        "last_drift_seconds": status.get("last_drift_seconds"),
-                        "last_status": status.get("last_status"),
-                        "warning": "Clock synchronization issue detected",
+                        "error": f"Trading server returned status {response.status_code}",
                     },
                 )
-        except ImportError:
-            # Clock sync monitor not available
-            return {
+    except httpx.TimeoutException:
+        logger.error("Clock sync health check timed out")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "service": "clock_sync",
+                "error": "Trading server health check timed out",
+            },
+        )
+    except httpx.ConnectError:
+        logger.error("Clock sync health check: could not connect to trading server")
+        return JSONResponse(
+            status_code=503,
+            content={
                 "status": "unknown",
                 "service": "clock_sync",
-                "message": "Clock sync monitor not available",
-            }
+                "message": "Trading server not available",
+            },
+        )
     except Exception as e:
         logger.error(f"Clock sync health check failed: {e}")
         return JSONResponse(
@@ -146,7 +144,7 @@ async def health_check_clock_sync():
 
 @router.get("/health/mlflow")
 async def health_check_mlflow():
-    """MLflow health check"""
+    """MLflow health check (public endpoint)"""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{settings.mlflow_tracking_uri}/health")

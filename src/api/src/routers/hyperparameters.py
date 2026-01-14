@@ -4,8 +4,9 @@ Hyperparameter search endpoints
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict
 from dependencies import get_db
+from middleware.auth import get_current_user
 from services import optuna_service
 from schemas.hyperparameters import (
     OptunaSearchCreate,
@@ -21,7 +22,9 @@ router = APIRouter()
     "/hyperparameters/search", response_model=OptunaStudyResponse, status_code=201
 )
 async def start_optuna_search(
-    search: OptunaSearchCreate, db: Session = Depends(get_db)
+    search: OptunaSearchCreate,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Start Optuna hyperparameter search"""
     try:
@@ -45,7 +48,11 @@ async def start_optuna_search(
 
 
 @router.get("/hyperparameters/search/{id}", response_model=OptunaStudyResponse)
-async def get_search_status(id: int, db: Session = Depends(get_db)):
+async def get_search_status(
+    id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get Optuna search status"""
     study = optuna_service.get_study_by_id(db, id)
     if not study:
@@ -57,7 +64,9 @@ async def get_search_status(id: int, db: Session = Depends(get_db)):
     "/experiments/{experiment_id}/optuna/status", response_model=OptunaStudyResponse
 )
 async def get_experiment_optuna_status(
-    experiment_id: int, db: Session = Depends(get_db)
+    experiment_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Get Optuna study status for an experiment"""
     study = optuna_service.get_study_by_experiment_id(db, experiment_id)
@@ -70,7 +79,11 @@ async def get_experiment_optuna_status(
 
 
 @router.get("/hyperparameters/search/{id}/trials", response_model=List[TrialResponse])
-async def get_trials(id: int, db: Session = Depends(get_db)):
+async def get_trials(
+    id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get all trials for an Optuna study"""
     study = optuna_service.get_study_by_id(db, id)
     if not study:
@@ -81,7 +94,11 @@ async def get_trials(id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/hyperparameters/search/{id}/best", response_model=OptunaStudyResponse)
-async def get_best_trial(id: int, db: Session = Depends(get_db)):
+async def get_best_trial(
+    id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get best trial for an Optuna study"""
     study = optuna_service.get_study_by_id(db, id)
     if not study:
@@ -94,7 +111,11 @@ async def get_best_trial(id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/hyperparameters/search/{id}/stop", response_model=OptunaStudyResponse)
-async def stop_search(id: int, db: Session = Depends(get_db)):
+async def stop_search(
+    id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Stop an Optuna search"""
     study = optuna_service.get_study_by_id(db, id)
     if not study:
@@ -113,7 +134,11 @@ async def stop_search(id: int, db: Session = Depends(get_db)):
     "/hyperparameters/search/{id}/importance",
     response_model=ParameterImportanceResponse,
 )
-async def get_parameter_importance(id: int, db: Session = Depends(get_db)):
+async def get_parameter_importance(
+    id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get parameter importance for an Optuna study"""
     study = optuna_service.get_study_by_id(db, id)
     if not study:

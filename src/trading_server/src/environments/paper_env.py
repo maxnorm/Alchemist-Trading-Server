@@ -2,101 +2,56 @@
 Paper Trading Environment
 
 Real-time paper trading environment that:
-- Uses live data from data providers
-- Simulates order execution with realistic slippage
-- Tracks simulated P&L
-- Does NOT execute real trades
+- Uses live data from connectors
+- Executes real orders on demo/paper account
+- Tracks real P&L from broker
 
-Perfect for model validation before production deployment.
+Perfect for model validation before production deployment with real broker execution.
 """
 
-import time
+import os
 import numpy as np
-from typing import Optional, Dict, List, Any, Tuple, TYPE_CHECKING
-from dataclasses import dataclass
-from datetime import datetime
-from collections import deque
+import threading
+import logging
+from typing import Optional, Dict, List, Any, Tuple
 
 from environments.base_trading_env import BaseTradingEnv
-from environments.slippage_models import SlippageModel, FixedSlippage
-
-if TYPE_CHECKING:
-    from data_providers.base_provider import DataProvider
-
-
-@dataclass
-class SimulatedPosition:
-    """Simulated position for paper trading"""
-
-    symbol: str
-    side: str  # 'long' or 'short'
-    quantity: float
-    entry_price: float
-    entry_time: datetime
-    current_price: float = 0.0
-    unrealized_pnl: float = 0.0
-
-    def update_price(self, bid: float, ask: float) -> None:
-        """Update current price and unrealized P&L"""
-        if self.side == "long":
-            self.current_price = bid
-            self.unrealized_pnl = (bid - self.entry_price) * self.quantity
-        else:
-            self.current_price = ask
-            self.unrealized_pnl = (self.entry_price - ask) * self.quantity
-
-
-@dataclass
-class SimulatedTrade:
-    """Completed simulated trade"""
-
-    symbol: str
-    side: str
-    entry_price: float
-    exit_price: float
-    quantity: float
-    entry_time: datetime
-    exit_time: datetime
-    pnl: float
-    duration_seconds: float
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "symbol": self.symbol,
-            "side": self.side,
-            "entry_price": self.entry_price,
-            "exit_price": self.exit_price,
-            "quantity": self.quantity,
-            "entry_time": self.entry_time.isoformat(),
-            "exit_time": self.exit_time.isoformat(),
-            "pnl": self.pnl,
-            "duration_seconds": self.duration_seconds,
-        }
+from utils.feature_engineering import FeatureEngineer
+from utils.performance_metrics import PerformanceMetrics
+from utils.transaction_costs import TransactionCostModel
+from application.environment.price_history_manager import PriceHistoryManager
+from application.environment.feature_engine import FeatureEngine
+from application.environment.state_builder import StateBuilder
+from environments.reward_normalizer import RewardNormalizer
+from environments.reward_monitor import RewardMonitor
+from connectors.base import IDataSourceConnector
+from application.services.action_executor import ActionExecutor
+from utils.risk_management import RiskManager
 
 
 class PaperTradingEnv(BaseTradingEnv):
     """
     Paper trading environment with real-time data.
 
-    Uses live data feeds but simulates all executions.
-    Useful for model validation without risking real capital.
+    Executes real orders on demo/paper account (not simulation).
+    Uses same architecture as LiveTradingEnv but with demo account.
+    Useful for model validation before live trading.
 
     Features:
-    - Real-time price updates from data providers
-    - Simulated execution with slippage
-    - Position and P&L tracking
-    - Latency simulation (optional)
+    - Real-time price updates from connectors
+    - Real order execution via ActionExecutor (on demo account)
+    - Real position and P&L tracking from broker
     - Performance metrics calculation
 
     Usage:
-        # Create with data providers
-        providers = [PriceProvider(pair) for pair in currency_pairs]
+        # Create with account (demo/paper account) and connectors
+        account = Account(login, broker_adapter=demo_broker_adapter)
+        connectors = [MT5PriceConnector(pair) for pair in currency_pairs]
 
         env = PaperTradingEnv(
-            data_providers=providers,
-            initial_balance=10000.0,
-            transaction_cost=0.0001,
-            slippage_model=FixedSlippage(0.0001)
+            account=account,
+            connectors=connectors,
+            window_size=50
         )
 
         # Run trading loop
@@ -117,64 +72,158 @@ class PaperTradingEnv(BaseTradingEnv):
 
     def __init__(
         self,
-        data_providers: List["DataProvider"],
+        account,
+        connectors: List[IDataSourceConnector],
         window_size: int = 50,
-        initial_balance: float = 10000.0,
-        transaction_cost: float = 0.0001,
-        slippage_model: Optional[SlippageModel] = None,
-        position_size_pct: float = 0.1,
-        simulate_latency: bool = True,
-        latency_ms: int = 50,
-        max_history: int = 1000,
+        feature_engineer: Optional[FeatureEngineer] = None,
+        reward_normalizer: Optional[RewardNormalizer] = None,
+        use_reward_normalization: bool = True,
+        reward_monitor: Optional[RewardMonitor] = None,
+        use_reward_monitoring: bool = True,
+        risk_manager: Optional[RiskManager] = None,
+        seed: Optional[int] = None,
     ):
         """
         Initialize paper trading environment.
 
         Args:
-            data_providers: List of data providers for price feeds
-            window_size: Observation window size
-            initial_balance: Starting simulated balance
-            transaction_cost: Transaction cost as fraction
-            slippage_model: Model for simulating execution slippage
-            position_size_pct: Default position size as fraction of balance
-            simulate_latency: Whether to simulate network latency
-            latency_ms: Simulated latency in milliseconds
-            max_history: Maximum price history to keep
+            account: Account connected to demo/paper account (Account object)
+            connectors: List of data source connectors (IDataSourceConnector objects)
+            window_size: Window size for state
+            feature_engineer: Optional pre-fitted feature engineer
+            reward_normalizer: Optional reward normalizer instance
+            use_reward_normalization: Whether to normalize rewards (default: True)
+            reward_monitor: Optional reward monitor instance
+            use_reward_monitoring: Whether to monitor rewards (default: True)
+            risk_manager: Optional risk manager instance
+            seed: Random seed for reproducibility
         """
-        n_pairs = len(data_providers)
-        action_size = (n_pairs * 3) + 1  # +1 for global HOLD
+        # Calculate number of pairs and features per pair (like LiveTradingEnv)
+        n_pairs = len(connectors) if connectors else 1
+        features_per_pair = 15  # Updated for feature count
+        total_features = n_pairs * features_per_pair
+
+        # Update action space: (n_pairs * 3) + 1 actions
+        action_size = (n_pairs * 3) + 1
 
         super().__init__(
+            window_size, price_shape=total_features, action_size=action_size, seed=seed
+        )
+        self.account = account
+        self.connectors = connectors  # Direct, no adapter
+        self.n_pairs = n_pairs
+        self.features_per_pair = features_per_pair
+        self.state_buffer: List[Any] = []
+        self._state_lock = threading.Lock()
+
+        # Initialize feature engineer
+        self.feature_engineer = feature_engineer or FeatureEngineer(
+            normalization_method="robust"
+        )
+        self.account_login = getattr(account, "login", "default")
+        self.scaler_dir = os.path.join(
+            "models", f"account_{self.account_login}", "scalers"
+        )
+        os.makedirs(self.scaler_dir, exist_ok=True)
+        self._load_feature_engineer()
+
+        # Initialize components (like LiveTradingEnv)
+        self.price_history_manager = PriceHistoryManager(window_size, connectors)
+
+        # Load historical data if available
+        db = None
+        try:
+            from database import Database
+
+            db = Database()
+            symbols = (
+                [
+                    (
+                        getattr(getattr(connector, "config", None), "symbol", "unknown")
+                        if getattr(connector, "config", None)
+                        else "unknown"
+                    )
+                    for connector in connectors
+                ]
+                if connectors
+                else []
+            )
+            if symbols:
+                self.price_history_manager.load_historical_data(
+                    db, symbols, limit=100, hours=24
+                )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            if hasattr(logger, "log_error"):
+                logger.log_error(
+                    event_type="historical_data_load_error",
+                    error=f"Could not load historical data: {e}",
+                    exc_info=False,
+                )
+            else:
+                logger.warning(f"Could not load historical data: {e}")
+
+        # Initialize feature engine with database for versioning
+        try:
+            from mlops.feature_registry import FeatureRegistry
+
+            feature_registry = FeatureRegistry(db) if db else None
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to create feature registry: {e}")
+            feature_registry = None
+
+        self.feature_engine = FeatureEngine(
+            feature_engineer=self.feature_engineer,
             window_size=window_size,
-            price_shape=15,  # Standard feature count
-            action_size=action_size,
+            features_per_pair=features_per_pair,
+            database=db,
+            feature_registry=feature_registry,
+        )
+        self.state_builder = StateBuilder(
+            price_history_manager=self.price_history_manager,
+            feature_engine=self.feature_engine,
+            window_size=window_size,
+            connectors=connectors,
         )
 
-        self.data_providers = data_providers
-        self.initial_balance = initial_balance
-        self.transaction_cost = transaction_cost
-        self.slippage_model = slippage_model or FixedSlippage()
-        self.position_size_pct = position_size_pct
-        self.simulate_latency = simulate_latency
-        self.latency_ms = latency_ms
-        self.max_history = max_history
+        # Initialize performance metrics tracker
+        self.performance_metrics = PerformanceMetrics(window_size=252)
+        self.previous_balance = None
 
-        # Simulated state
-        self.simulated_balance = initial_balance
-        self.simulated_positions: Dict[str, SimulatedPosition] = {}
-        self.simulated_trades: List[SimulatedTrade] = []
-        self.equity_history: List[Tuple[datetime, float]] = []
+        # Initialize transaction cost model
+        self.transaction_cost_model = TransactionCostModel()
 
-        # Price history for state building
-        self.price_history: Dict[str, deque] = {
-            p.currency_pair.symbol: deque(maxlen=max_history)  # type: ignore[attr-defined]
-            for p in data_providers
-            if hasattr(p, "currency_pair") and hasattr(p.currency_pair, "symbol")
-        }
+        # Initialize reward normalizer
+        self.use_reward_normalization = use_reward_normalization
+        if reward_normalizer is not None:
+            self.reward_normalizer: Optional[RewardNormalizer] = reward_normalizer
+        elif use_reward_normalization:
+            self.reward_normalizer = RewardNormalizer(
+                alpha=0.99, clip_range=(-3.0, 3.0)
+            )
+        else:
+            self.reward_normalizer = None
 
-        # Statistics
-        self.step_count = 0
-        self.start_time: Optional[datetime] = None
+        # Initialize reward monitor
+        self.use_reward_monitoring = use_reward_monitoring
+        if reward_monitor is not None:
+            self.reward_monitor: Optional[RewardMonitor] = reward_monitor
+        elif use_reward_monitoring:
+            self.reward_monitor = RewardMonitor(window_size=100, anomaly_threshold=3.0)
+        else:
+            self.reward_monitor = None
+
+        # Initialize with current balance if account exists
+        if account and account.balance:
+            self.previous_balance = account.balance
+
+        # Initialize ActionExecutor and RiskManager
+        self.action_executor = ActionExecutor()
+        self.risk_manager = risk_manager or RiskManager()
+
+        # Note: Connectors are consumed by PriceHistoryManager via background threads
+        # No need to subscribe here - data flows through PriceHistoryManager
 
     def reset(
         self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
@@ -182,27 +231,28 @@ class PaperTradingEnv(BaseTradingEnv):
         """Reset paper trading state"""
         super().reset(seed=seed)
 
-        self.simulated_balance = self.initial_balance
-        self.simulated_positions = {}
-        self.simulated_trades = []
-        self.equity_history = [(datetime.now(), self.initial_balance)]
-        self.step_count = 0
-        self.start_time = datetime.now()
+        # Reset performance metrics
+        self.performance_metrics.reset()
+        self.previous_balance = None
+        if self.reward_normalizer is not None:
+            self.reward_normalizer.reset()
+        if self.reward_monitor is not None:
+            self.reward_monitor.reset()
 
-        # Clear price history
-        for symbol in self.price_history:
-            self.price_history[symbol].clear()
+        # Initialize with current balance if account exists
+        if self.account and self.account.balance:
+            self.previous_balance = self.account.balance
 
         info = {
-            "simulated_balance": self.simulated_balance,
-            "start_time": self.start_time.isoformat(),
+            "account_balance": self.account.balance if self.account else 0.0,
+            "account_login": self.account_login,
         }
 
         return self.get_state(), info
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """
-        Execute one step with simulated trading.
+        Execute one step with real order execution (on demo account).
 
         Args:
             action: Action to take
@@ -210,369 +260,345 @@ class PaperTradingEnv(BaseTradingEnv):
         Returns:
             Tuple of (observation, reward, terminated, truncated, info)
         """
-        # Simulate network latency
-        if self.simulate_latency:
-            time.sleep(self.latency_ms / 1000)
-
-        # Update positions with current prices
-        self._update_positions()
-
-        # Calculate equity before action
-        old_equity = self._calculate_equity()
-
-        # Execute simulated action
-        self._execute_simulated_action(action)
-
-        # Calculate new equity
-        new_equity = self._calculate_equity()
-
-        # Record equity
-        self.equity_history.append((datetime.now(), new_equity))
-
-        # Calculate reward
-        if old_equity > 0:
-            reward = (new_equity - old_equity) / old_equity
-        else:
-            reward = 0.0
-
-        self.step_count += 1
-
-        info = {
-            "simulated_balance": self.simulated_balance,
-            "simulated_equity": new_equity,
-            "positions": {
-                sym: {
-                    "side": p.side,
-                    "quantity": p.quantity,
-                    "unrealized_pnl": p.unrealized_pnl,
-                }
-                for sym, p in self.simulated_positions.items()
-            },
-            "step_count": self.step_count,
-            "trade_count": len(self.simulated_trades),
-        }
-
-        # Paper trading never terminates on its own
-        return self.get_state(), reward, False, False, info
-
-    def get_state(self) -> np.ndarray:
-        """Get current state from live data providers"""
-        if not self.data_providers:
-            if self.observation_space.shape is None:
-                raise ValueError("Observation space must have a shape")
-            return np.zeros(self.observation_space.shape, dtype=np.float32)
-
-        # Collect data from all providers
-        for provider in self.data_providers:
-            symbol = getattr(provider, "currency_pair", None)
-            if symbol is None or not hasattr(symbol, "symbol"):
-                continue
-            symbol = symbol.symbol
-
-            # Get current data
-            try:
-                current_data = provider.get_current_data()
-                if current_data:
-                    self.price_history[symbol].append(
-                        {
-                            "timestamp": datetime.now(),
-                            "bid": current_data.get("bid", 0),
-                            "ask": current_data.get("ask", 0),
-                            "volume": current_data.get("volume", 0),
-                        }
-                    )
-            except Exception:
-                pass
-
-        # Build state from history
-        # Use the first provider's history as the main timeline
-        if self.data_providers:
-            main_provider = self.data_providers[0]
-            if not hasattr(main_provider, "currency_pair"):
-                raise ValueError("DataProvider must have currency_pair attribute")
-            main_symbol = main_provider.currency_pair.symbol
-            history = list(self.price_history[main_symbol])
-        else:
-            history = []
-
-        if len(history) < self.window_size:
-            # Not enough data yet
-            if self.observation_space.shape is None:
-                raise ValueError("Observation space must have a shape")
-            return np.zeros(self.observation_space.shape, dtype=np.float32)
-
-        # Take last window_size entries
-        window = history[-self.window_size :]
-
-        features = []
-        for entry in window:
-            row_features = [
-                entry["bid"],
-                entry["ask"],
-                entry["volume"],
-                1.0 if self.simulated_positions else 0.0,
-            ]
-
-            # Pad to match expected feature size
-            if (
-                self.observation_space.shape is None
-                or len(self.observation_space.shape) < 2
-            ):
-                raise ValueError("Observation space must have a 2D shape")
-            while len(row_features) < self.observation_space.shape[1]:
-                row_features.append(0.0)
-
-            if (
-                self.observation_space.shape is None
-                or len(self.observation_space.shape) < 2
-            ):
-                raise ValueError("Observation space must have a 2D shape")
-            features.append(row_features[: self.observation_space.shape[1]])
-
-        return np.array(features, dtype=np.float32)
-
-    def _execute_simulated_action(self, action: int) -> None:
-        """Execute action in simulation"""
-        if action == 0:  # Global HOLD
-            return
-
-        # Decode action
-        pair_index, action_type = self.decode_action(action)
-
-        if pair_index is None or pair_index >= len(self.data_providers):
-            return
-
-        provider = self.data_providers[pair_index]
-        symbol = provider.currency_pair.symbol
-
-        # Get current data
-        try:
-            current_data = provider.get_current_data()
-            if not current_data:
-                return
-        except Exception:
-            return
-
         from domain.action_type import ActionType
 
-        if action_type == ActionType.BUY:
-            self._open_simulated_position(symbol, "long", current_data)
-        elif action_type == ActionType.SELL:
-            self._open_simulated_position(symbol, "short", current_data)
-        elif action_type == ActionType.CLOSE:
-            self._close_simulated_position(symbol, current_data)
-
-    def _open_simulated_position(self, symbol: str, side: str, data: Dict) -> None:
-        """Open a simulated position"""
-        if symbol in self.simulated_positions:
-            return  # Already have a position
-
-        price = data["ask"] if side == "long" else data["bid"]
-        fill_price = self.slippage_model.apply(
-            price,
-            quantity=1.0,
-            is_buy=(side == "long"),
-            volume=data.get("volume", 1000),
+        # Get previous balance for reward calculation
+        previous_balance = self.previous_balance or (
+            self.account.balance if self.account else 0.0
         )
 
-        # Calculate position size
-        position_value = self.simulated_balance * self.position_size_pct
-        quantity = position_value / fill_price
-
-        # Deduct transaction cost
-        cost = fill_price * quantity * self.transaction_cost
-        self.simulated_balance -= cost
-
-        self.simulated_positions[symbol] = SimulatedPosition(
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            entry_price=fill_price,
-            entry_time=datetime.now(),
-            current_price=fill_price,
-        )
-
-    def _close_simulated_position(self, symbol: str, data: Dict) -> float:
-        """Close a simulated position"""
-        if symbol not in self.simulated_positions:
-            return 0.0
-
-        position = self.simulated_positions[symbol]
-
-        # Calculate exit price with slippage
-        if position.side == "long":
-            price = data["bid"]
-            fill_price = self.slippage_model.apply(
-                price, quantity=position.quantity, is_buy=False
-            )
-            pnl = (fill_price - position.entry_price) * position.quantity
-        else:
-            price = data["ask"]
-            fill_price = self.slippage_model.apply(
-                price, quantity=position.quantity, is_buy=True
-            )
-            pnl = (position.entry_price - fill_price) * position.quantity
-
-        # Deduct transaction cost
-        cost = fill_price * position.quantity * self.transaction_cost
-        net_pnl = pnl - cost
-
-        self.simulated_balance += net_pnl
-
-        # Record trade
-        exit_time = datetime.now()
-        trade = SimulatedTrade(
-            symbol=symbol,
-            side=position.side,
-            entry_price=position.entry_price,
-            exit_price=fill_price,
-            quantity=position.quantity,
-            entry_time=position.entry_time,
-            exit_time=exit_time,
-            pnl=net_pnl,
-            duration_seconds=(exit_time - position.entry_time).total_seconds(),
-        )
-        self.simulated_trades.append(trade)
-
-        del self.simulated_positions[symbol]
-        return net_pnl
-
-    def _update_positions(self) -> None:
-        """Update all positions with current prices"""
-        for symbol, position in self.simulated_positions.items():
-            # Find provider for this symbol
-            provider = next(
-                (
-                    p
-                    for p in self.data_providers
-                    if hasattr(p, "currency_pair") and p.currency_pair.symbol == symbol
+        # Handle global HOLD (action 0)
+        if action == 0:
+            # HOLD does nothing, calculate reward based on account balance change
+            current_balance = self.account.balance if self.account else 0.0
+            reward = self.calculate_reward(
+                previous_balance=previous_balance,
+                current_balance=current_balance,
+                action=action,
+                has_position=(
+                    len(self.account.current_trade) > 0 if self.account else False
                 ),
-                None,
             )
+            self.previous_balance = current_balance
+            return self.get_state(), reward, False, False, self._get_info()
 
-            if provider:
-                try:
-                    data = provider.get_current_data()
-                    if data:
-                        position.update_price(data["bid"], data["ask"])
-                except Exception:
-                    pass
+        # Decode action to get pair_index and action_type
+        pair_index, action_type = self.decode_action(action)
 
-    def _calculate_equity(self) -> float:
-        """Calculate total simulated equity"""
-        equity = self.simulated_balance
+        # Validate pair_index
+        if (
+            pair_index is None
+            or not self.connectors
+            or pair_index >= len(self.connectors)
+        ):
+            current_balance = self.account.balance if self.account else 0.0
+            reward = 0.0
+            self.previous_balance = current_balance
+            return self.get_state(), reward, False, False, self._get_info()
 
-        for position in self.simulated_positions.values():
-            equity += position.unrealized_pnl
+        # Get currency pair for the selected pair_index
+        connector = self.connectors[pair_index]
+        pair = getattr(connector, "currency_pair", None)
 
-        return equity
+        if pair is None:
+            current_balance = self.account.balance if self.account else 0.0
+            reward = 0.0
+            self.previous_balance = current_balance
+            return self.get_state(), reward, False, False, self._get_info()
 
-    def get_trade_history(self) -> List[Dict]:
-        """Get completed trades"""
-        return [t.to_dict() for t in self.simulated_trades]
+        has_position = len(self.account.current_trade) > 0 if self.account else False
 
-    def get_equity_curve(self) -> List[Tuple[str, float]]:
-        """Get equity curve with timestamps"""
-        return [(t.isoformat(), e) for t, e in self.equity_history]
+        # Initialize trade information variables for reward calculation
+        entry_price = None
+        exit_price = None
+        lot_size = None
+        is_long = None
 
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Calculate performance metrics from paper trading"""
-        if not self.simulated_trades:
-            return {
-                "total_trades": 0,
-                "win_rate": 0.0,
-                "total_pnl": 0.0,
-                "sharpe_ratio": 0.0,
-                "max_drawdown": 0.0,
-                "profit_factor": 0.0,
-                "days_traded": 0,
-            }
+        # Store trade info before execution for reward calculation
+        if has_position and self.account.current_trade:
+            trade = list(self.account.current_trade.values())[0]
+            entry_price = trade.open_price
+            lot_size = trade.lotsize
+            is_long = trade.ordertype.value == 0  # 0 = BUY
+            exit_price = pair.bid if is_long else pair.ask
 
-        pnls = [t.pnl for t in self.simulated_trades]
-        wins = [p for p in pnls if p > 0]
-        losses = [p for p in pnls if p < 0]
+        # Execute action using ActionExecutor (real orders on demo account)
+        try:
+            self.action_executor.execute(
+                action=action,
+                environment=self,
+                account=self.account,
+                risk_manager=self.risk_manager,
+                previous_balance=previous_balance,
+                trading_enabled=True,  # Paper trading always enabled (demo account)
+            )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            if hasattr(logger, "log_error"):
+                logger.log_error(
+                    event_type="paper_trading_action_error",
+                    error=f"Error executing action {action}: {e}",
+                    exc_info=True,
+                )
+            else:
+                logger.error(f"Error executing action {action}: {e}", exc_info=True)
 
-        win_rate = len(wins) / len(pnls) if pnls else 0.0
-        total_pnl = sum(pnls)
+        # Update trade info after execution for reward calculation
+        if action_type == ActionType.BUY or action_type == ActionType.SELL:
+            # New position opened
+            if self.account.current_trade:
+                trade = list(self.account.current_trade.values())[0]
+                entry_price = trade.open_price
+                lot_size = trade.lotsize
+                is_long = trade.ordertype.value == 0  # 0 = BUY
+        elif action_type == ActionType.CLOSE:
+            # Position closed, use stored values
+            pass
 
-        # Profit factor
-        gross_profit = sum(wins) if wins else 0.0
-        gross_loss = abs(sum(losses)) if losses else 0.0
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+        # Calculate reward with detailed transaction cost model
+        current_balance = self.account.balance if self.account else 0.0
 
-        # Sharpe ratio from equity curve
-        if len(self.equity_history) > 1:
-            equities = [e for _, e in self.equity_history]
-            returns = np.diff(equities) / equities[:-1]
-            sharpe_ratio = np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252)
-        else:
-            sharpe_ratio = 0.0
+        # Get current volatility from environment metrics
+        volatility = None
+        if hasattr(self, "performance_metrics"):
+            metrics = self.performance_metrics.get_all_metrics()
+            volatility = metrics.get("volatility", None)
+            # Convert annualized volatility to daily if needed
+            if volatility is not None:
+                volatility = volatility / np.sqrt(252)  # Convert to daily
 
-        # Max drawdown
-        max_drawdown = self._calculate_max_drawdown()
+        reward = self.calculate_reward(
+            previous_balance=previous_balance,
+            current_balance=current_balance,
+            action=action,
+            has_position=has_position,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            is_long=is_long,
+            pair=pair,
+            volatility=volatility,
+        )
 
-        # Days traded
-        if self.start_time:
-            days_traded = (datetime.now() - self.start_time).days
-        else:
-            days_traded = 0
+        self.previous_balance = current_balance
 
+        # Paper trading never terminates on its own
+        return self.get_state(), reward, False, False, self._get_info()
+
+    def _get_info(self) -> Dict[str, Any]:
+        """Get info dictionary for step() return"""
         return {
-            "total_trades": len(self.simulated_trades),
-            "win_rate": win_rate,
-            "total_pnl": total_pnl,
-            "avg_pnl": np.mean(pnls) if pnls else 0.0,
-            "profit_factor": profit_factor,
-            "sharpe_ratio": sharpe_ratio,
-            "max_drawdown": max_drawdown,
-            "days_traded": days_traded,
-            "final_balance": self.simulated_balance,
-            "final_equity": self._calculate_equity(),
-            "total_return": (self._calculate_equity() - self.initial_balance)
-            / self.initial_balance,
+            "account_balance": self.account.balance if self.account else 0.0,
+            "account_login": self.account_login,
+            "positions": len(self.account.current_trade) if self.account else 0,
         }
 
-    def _calculate_max_drawdown(self) -> float:
-        """Calculate maximum drawdown"""
-        if len(self.equity_history) == 0:
-            return 0.0
+    def get_state(self, mode: str = "live", include_latency: bool = True):
+        """
+        Get current state from all data sources - delegates to StateBuilder (like LiveTradingEnv)
 
-        equities = [e for _, e in self.equity_history]
-        peak = equities[0]
-        max_dd = 0.0
+        :param mode: 'training' (point-in-time) or 'live' (real-time)
+        :param include_latency: Include latency features in state
+        :return: State array with latency features
+        """
+        from utils.time_utils import get_utc_time
 
-        for equity in equities:
-            if equity > peak:
-                peak = equity
-            dd = (peak - equity) / peak if peak > 0 else 0.0
-            if dd > max_dd:
-                max_dd = dd
+        current_time = get_utc_time()
+        state = self.state_builder.build_state(
+            current_time=current_time, mode=mode, include_latency=include_latency
+        )
 
-        return max_dd
+        # If state is None (not enough data), return zeros
+        if state is None:
+            if self.observation_space.shape is None:
+                raise ValueError("Observation space must have a shape")
+            return np.zeros(self.observation_space.shape, dtype=np.float32)
+
+        return state
+
+    # Property for backward compatibility
+    @property
+    def price_history_by_pair(self) -> Dict[str, List[float]]:
+        """Get price history by pair (backward compatibility)"""
+        return self.price_history_manager.get_all_histories()
+
+    def calculate_reward(
+        self,
+        previous_balance: float,
+        current_balance: float,
+        action: int,
+        has_position: bool,
+        transaction_cost: Optional[float] = None,
+        entry_price: Optional[float] = None,
+        exit_price: Optional[float] = None,
+        lot_size: Optional[float] = None,
+        is_long: Optional[bool] = None,
+        pair=None,
+        volatility: Optional[float] = None,
+    ) -> float:
+        """
+        Enhanced reward function with risk-adjusted metrics (like LiveTradingEnv)
+
+        Components:
+        1. Sharpe ratio reward (risk-adjusted returns)
+        2. Drawdown penalty (large losses)
+        3. Volatility penalty (high volatility)
+        4. Transaction cost penalty (trading costs)
+        5. Action-based adjustments (behavior fine-tuning)
+
+        :param previous_balance: Previous account balance
+        :param current_balance: Current account balance
+        :param action: Action taken (0=Hold, 1=Buy, 2=Sell, 3=Close)
+        :param has_position: Whether agent has open position
+        :param transaction_cost: Optional fixed transaction cost (for backward compatibility)
+        :param entry_price: Entry price for the trade (for detailed cost calculation)
+        :param exit_price: Exit price for the trade (for detailed cost calculation)
+        :param lot_size: Position size in lots (for detailed cost calculation)
+        :param is_long: True for long position, False for short (for detailed cost calculation)
+        :param pair: Currency pair object (for actual spread calculation)
+        :param volatility: Current volatility (for slippage calculation)
+        :return: Reward value
+        """
+        # Update performance metrics with new balance
+        if self.previous_balance is not None and self.previous_balance > 0:
+            self.performance_metrics.update(current_balance, self.previous_balance)
+
+        self.previous_balance = current_balance
+
+        # Get current performance metrics
+        metrics = self.performance_metrics.get_all_metrics()
+
+        # Component 1: Sharpe Ratio Reward
+        sharpe_ratio = metrics["sharpe_ratio"]
+        sharpe_reward = np.clip(sharpe_ratio / 3.0, -1.0, 1.0)
+
+        # Component 2: Drawdown Penalty
+        current_drawdown = metrics["current_drawdown"]
+        if current_drawdown > 0.05:  # More than 5% drawdown
+            drawdown_penalty = np.clip(-abs(current_drawdown) / 0.20, -1.0, 0.0)
+        else:
+            drawdown_penalty = 0.0
+
+        # Component 3: Volatility Penalty
+        volatility_metric = metrics["volatility"]
+        if volatility_metric > 0.02:  # More than 2% annualized volatility
+            volatility_penalty = np.clip(-volatility_metric / 0.10, -1.0, 0.0)
+        else:
+            volatility_penalty = 0.0
+
+        # Component 4: Transaction Cost Penalty
+        if action in [1, 2, 3]:  # Buy, Sell, or Close
+            if (
+                transaction_cost is None
+                and entry_price is not None
+                and lot_size is not None
+                and is_long is not None
+            ):
+                cost_value = self.transaction_cost_model.calculate_cost_for_action(
+                    action=action,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    lot_size=lot_size,
+                    is_long=is_long,
+                    pair=pair,
+                    volatility=volatility,
+                )
+                if previous_balance > 0:
+                    transaction_cost_pct = cost_value / previous_balance
+                else:
+                    transaction_cost_pct = 0.0
+                transaction_penalty = -transaction_cost_pct
+            else:
+                if transaction_cost is None:
+                    transaction_cost = 0.001  # Default 0.1%
+                transaction_penalty = -transaction_cost
+        else:
+            transaction_penalty = 0.0
+
+        # Component 5: Action-based adjustments
+        action_penalty = 0.0
+        if action == 0 and not has_position:
+            action_penalty = -0.01
+
+        profit = current_balance - previous_balance
+        if action == 3 and has_position and profit > 0:  # Close with profit
+            action_penalty += 0.1
+
+        # Combine all components
+        reward = (
+            sharpe_reward
+            + drawdown_penalty
+            + volatility_penalty
+            + transaction_penalty
+            + action_penalty
+        )
+
+        # Track reward components for monitoring
+        reward_components = {
+            "sharpe_reward": sharpe_reward,
+            "drawdown_penalty": drawdown_penalty,
+            "volatility_penalty": volatility_penalty,
+            "transaction_penalty": transaction_penalty,
+            "action_penalty": action_penalty,
+        }
+
+        # Normalize reward if normalizer is configured
+        if self.reward_normalizer is not None and self.use_reward_normalization:
+            reward = self.reward_normalizer.normalize(reward)
+
+        # Update reward monitor if configured
+        if self.reward_monitor is not None and self.use_reward_monitoring:
+            self.reward_monitor.update(reward, components=reward_components)
+
+        return reward
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get current performance metrics (like LiveTradingEnv)"""
+        metrics = self.performance_metrics.get_all_metrics()
+
+        # Add account-specific metrics
+        if self.account:
+            metrics["account_balance"] = self.account.balance
+            metrics["account_equity"] = (
+                getattr(self.account.info, "equity", self.account.balance)
+                if hasattr(self.account, "info")
+                else self.account.balance
+            )
+            metrics["open_positions"] = len(self.account.current_trade)
+
+        return metrics
+
+    def reset_metrics(self):
+        """Reset performance metrics (useful for new episodes or testing)"""
+        self.performance_metrics.reset()
+        self.previous_balance = None
+        if self.reward_normalizer is not None:
+            self.reward_normalizer.reset()
+        if self.reward_monitor is not None:
+            self.reward_monitor.reset()
+
+    def get_reward_statistics(self) -> dict:
+        """Get reward normalization statistics"""
+        stats = {}
+        if self.reward_normalizer is not None:
+            stats["normalizer"] = self.reward_normalizer.get_statistics()
+        if self.reward_monitor is not None:
+            stats["monitor"] = self.reward_monitor.get_statistics()
+        return stats
 
     def close_all_positions(self) -> int:
         """Close all open positions (e.g., at end of paper trading)"""
+        if not self.account or not self.account.current_trade:
+            return 0
+
         closed = 0
-
-        for symbol in list(self.simulated_positions.keys()):
-            # Find provider
-            provider = next(
-                (
-                    p
-                    for p in self.data_providers
-                    if hasattr(p, "currency_pair") and p.currency_pair.symbol == symbol
-                ),
-                None,
-            )
-
-            if provider:
-                try:
-                    data = provider.get_current_data()
-                    if data:
-                        self._close_simulated_position(symbol, data)
-                        closed += 1
-                except Exception:
-                    pass
+        for ticket in list(self.account.current_trade.keys()):
+            try:
+                self.account.close_order(ticket)
+                closed += 1
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to close position {ticket}: {e}")
 
         return closed
 
@@ -596,20 +622,28 @@ class PaperTradingEnv(BaseTradingEnv):
 
         if session_manager and session_id:
             try:
-                # Calculate winning trades
-                winning_trades = sum(1 for t in self.simulated_trades if t.pnl > 0)
+                # Get account balance
+                balance = self.account.balance if self.account else 0.0
+
+                # Calculate winning trades from account trade history
+                # Note: This would need to track closed trades, which may require
+                # additional implementation depending on account interface
+                winning_trades = 0  # TODO: Implement based on account trade history
+                total_trades = len(self.account.current_trade) if self.account else 0
 
                 # Update session in database
                 session_manager.update_session_metrics(
                     session_id=session_id,
-                    balance=self.simulated_balance,
-                    total_trades=len(self.simulated_trades),
+                    balance=balance,
+                    total_trades=total_trades,
                     winning_trades=winning_trades,
-                    pnl=metrics.get("total_pnl", 0.0),
+                    pnl=(
+                        metrics.get("total_return", 0.0) * balance
+                        if balance > 0
+                        else 0.0
+                    ),
                 )
             except Exception as e:
-                import logging
-
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to update session metrics: {e}")
 
@@ -649,8 +683,6 @@ class PaperTradingEnv(BaseTradingEnv):
             try:
                 session_manager.end_session(session_id, final_metrics)
             except Exception as e:
-                import logging
-
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to end session: {e}")
 
@@ -660,22 +692,98 @@ class PaperTradingEnv(BaseTradingEnv):
                 # Format results for model registry
                 results = {
                     "total_trades": final_metrics.get("total_trades", 0),
-                    "winning_trades": sum(
-                        1 for t in self.simulated_trades if t.pnl > 0
-                    ),
+                    "winning_trades": final_metrics.get("winning_trades", 0),
                     "win_rate": final_metrics.get("win_rate", 0.0),
-                    "pnl": final_metrics.get("total_pnl", 0.0),
+                    "pnl": final_metrics.get("total_return", 0.0)
+                    * (self.account.balance if self.account else 0.0),
                     "sharpe_ratio": final_metrics.get("sharpe_ratio"),
                     "max_drawdown": final_metrics.get("max_drawdown"),
-                    "days_traded": final_metrics.get("days_traded", 0),
                     "trade_count": final_metrics.get("total_trades", 0),
                 }
 
                 model_registry.store_paper_trading_results(model_id, results)
             except Exception as e:
-                import logging
-
                 logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to store results in model registry: {e}")
 
         return final_metrics
+
+    def _save_feature_engineer(self):
+        """Persist fitted feature engineer for reuse across sessions"""
+        try:
+            import pickle
+
+            filepath = os.path.join(self.scaler_dir, "feature_engineer.pkl")
+            with open(filepath, "wb") as f:
+                pickle.dump(self.feature_engineer, f)
+        except Exception:
+            # Persistence failures should not stop trading; safe to ignore
+            pass
+
+    def _load_feature_engineer(self):
+        """Load persisted feature engineer if available"""
+        import pickle
+
+        filepath = os.path.join(self.scaler_dir, "feature_engineer.pkl")
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "rb") as f:
+                    loaded_engineer = pickle.load(f)
+
+                # Validate loaded scaler
+                if hasattr(loaded_engineer, "is_fitted") and loaded_engineer.is_fitted:
+                    if hasattr(loaded_engineer, "scalers") and loaded_engineer.scalers:
+                        # Validate scaler statistics
+                        for name, scaler in loaded_engineer.scalers.items():
+                            if hasattr(scaler, "mean_") and scaler.mean_ is not None:
+                                if np.any(np.isnan(scaler.mean_)) or np.any(
+                                    np.isinf(scaler.mean_)
+                                ):
+                                    raise ValueError(
+                                        f"Invalid scaler statistics for {name}"
+                                    )
+                            if hasattr(scaler, "scale_") and scaler.scale_ is not None:
+                                if np.any(np.isnan(scaler.scale_)) or np.any(
+                                    np.isinf(scaler.scale_)
+                                ):
+                                    raise ValueError(f"Invalid scaler scale for {name}")
+
+                        self.feature_engineer = loaded_engineer
+                        logger = logging.getLogger(__name__)
+                        if hasattr(logger, "log_event"):
+                            logger.log_event(
+                                event_type="feature_engineer_loaded",
+                                message=f"✅ Loaded feature engineer from {filepath}",
+                                metrics={"filepath": filepath},
+                            )
+                        else:
+                            logger.info(f"✅ Loaded feature engineer from {filepath}")
+                        return
+
+                logger = logging.getLogger(__name__)
+                if hasattr(logger, "log_event"):
+                    logger.log_event(
+                        event_type="feature_engineer_validation_failed",
+                        message="Loaded feature engineer failed validation, creating new one",
+                        level="WARNING",
+                    )
+                else:
+                    logger.warning(
+                        "Loaded feature engineer failed validation, creating new one"
+                    )
+
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                if hasattr(logger, "log_error"):
+                    logger.log_error(
+                        event_type="feature_engineer_load_error",
+                        error=f"Error loading feature engineer: {e}, creating new one",
+                        exc_info=False,
+                    )
+                else:
+                    logger.warning(
+                        f"Error loading feature engineer: {e}, creating new one"
+                    )
+
+        # On failure, start fresh with new feature engineer
+        self.feature_engineer = FeatureEngineer(normalization_method="robust")

@@ -5,8 +5,9 @@ Model registry endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import Optional
+from typing import Optional, Dict
 from dependencies import get_db
+from middleware.auth import get_current_user
 from services import model_service
 from schemas.models import (
     ModelResponse,
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/models", tags=["models"])
 async def list_models(
     stage: Optional[str] = Query(None, description="Filter by stage"),
     experiment_id: Optional[int] = Query(None, description="Filter by experiment ID"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """List all models with optional filters"""
@@ -47,7 +49,11 @@ async def list_models(
 
 
 @router.get("/{model_id}", response_model=ModelResponse)
-async def get_model(model_id: int, db: Session = Depends(get_db)):
+async def get_model(
+    model_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get model details by ID"""
     model = model_service.get_model_by_id(db, model_id)
     if not model:
@@ -56,7 +62,11 @@ async def get_model(model_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{model_id}/promote/staging", response_model=ModelResponse)
-async def promote_to_staging(model_id: int, db: Session = Depends(get_db)):
+async def promote_to_staging(
+    model_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Promote model to staging"""
     model = model_service.get_model_by_id(db, model_id)
     if not model:
@@ -75,7 +85,11 @@ async def promote_to_staging(model_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{model_id}/promote/paper", response_model=ModelResponse)
-async def promote_to_paper(model_id: int, db: Session = Depends(get_db)):
+async def promote_to_paper(
+    model_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Promote model to paper trading stage"""
     from websocket import channels as ws_channels  # type: ignore[attr-defined]
 
@@ -110,6 +124,7 @@ async def promote_to_paper(model_id: int, db: Session = Depends(get_db)):
 async def promote_to_production(
     model_id: int,
     request: ModelPromoteRequest = Body(...),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Promote model to production (requires 2FA)"""
@@ -175,6 +190,7 @@ async def rollback_production(
         None, description="Target model ID to rollback to"
     ),
     confirm: bool = Query(False, description="Confirmation required"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Rollback production model"""
@@ -198,7 +214,11 @@ async def rollback_production(
 
 
 @router.get("/{model_id}/paper-sessions", response_model=PaperSessionListResponse)
-async def get_paper_sessions(model_id: int, db: Session = Depends(get_db)):
+async def get_paper_sessions(
+    model_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get paper trading sessions for a model"""
     sessions = model_service.get_paper_sessions(db, model_id)
     return PaperSessionListResponse(sessions=sessions, total=len(sessions))
@@ -208,6 +228,7 @@ async def get_paper_sessions(model_id: int, db: Session = Depends(get_db)):
 async def start_paper_session(
     model_id: int,
     request: StartPaperSessionRequest = Body(...),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Start a paper trading session"""
@@ -242,7 +263,10 @@ async def start_paper_session(
     "/{model_id}/paper-sessions/{session_id}/stop", response_model=PaperSessionResponse
 )
 async def stop_paper_session(
-    model_id: int, session_id: int, db: Session = Depends(get_db)
+    model_id: int,
+    session_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Stop a paper trading session"""
     from websocket import channels as ws_channels  # type: ignore[attr-defined]
@@ -289,7 +313,11 @@ async def stop_paper_session(
 
 
 @router.get("/{model_id}/validation", response_model=ValidationResultResponse)
-async def get_validation_status(model_id: int, db: Session = Depends(get_db)):
+async def get_validation_status(
+    model_id: int,
+    user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get validation status for a model"""
     model = model_service.get_model_by_id(db, model_id)
     if not model:

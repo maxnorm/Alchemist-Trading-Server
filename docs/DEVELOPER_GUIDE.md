@@ -123,6 +123,41 @@ def test_integration_flow():
     assert result is not None
 ```
 
+## Local Development Setup
+
+### Seeding Clerk User Account
+
+For local development, you can automatically create a Clerk user account with default credentials using the seed script:
+
+```bash
+# With defaults (dev@localhost / dev123)
+python scripts/seed_clerk_user.py
+
+# With custom credentials via environment variables
+CLERK_SEED_EMAIL=admin@localhost CLERK_SEED_PASSWORD=admin123 python scripts/seed_clerk_user.py
+
+# With custom roles
+CLERK_SEED_ROLES=admin,user python scripts/seed_clerk_user.py
+```
+
+**Environment Variables:**
+- `CLERK_SEED_EMAIL`: Email address for the seed user (default: `dev@localhost`)
+- `CLERK_SEED_PASSWORD`: Password for the seed user (default: `dev123`)
+- `CLERK_SEED_ROLES`: Comma-separated list of roles (default: `admin,user`)
+
+**Requirements:**
+- `CLERK_SECRET_KEY` must be set in your environment or `.env` file
+- The script is idempotent - safe to run multiple times
+- If the user already exists, it will update roles if needed
+
+**Using Docker Compose:**
+
+You can also run the seed script via Docker Compose. Uncomment the `clerk-seed` service in `docker-compose.yml` and run:
+
+```bash
+docker-compose up clerk-seed
+```
+
 ## Database Schema
 
 ### Key Tables

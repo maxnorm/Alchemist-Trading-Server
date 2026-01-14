@@ -20,15 +20,34 @@ class WebSocketService {
   private reconnectDelay = 1000
   private isConnecting = false
   private shouldReconnect = true
+  private getToken: (() => Promise<string | null>) | null = null
 
-  connect(): void {
+  setTokenGetter(getToken: () => Promise<string | null>) {
+    this.getToken = getToken
+  }
+
+  async connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
+      return
+    }
+
+    // Get token from Clerk
+    if (!this.getToken) {
+      console.error('Token getter not set. Call setTokenGetter first.')
+      return
+    }
+
+    const token = await this.getToken()
+    if (!token) {
+      console.error('No authentication token available')
       return
     }
 
     this.isConnecting = true
     try {
-      this.ws = new WebSocket(WS_BASE_URL)
+      // Include token in WebSocket URL
+      const wsUrl = `${WS_BASE_URL}?token=${encodeURIComponent(token)}`
+      this.ws = new WebSocket(wsUrl)
 
       this.ws.onopen = () => {
         console.log('WebSocket connected')
@@ -54,9 +73,18 @@ class WebSocketService {
         this.isConnecting = false
       }
 
-      this.ws.onclose = () => {
-        console.log('WebSocket disconnected')
+      this.ws.onclose = (event) => {
+        console.log('WebSocket disconnected', event.code, event.reason)
         this.isConnecting = false
+        
+        // If closed due to authentication error, don't reconnect
+        if (event.code === 1008 && event.reason === 'Invalid token') {
+          console.error('WebSocket authentication failed')
+          // Redirect to sign-in
+          window.location.href = '/sign-in'
+          return
+        }
+        
         if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.scheduleReconnect()
         }
@@ -74,9 +102,9 @@ class WebSocketService {
     this.reconnectAttempts++
     const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000)
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
-    setTimeout(() => {
+    setTimeout(async () => {
       if (this.shouldReconnect) {
-        this.connect()
+        await this.connect()
       }
     }, delay)
   }
@@ -104,7 +132,9 @@ class WebSocketService {
 
     // Ensure connection is open
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.connect()
+      this.connect().catch((error) => {
+        console.error('Error connecting WebSocket:', error)
+      })
     } else {
       // If already connected, send subscription message immediately
       this.sendSubscription(channel)

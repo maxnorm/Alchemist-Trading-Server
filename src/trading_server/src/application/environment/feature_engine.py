@@ -8,7 +8,7 @@ import time
 import os
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from utils.technical_indicators import TechnicalIndicators
@@ -59,6 +59,25 @@ class FeatureEngine:
 
         # Initialize version tracking
         self._initialize_versioning()
+
+        # Initialize distribution collector for drift detection (optional)
+        self.distribution_collector = None
+        self.collect_distributions = False
+        if self.collect_distributions:
+            try:
+                from infrastructure.data_quality.distribution_collector import (
+                    DistributionCollector,
+                )
+
+                self.distribution_collector = DistributionCollector(database)
+                logger.info("Distribution collection enabled for drift detection")
+            except Exception as e:
+                logger.warning(f"Failed to initialize distribution collector: {e}")
+                self.distribution_collector = None
+
+        # Track last distribution collection time (collect every 5 minutes)
+        self._last_distribution_collection: Dict[str, datetime] = {}
+        self._distribution_collection_interval = timedelta(minutes=5)
 
     def extract_features(
         self,
@@ -138,6 +157,10 @@ class FeatureEngine:
             # Record feature extraction duration
             duration = time.time() - start_time
             feature_extraction_duration.observe(duration)
+
+            # Collect distributions for drift detection (periodically)
+            if self.distribution_collector and current_time:
+                self._collect_feature_distributions(symbol, pair_features, current_time)
 
             return pair_feature_matrix
 
@@ -309,6 +332,27 @@ class FeatureEngine:
             ]
             features.extend(economic_features)
 
+            # Add news sentiment features
+            news_features = [
+                "news_sentiment_1h",
+                "news_sentiment_24h",
+                "news_volume_24h",
+                "high_impact_news_count_24h",
+            ]
+            features.extend(news_features)
+
+            # Add macro indicator features
+            macro_features = [
+                "fed_funds_rate",
+                "unemployment_rate",
+                "cpi_yoy",
+                "gdp_growth_rate",
+                "interest_rate_differential",
+                "ecb_rate",
+                "world_bank_gdp_growth",
+            ]
+            features.extend(macro_features)
+
         return features
 
     def _get_feature_definitions(self) -> Dict[str, Any]:
@@ -474,6 +518,227 @@ class FeatureEngine:
 
         # Fallback: return current time if parsing fails
         return datetime.utcnow()
+
+    def extract_news_features(
+        self, symbol: str, current_time: datetime
+    ) -> Dict[str, float]:
+        """
+        Extract news sentiment features for a symbol
+        Point-in-time safe: only uses news published before current_time
+
+        :param symbol: Currency pair symbol
+        :param current_time: Current datetime (point-in-time constraint)
+        :return: Dictionary of news features
+        """
+        if self.database is None:
+            return {
+                "news_sentiment_1h": 0.0,
+                "news_sentiment_24h": 0.0,
+                "news_volume_24h": 0.0,
+                "high_impact_news_count_24h": 0.0,
+            }
+
+        try:
+            from datetime import timedelta
+
+            # Point-in-time constraint: only use news published before current_time
+            # Apply latency buffer: only use news published at least 5 minutes ago
+            LATENCY_BUFFER_MINUTES = 5
+            effective_time = current_time - timedelta(minutes=LATENCY_BUFFER_MINUTES)
+
+            # Get news from last 24 hours (point-in-time safe)
+            start_time = effective_time - timedelta(hours=24)
+            news_articles = self.database.get_news_by_timeframe(
+                start_time=start_time, end_time=effective_time, symbol=symbol
+            )
+
+            # Also get general news (symbol=None) that might affect the pair
+            general_news = self.database.get_news_by_timeframe(
+                start_time=start_time, end_time=effective_time, symbol=None
+            )
+
+            # Combine and filter by symbol relevance
+            all_news = news_articles + general_news
+
+            # Get news from last 1 hour
+            one_hour_ago = effective_time - timedelta(hours=1)
+            recent_news = [
+                n
+                for n in all_news
+                if n["timestamp"] >= one_hour_ago and n["timestamp"] <= effective_time
+            ]
+
+            # Calculate features
+            # 1-hour sentiment
+            if recent_news:
+                sentiment_scores_1h = [
+                    n.get("sentiment_score", 0.0)
+                    for n in recent_news
+                    if n.get("sentiment_score") is not None
+                ]
+                news_sentiment_1h = (
+                    sum(sentiment_scores_1h) / len(sentiment_scores_1h)
+                    if sentiment_scores_1h
+                    else 0.0
+                )
+            else:
+                news_sentiment_1h = 0.0
+
+            # 24-hour sentiment
+            if all_news:
+                sentiment_scores_24h = [
+                    n.get("sentiment_score", 0.0)
+                    for n in all_news
+                    if n.get("sentiment_score") is not None
+                ]
+                news_sentiment_24h = (
+                    sum(sentiment_scores_24h) / len(sentiment_scores_24h)
+                    if sentiment_scores_24h
+                    else 0.0
+                )
+            else:
+                news_sentiment_24h = 0.0
+
+            # News volume (24 hours)
+            news_volume_24h = float(len(all_news))
+
+            # High impact news count (24 hours)
+            # High impact = sentiment_score > 0.5 or < -0.5
+            high_impact_news = [
+                n
+                for n in all_news
+                if n.get("sentiment_score") is not None
+                and abs(n.get("sentiment_score", 0.0)) > 0.5
+            ]
+            high_impact_news_count_24h = float(len(high_impact_news))
+
+            return {
+                "news_sentiment_1h": news_sentiment_1h,
+                "news_sentiment_24h": news_sentiment_24h,
+                "news_volume_24h": news_volume_24h,
+                "high_impact_news_count_24h": high_impact_news_count_24h,
+            }
+
+        except Exception as e:
+            logger.warning(f"Error extracting news features: {e}", exc_info=True)
+            return {
+                "news_sentiment_1h": 0.0,
+                "news_sentiment_24h": 0.0,
+                "news_volume_24h": 0.0,
+                "high_impact_news_count_24h": 0.0,
+            }
+
+    def extract_macro_features(
+        self, symbol: str, current_time: datetime
+    ) -> Dict[str, float]:
+        """
+        Extract macroeconomic indicator features for a symbol
+        Point-in-time safe: only uses indicators published before current_time
+
+        :param symbol: Currency pair symbol
+        :param current_time: Current datetime (point-in-time constraint)
+        :return: Dictionary of macro features
+        """
+        if self.database is None:
+            return {
+                "fed_funds_rate": 0.0,
+                "unemployment_rate": 0.0,
+                "cpi_yoy": 0.0,
+                "gdp_growth_rate": 0.0,
+                "interest_rate_differential": 0.0,
+                "ecb_rate": 0.0,
+                "world_bank_gdp_growth": 0.0,
+            }
+
+        try:
+            from datetime import timedelta
+
+            # Point-in-time constraint: only use indicators published before current_time
+            # Apply latency buffer
+            LATENCY_BUFFER_MINUTES = 5
+            effective_time = current_time - timedelta(minutes=LATENCY_BUFFER_MINUTES)
+
+            # Extract base and quote currencies
+            base_currency = symbol[:3]
+            quote_currency = symbol[3:]
+
+            # Get latest indicators (point-in-time safe)
+            def get_latest_indicator(series_id: str) -> Optional[float]:
+                """Get latest indicator value before effective_time"""
+                indicators = self.database.get_economic_indicators(
+                    series_id=series_id,
+                    start_time=None,
+                    end_time=effective_time,
+                )
+                if indicators:
+                    # Sort by timestamp descending and get most recent
+                    indicators.sort(key=lambda x: x["timestamp"], reverse=True)
+                    return indicators[0]["value"]
+                return None
+
+            # US indicators (FRED)
+            fed_funds_rate = get_latest_indicator("FEDFUNDS") or 0.0
+            unemployment_rate = get_latest_indicator("UNRATE") or 0.0
+            cpi_yoy = get_latest_indicator("CPIAUCSL") or 0.0
+            gdp_growth_rate = get_latest_indicator("GDP") or 0.0
+
+            # ECB rate
+            ecb_rate = get_latest_indicator("FM.M.U2.EUR.HSTA") or 0.0
+
+            # World Bank GDP growth (for base currency country)
+            # Map currency to country code
+            country_map = {
+                "USD": "USA",
+                "EUR": "EUU",
+                "GBP": "GBR",
+                "JPY": "JPN",
+                "AUD": "AUS",
+                "CAD": "CAN",
+                "CHF": "CHE",
+                "NZD": "NZL",
+            }
+            base_country = country_map.get(base_currency, "USA")
+            world_bank_series = f"NY.GDP.MKTP.KD.ZG_{base_country}"
+            world_bank_gdp_growth = get_latest_indicator(world_bank_series) or 0.0
+
+            # Interest rate differential
+            # Get base currency interest rate (simplified - would need more mapping)
+            base_rate = 0.0
+            quote_rate = 0.0
+
+            if base_currency == "USD":
+                base_rate = fed_funds_rate
+            elif base_currency == "EUR":
+                base_rate = ecb_rate
+
+            if quote_currency == "USD":
+                quote_rate = fed_funds_rate
+            elif quote_currency == "EUR":
+                quote_rate = ecb_rate
+
+            interest_rate_differential = base_rate - quote_rate
+
+            return {
+                "fed_funds_rate": float(fed_funds_rate),
+                "unemployment_rate": float(unemployment_rate),
+                "cpi_yoy": float(cpi_yoy),
+                "gdp_growth_rate": float(gdp_growth_rate),
+                "interest_rate_differential": float(interest_rate_differential),
+                "ecb_rate": float(ecb_rate),
+                "world_bank_gdp_growth": float(world_bank_gdp_growth),
+            }
+
+        except Exception as e:
+            logger.warning(f"Error extracting macro features: {e}", exc_info=True)
+            return {
+                "fed_funds_rate": 0.0,
+                "unemployment_rate": 0.0,
+                "cpi_yoy": 0.0,
+                "gdp_growth_rate": 0.0,
+                "interest_rate_differential": 0.0,
+                "ecb_rate": 0.0,
+                "world_bank_gdp_growth": 0.0,
+            }
 
     def extract_features_for_all_pairs(
         self,

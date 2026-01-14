@@ -29,7 +29,7 @@ try:
     TWO_FA_AVAILABLE = True
 except ImportError:
     TWO_FA_AVAILABLE = False
-    logger.warning("TwoFactorAuth not available - 2FA verification will be limited")
+    logger.debug("TwoFactorAuth not available - 2FA verification will be limited (this is expected if trading_server module is not available)")
 
     # Create a stub for development
     class TwoFactorAuth:  # type: ignore[no-redef]

@@ -26,7 +26,7 @@ export default function FeatureCatalog() {
           />
           <div className="flex gap-4">
             <select
-              className="rounded-md border border-input bg-background px-3 py-2"
+              className="rounded-md border border-input bg-background pl-3 pr-8 py-2"
               value={filters.source || ''}
               onChange={(e) =>
                 setFilters((prev) => ({ ...prev, source: e.target.value || undefined }))
@@ -37,7 +37,7 @@ export default function FeatureCatalog() {
               <option value="indicator">Indicator</option>
             </select>
             <select
-              className="rounded-md border border-input bg-background px-3 py-2"
+              className="rounded-md border border-input bg-background pl-3 pr-8 py-2"
               value={filters.category || ''}
               onChange={(e) =>
                 setFilters((prev) => ({ ...prev, category: e.target.value || undefined }))

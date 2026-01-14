@@ -95,6 +95,174 @@ quarantine_ticks_total = Counter(
     ["symbol", "rejection_category"],
 )
 
-quarantine_rate = Gauge(
-    "data_quarantine_rate", "Quarantine rate percentage", ["symbol"]
+# Drift Detection Metrics
+data_drift_psi_score = Gauge(
+    "data_drift_psi_score",
+    "Population Stability Index score for feature drift",
+    ["feature_name", "symbol"],
+)
+
+data_drift_ks_statistic = Gauge(
+    "data_drift_ks_statistic",
+    "Kolmogorov-Smirnov test statistic for feature drift",
+    ["feature_name", "symbol"],
+)
+
+data_drift_detections_total = Counter(
+    "data_drift_detections_total",
+    "Total drift detections",
+    ["feature_name", "symbol", "severity"],  # severity: 'none', 'minor', 'major'
+)
+
+data_drift_alerts_total = Counter(
+    "data_drift_alerts_total",
+    "Total drift alerts triggered",
+    ["feature_name", "symbol", "severity"],
+)
+
+# Lineage Tracking Metrics
+lineage_runs_total = Counter(
+    "lineage_runs_total",
+    "Total lineage runs",
+    ["job_name", "namespace", "status"],  # status: 'RUNNING', 'COMPLETE', 'FAILED'
+)
+
+lineage_runs_duration_seconds = Histogram(
+    "lineage_runs_duration_seconds",
+    "Lineage run duration",
+    ["job_name", "namespace"],
+    buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0],
+)
+
+# Data Collection Pipeline Metrics
+data_collection_tasks_total = Counter(
+    "data_collection_tasks_total",
+    "Total data collection tasks executed",
+    [
+        "task_type",
+        "source",
+        "status",
+    ],  # task_type: 'mt5', 'news', 'economic', status: 'success', 'failed'
+)
+
+data_collection_records_collected = Counter(
+    "data_collection_records_collected_total",
+    "Total records collected by data collection tasks",
+    ["task_type", "source"],  # task_type: 'tick', 'bar', 'news', 'economic'
+)
+
+data_collection_duration_seconds = Histogram(
+    "data_collection_duration_seconds",
+    "Data collection task duration",
+    ["task_type", "source"],
+    buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 300.0, 600.0, 1800.0],
+)
+
+data_collection_errors_total = Counter(
+    "data_collection_errors_total",
+    "Total data collection errors",
+    [
+        "task_type",
+        "source",
+        "error_type",
+    ],  # error_type: 'connection', 'validation', 'database', 'other'
+)
+
+data_collection_last_success_time = Gauge(
+    "data_collection_last_success_time",
+    "Timestamp of last successful data collection",
+    ["task_type", "source"],
+)
+
+data_collection_backfill_progress = Gauge(
+    "data_collection_backfill_progress",
+    "Backfill progress percentage (0-100)",
+    ["connector_type", "symbol"],
+)
+
+data_collection_backfill_records = Gauge(
+    "data_collection_backfill_records",
+    "Number of records collected in current backfill",
+    ["connector_type", "symbol"],
+)
+
+lineage_runs_failed_total = Counter(
+    "lineage_runs_failed_total",
+    "Total failed lineage runs",
+    ["job_name", "namespace"],
+)
+
+lineage_datasets_total = Gauge(
+    "lineage_datasets_total",
+    "Total datasets tracked",
+    ["namespace"],
+)
+
+lineage_events_emitted_total = Counter(
+    "lineage_events_emitted_total",
+    "Total lineage events emitted",
+    ["event_type"],  # event_type: 'START', 'COMPLETE', 'FAIL', 'DATASET'
+)
+
+# Phase 1: Additional Data Quality Metrics
+data_freshness_seconds = Gauge(
+    "data_freshness_seconds",
+    "Time since last data received in seconds",
+    ["source", "symbol"],  # source: 'mt5', 'news', 'economic', etc.
+)
+
+data_volume_total = Counter(
+    "data_volume_total",
+    "Total data records collected",
+    ["source", "symbol"],
+)
+
+data_quality_score = Gauge(
+    "data_quality_score",
+    "Data quality score (0-1)",
+    ["source", "symbol"],
+)
+
+data_quarantine_rate = Gauge(
+    "data_quarantine_rate",
+    "Quarantine rate percentage (0-1)",
+    ["source", "symbol"],
+)
+
+# Gap Detection Metrics
+data_gaps_detected_total = Counter(
+    "data_gaps_detected_total",
+    "Total data gaps detected",
+    ["data_type", "symbol"],  # data_type: 'tick', 'bar', 'news', 'economic'
+)
+
+gap_fill_attempts_total = Counter(
+    "gap_fill_attempts_total",
+    "Total gap fill attempts",
+    ["data_type", "strategy"],  # strategy: 're_query', 'interpolate', 'forward_fill'
+)
+
+gap_fill_success_total = Counter(
+    "gap_fill_success_total",
+    "Total successful gap fills",
+    ["data_type", "strategy"],
+)
+
+gap_fill_success_rate = Gauge(
+    "gap_fill_success_rate",
+    "Gap fill success rate (0-1)",
+    ["data_type", "strategy"],
+)
+
+# Backfill Metrics (aliases for dashboard compatibility)
+backfill_progress_percent = Gauge(
+    "backfill_progress_percent",
+    "Backfill progress percentage (0-100)",
+    ["symbol", "data_type"],
+)
+
+backfill_records_processed_total = Counter(
+    "backfill_records_processed_total",
+    "Total records processed during backfill",
+    ["symbol", "data_type"],
 )

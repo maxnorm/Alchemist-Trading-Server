@@ -57,7 +57,7 @@ DB_PASSWORD=forex_password
 
 # Server
 SERVER_IP=0.0.0.0
-SERVER_PORT=1234
+SERVER_PORT=8080
 
 # MLflow
 MLFLOW_TRACKING_URI=http://mlflow:5000

@@ -8,6 +8,7 @@ from sqlalchemy import text
 from typing import Optional, Dict, Any
 from datetime import datetime
 from dependencies import get_db
+from middleware.auth import get_current_user
 from schemas.data import QuarantineTickResponse, QuarantineListResponse
 import logging
 
@@ -31,6 +32,7 @@ async def get_quarantine_ticks(
     ),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """

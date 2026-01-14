@@ -52,11 +52,11 @@ class MT5Terminal(Connection):
         """Cleanup on terminal deletion - notify server of disconnect"""
         try:
             # Notify server of disconnect if account_id is set
-            if hasattr(self, '_account_id') and self._account_id:
+            if hasattr(self, "_account_id") and self._account_id:
                 # Try to import and call disconnect handler
                 try:
-                    import sys
-                    import os
+                    # sys and os not used in this context
+
                     # Find server instance (this is a bit hacky but necessary)
                     # The server should handle cleanup via its own tracking
                     pass  # Server will detect disconnect via socket errors

@@ -22,11 +22,15 @@ from routers import (
     health,
     data,
     mt5_accounts,
+    schema,
+    lineage,
 )
 from websocket.manager import websocket_manager
 from websocket import channels  # type: ignore[attr-defined]
 from services.database import init_db, close_db
+from services.clerk_seed import seed_clerk_user
 from middleware.metrics import MetricsMiddleware
+from infrastructure.messaging.alert_consumer import AlertConsumer
 
 # Configure logging
 logging.basicConfig(
@@ -53,10 +57,41 @@ async def lifespan(app: FastAPI):
             "API will start without database connection. Health checks will indicate status."
         )
 
+    # Start alert consumer
+    alert_consumer = None
+    try:
+        alert_consumer = AlertConsumer()
+        await alert_consumer.start()
+        logger.info("Alert consumer started")
+    except Exception as e:
+        logger.warning(f"Failed to start alert consumer: {e}")
+        logger.info("API will continue without alert consumer. Alerts will not be broadcast.")
+
+    # Seed Clerk user if enabled
+    if settings.clerk_seed_enabled:
+        try:
+            logger.info("Clerk user seeding enabled, attempting to seed user...")
+            success = seed_clerk_user()
+            if success:
+                logger.info("Clerk user seeded successfully")
+            else:
+                logger.warning("Failed to seed Clerk user, but API will continue")
+        except Exception as e:
+            logger.warning(f"Error during Clerk user seeding: {e}")
+            logger.info("API will continue without seeded user")
+
     yield
 
     # Shutdown
     logger.info("Shutting down FastAPI service...")
+    
+    # Stop alert consumer
+    if alert_consumer is not None:
+        try:
+            await alert_consumer.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping alert consumer: {e}")
+    
     close_db()
     await websocket_manager.disconnect_all()
 
@@ -143,14 +178,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
-app.include_router(features.router, prefix="/api/v1", tags=["Features"])
-app.include_router(experiments.router, prefix="/api/v1", tags=["Experiments"])
-app.include_router(hyperparameters.router, prefix="/api/v1", tags=["Hyperparameters"])
-app.include_router(models.router, prefix="/api/v1", tags=["Models"])
-app.include_router(trading.router, prefix="/api/v1", tags=["Trading"])
-app.include_router(performance.router, prefix="/api/v1", tags=["Performance"])
-app.include_router(data.router, prefix="/api/v1", tags=["Data"])
-app.include_router(mt5_accounts.router, prefix="/api/v1", tags=["MT5 Accounts"])
+app.include_router(features.router, prefix=settings.api_prefix, tags=["Features"])
+app.include_router(experiments.router, prefix=settings.api_prefix, tags=["Experiments"])
+app.include_router(hyperparameters.router, prefix=settings.api_prefix, tags=["Hyperparameters"])
+app.include_router(models.router, prefix=settings.api_prefix, tags=["Models"])
+app.include_router(trading.router, prefix=settings.api_prefix, tags=["Trading"])
+app.include_router(performance.router, prefix=settings.api_prefix, tags=["Performance"])
+app.include_router(data.router, prefix=settings.api_prefix, tags=["Data"])
+app.include_router(mt5_accounts.router, prefix=settings.api_prefix, tags=["MT5 Accounts"])
+app.include_router(schema.router, prefix=settings.api_prefix, tags=["Schema Registry"])
+app.include_router(lineage.router, prefix=settings.api_prefix, tags=["Lineage"])
 
 
 # WebSocket endpoints
@@ -236,6 +273,7 @@ async def root():
     return {
         "service": "Alchemist Trading Platform API",
         "version": "1.0.0",
+        "api_version": settings.api_version,
         "docs": "/docs",
         "health": "/health",
     }

@@ -9,7 +9,7 @@ import logging
 import threading
 from typing import Dict, List, Optional
 from connectors.base import IDataSourceConnector
-from data_providers.base_provider import Feature  # Keep Feature class for catalog
+from domain.models.feature import Feature
 
 logger = logging.getLogger(__name__)
 

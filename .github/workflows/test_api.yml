@@ -13,17 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     
     services:
-      mariadb:
-        image: mariadb:10.9.5
+      postgres:
+        image: timescale/timescaledb:latest-pg16
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: db_forex
-          MYSQL_USER: forex_user
-          MYSQL_PASSWORD: forex_password
+          POSTGRES_USER: forex_user
+          POSTGRES_PASSWORD: forex_password
+          POSTGRES_DB: db_forex
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -u root -proot"
+          --health-cmd="pg_isready -U forex_user -d db_forex"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -41,7 +40,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libmariadb-dev mariadb-client
+          sudo apt-get install -y postgresql-client
       
       - name: Install dependencies
         working-directory: src/api
@@ -52,9 +51,9 @@ jobs:
       
       - name: Run API tests
         env:
-          DATABASE_URL: mysql://forex_user:forex_password@localhost:3306/db_forex
+          DATABASE_URL: postgresql+psycopg2://forex_user:forex_password@localhost:5432/db_forex
           DB_HOST: localhost
-          DB_PORT: 3306
+          DB_PORT: 5432
           DB_USER: forex_user
           DB_PASSWORD: forex_password
           DB_NAME: db_forex

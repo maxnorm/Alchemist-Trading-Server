@@ -58,6 +58,9 @@ class MT5AccountResponse(MT5AccountBase):
     last_seen_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # User ownership fields (optional, for admin views and audit)
+    user_id: Optional[str] = None  # Clerk user ID (owner)
+    created_by: Optional[str] = None  # Clerk user ID (creator, for audit)
     # Computed fields
     connection_status: Optional[ConnectionStatus] = None
     current_model_id: Optional[int] = None
