@@ -143,9 +143,82 @@
   }
   
   .halftone-texture-subtle {
+    /* Base subtle dots - more visible */
     background-image: 
-      radial-gradient(circle at 50% 50%, hsl(var(--mono-400) / 0.4) 0.5px, transparent 0.5px);
+      radial-gradient(circle at 50% 50%, hsl(var(--mono-400) / 0.75) 0.7px, transparent 0.7px);
     background-size: 4px 4px;
+    position: relative;
+  }
+  
+  /* Animated orange dots with wave effect */
+  .halftone-texture-subtle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Orange dots pattern - same grid as base, but with selective orange dots */
+    background-image: 
+      radial-gradient(circle at 0% 0%, hsl(var(--orange-400) / 0.75) 0.7px, transparent 0.7px),
+      radial-gradient(circle at 25% 25%, hsl(var(--orange-400) / 0.75) 0.7px, transparent 0.7px),
+      radial-gradient(circle at 50% 50%, hsl(var(--orange-400) / 0.75) 0.7px, transparent 0.7px),
+      radial-gradient(circle at 75% 75%, hsl(var(--orange-400) / 0.75) 0.7px, transparent 0.7px),
+      radial-gradient(circle at 100% 100%, hsl(var(--orange-400) / 0.75) 0.7px, transparent 0.7px);
+    background-size: 16px 16px;
+    background-position: 0 0;
+    opacity: 0;
+    animation: halftone-wave 8s ease-in-out infinite;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+  
+  @keyframes halftone-wave {
+    0% {
+      opacity: 0;
+      background-position: 0 0;
+      transform: translateY(0);
+    }
+    12.5% {
+      opacity: 0.5;
+      background-position: 0 -1px;
+      transform: translateY(-0.5px);
+    }
+    25% {
+      opacity: 0.7;
+      background-position: 0 -2px;
+      transform: translateY(-1px);
+    }
+    37.5% {
+      opacity: 0.8;
+      background-position: 0 -1px;
+      transform: translateY(-0.5px);
+    }
+    50% {
+      opacity: 0.7;
+      background-position: 0 0;
+      transform: translateY(0);
+    }
+    62.5% {
+      opacity: 0.6;
+      background-position: 0 1px;
+      transform: translateY(0.5px);
+    }
+    75% {
+      opacity: 0.5;
+      background-position: 0 2px;
+      transform: translateY(1px);
+    }
+    87.5% {
+      opacity: 0.4;
+      background-position: 0 1px;
+      transform: translateY(0.5px);
+    }
+    100% {
+      opacity: 0;
+      background-position: 0 0;
+      transform: translateY(0);
+    }
   }
   
   /* Light mode specific texture adjustments */
@@ -156,8 +229,70 @@
   }
   
   .light .halftone-texture-subtle {
+    /* More visible in light mode */
     background-image: 
-      radial-gradient(circle at 50% 50%, hsl(var(--mono-400) / 0.3) 0.5px, transparent 0.5px);
+      radial-gradient(circle at 50% 50%, hsl(var(--mono-400) / 0.65) 0.7px, transparent 0.7px);
+  }
+  
+  /* Light mode animation - stronger orange wave */
+  @keyframes halftone-wave-light {
+    0% {
+      opacity: 0;
+      background-position: 0 0;
+      transform: translateY(0);
+    }
+    12.5% {
+      opacity: 0.7;
+      background-position: 0 -1px;
+      transform: translateY(-0.5px);
+    }
+    25% {
+      opacity: 0.9;
+      background-position: 0 -2px;
+      transform: translateY(-1px);
+    }
+    37.5% {
+      opacity: 1;
+      background-position: 0 -1px;
+      transform: translateY(-0.5px);
+    }
+    50% {
+      opacity: 0.9;
+      background-position: 0 0;
+      transform: translateY(0);
+    }
+    62.5% {
+      opacity: 0.85;
+      background-position: 0 1px;
+      transform: translateY(0.5px);
+    }
+    75% {
+      opacity: 0.75;
+      background-position: 0 2px;
+      transform: translateY(1px);
+    }
+    87.5% {
+      opacity: 0.65;
+      background-position: 0 1px;
+      transform: translateY(0.5px);
+    }
+    100% {
+      opacity: 0;
+      background-position: 0 0;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Light mode - more orange in animation */
+  .light .halftone-texture-subtle::before {
+    /* Orange dots pattern - maximum visibility in light mode */
+    background-image: 
+      radial-gradient(circle at 0% 0%, hsl(var(--orange-400) / 1) 0.8px, transparent 0.8px),
+      radial-gradient(circle at 25% 25%, hsl(var(--orange-400) / 1) 0.8px, transparent 0.8px),
+      radial-gradient(circle at 50% 50%, hsl(var(--orange-400) / 1) 0.8px, transparent 0.8px),
+      radial-gradient(circle at 75% 75%, hsl(var(--orange-400) / 1) 0.8px, transparent 0.8px),
+      radial-gradient(circle at 100% 100%, hsl(var(--orange-400) / 1) 0.8px, transparent 0.8px);
+    animation: halftone-wave-light 8s ease-in-out infinite;
   }
   
   /* Terminal-style monospace for data */

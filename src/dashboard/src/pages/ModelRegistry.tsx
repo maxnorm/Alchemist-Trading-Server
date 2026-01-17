@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,9 @@ import { MODEL_STAGES } from '@/utils/constants'
 import { useModels } from '@/features/models/hooks/useModels'
 import { useModelPromotion } from '@/features/models/hooks/useModelPromotion'
 import { usePaperSession } from '@/features/models/hooks/usePaperSession'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
+import { RefreshCw, Download } from 'lucide-react'
 import type { ModelStage, Model } from '@/types/model'
 
 interface PaperSession {
@@ -30,8 +33,46 @@ interface PaperSession {
 export default function ModelRegistry() {
   const [selectedStage, setSelectedStage] = useState<ModelStage | 'all'>('all')
   const [selectedModel, setSelectedModel] = useState<Model | null>(null)
+  const queryClient = useQueryClient()
 
   const { filteredModels, isLoading } = useModels(selectedStage)
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['models'] })
+    toast.success('Models refreshed')
+  }
+
+  const handleExport = () => {
+    if (filteredModels.length === 0) {
+      toast.error('No models to export')
+      return
+    }
+
+    const headers = ['Version', 'Stage', 'Experiment ID', 'Created', 'Promoted', 'Sharpe Ratio', 'Win Rate', 'Total Trades']
+    const rows = filteredModels.map((model) => [
+      model.version.toString(),
+      model.stage,
+      model.experiment_id.toString(),
+      new Date(model.created_at).toISOString(),
+      model.promoted_at ? new Date(model.promoted_at).toISOString() : '',
+      model.paper_trading_results?.sharpe_ratio?.toFixed(2) || 'N/A',
+      model.paper_trading_results?.win_rate ? (model.paper_trading_results.win_rate * 100).toFixed(1) + '%' : 'N/A',
+      model.paper_trading_results?.total_trades?.toString() || '0',
+    ])
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `model-registry-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${filteredModels.length} models`)
+  }
   const {
     promoteModelId,
     setPromoteModelId,
@@ -58,14 +99,40 @@ export default function ModelRegistry() {
     enabled: !!selectedModel && selectedModel.stage === 'paper',
   })
 
-  // Don't block entire page - show content progressively
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Model Registry</h1>
-        <p className="text-muted-foreground">Manage model lifecycle and promotions</p>
-      </div>
+      <PageHeader
+        title="Model Registry"
+        description="Manage model lifecycle and promotions across staging, paper, and production"
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={filteredModels.length === 0}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+            <HealthDot 
+              status={filteredModels.length > 0 ? 'ok' : 'error'} 
+              label={`${filteredModels.length} ${selectedStage === 'all' ? 'models' : MODEL_STAGES[selectedStage]?.label || 'models'}`}
+            />
+          </div>
+        }
+      />
 
       {/* Stage Filter */}
       <div className="flex gap-2">

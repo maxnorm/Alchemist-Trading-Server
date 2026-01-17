@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { WS_CHANNELS } from '@/services/websocket';
 import { DenseCard, DenseCardHeader, DenseCardContent } from '@/components/common/DenseCard';
 import type { PriceTick } from '@/types/market';
 import { cn } from '@/utils/cn';
@@ -69,7 +70,7 @@ export function PriceTicker({
       });
     };
 
-    const unsubscribe = subscribe('/ws/ticks', handlePriceTick);
+    const unsubscribe = subscribe(WS_CHANNELS.ticks, handlePriceTick);
 
     return () => {
       unsubscribe();

@@ -37,8 +37,8 @@ export function Sidebar() {
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >
-      {/* Header with terminal aesthetic */}
-      <div className="flex h-16 items-center border-b border-border px-4 bg-mono-300 dark:bg-mono-300">
+      {/* Header */}
+      <div className="flex h-16 items-center border-b border-orange-400/10 px-4 bg-mono-300 dark:bg-mono-300 halftone-texture-subtle">
         {!sidebarCollapsed && (
           <h1 className="text-xl font-bold tracking-tight text-foreground">
             ALCHEMIST
@@ -50,7 +50,7 @@ export function Sidebar() {
           aria-label="Toggle sidebar"
         >
           <svg
-            className="h-5 w-5 text-muted-foreground"
+            className="h-5 w-5 text-muted-foreground color-orange-400"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"

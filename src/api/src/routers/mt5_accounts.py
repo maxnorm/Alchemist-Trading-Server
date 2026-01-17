@@ -138,56 +138,48 @@ async def register_account(
         raise HTTPException(status_code=500, detail=f"Failed to register account: {str(e)}")
 
 
-@router.post("/register", response_model=MT5AccountSecretResponse, status_code=201)
+@router.post("/register", response_model=MT5AccountResponse, status_code=201)
 async def register_account_with_secret(
     request: MT5AccountCreateRequest,
     user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Register a new MT5 account for external EA connection.
+    Register a new MT5 account for Python API connection.
 
-    Returns the auth token and public MT5 server coordinates so the user can
-    configure their Expert Advisors.
+    Requires mt5_password and mt5_server fields. The password is encrypted
+    and stored securely. No EA configuration is needed - trading is done
+    directly via Python API.
 
-    ⚠️ SECURITY: The auth_token is only returned in this response.
-    Store it securely - it cannot be retrieved again via API.
+    ⚠️ SECURITY: The password is encrypted at rest and never returned in responses.
     """
     try:
         user_id = user.get("id")
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found in token")
 
+        # Validate required fields
+        if not hasattr(request, "mt5_password") or not request.mt5_password:
+            raise HTTPException(status_code=400, detail="mt5_password is required")
+        if not hasattr(request, "mt5_server") or not request.mt5_server:
+            raise HTTPException(status_code=400, detail="mt5_server is required")
+
         # Create or update account with user association
         account = create_account_for_user(db, request, user_id=user_id, created_by=user_id)
 
-        # Load ORM account to access auth_token
-        orm_account = get_account_by_login(db, account.account_login)
-        if not orm_account or not orm_account.auth_token:
-            raise HTTPException(status_code=500, detail="Failed to load account auth token")
-
         # Verify user owns this account (security check)
+        orm_account = get_account_by_login(db, account.account_login)
+        if not orm_account:
+            raise HTTPException(status_code=500, detail="Failed to load account")
         if orm_account.user_id != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-        server_host = settings.mt5_server_public_host
-        server_port = settings.mt5_server_public_port
-
-        if server_host is None or server_port is None:
-            # Fall back to API host/port if public MT5 server is not configured
-            server_host = settings.api_host
-            server_port = settings.api_port
-
-        return MT5AccountSecretResponse(
-            **account.model_dump(),
-            auth_token=orm_account.auth_token,
-            server_host=server_host,
-            server_port=server_port,
-        )
+        # Return account info (password is never returned)
+        return account
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to register account with secret: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to register account: {str(e)}")
 
 
 @router.get("/{account_id}/secret", response_model=MT5AccountSecretResponse)

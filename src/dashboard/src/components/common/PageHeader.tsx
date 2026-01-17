@@ -23,13 +23,13 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        'relative border-b border-border bg-card halftone-texture-subtle',
+        'relative bg-card halftone-texture-subtle border border-orange-400/15',
         'px-6 py-4',
         className
       )}
     >
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <nav className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <nav className="mb-2 flex items-center gap-2 text-xs text-mono-600 dark:text-mono-600">
           {breadcrumbs.map((crumb, idx) => (
             <span key={idx} className="flex items-center gap-2">
               {crumb.href ? (
@@ -43,7 +43,7 @@ export function PageHeader({
                 <span className="text-foreground">{crumb.label}</span>
               )}
               {idx < breadcrumbs.length - 1 && (
-                <span className="text-mono-400">/</span>
+                <span className="text-mono-500">/</span>
               )}
             </span>
           ))}
@@ -56,7 +56,7 @@ export function PageHeader({
             {title}
           </h1>
           {description && (
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            <p className="mt-1 text-sm text-mono-600 dark:text-mono-600">{description}</p>
           )}
         </div>
 

@@ -7,7 +7,23 @@ from sqlalchemy import text, and_, or_
 from typing import List, Optional
 from datetime import datetime
 import secrets
+import os
+import sys
+import logging
+
+# Initialize logger early
+logger = logging.getLogger(__name__)
+
+# Add trading_server to path for CredentialManager import
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../trading_server/src"))
+
 from models.mt5_accounts import MT5Account, AccountModelAssignment, MT5Connection
+try:
+    from infrastructure.security.credential_manager import CredentialManager
+    CREDENTIAL_MANAGER_AVAILABLE = True
+except ImportError:
+    CREDENTIAL_MANAGER_AVAILABLE = False
+    logger.warning("CredentialManager not available - password encryption disabled")
 from schemas.mt5_accounts import (
     MT5AccountResponse,
     MT5AccountCreateRequest,
@@ -23,12 +39,7 @@ try:
     WS_AVAILABLE = True
 except ImportError:
     WS_AVAILABLE = False
-    logger = logging.getLogger(__name__)
     logger.warning("WebSocket channels not available")
-
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def _generate_auth_token() -> str:
@@ -100,6 +111,18 @@ def create_account_for_user(
     created_by: Optional[str] = None,
 ) -> MT5AccountResponse:
     """Create a new MT5 account with user association"""
+    # Encrypt password if provided
+    encrypted_password = None
+    if hasattr(request, "mt5_password") and request.mt5_password:
+        if not CREDENTIAL_MANAGER_AVAILABLE:
+            raise ValueError("CredentialManager not available - cannot encrypt password")
+        try:
+            credential_manager = CredentialManager()
+            encrypted_password = credential_manager.encrypt_password(request.mt5_password)
+        except Exception as e:
+            logger.error(f"Failed to encrypt password: {e}", exc_info=True)
+            raise ValueError(f"Failed to encrypt password: {e}")
+
     # Check if account already exists
     existing = get_account_by_login(db, request.account_login)
     if existing:
@@ -114,14 +137,19 @@ def create_account_for_user(
         existing.account_currency = request.account_currency
         existing.account_leverage = request.account_leverage
         existing.is_active = True
-        existing.last_seen_at = datetime.utcnow()
+
+        # Update Python API credentials if provided
+        if encrypted_password:
+            existing.mt5_password_encrypted = encrypted_password
+        if hasattr(request, "mt5_server") and request.mt5_server:
+            existing.mt5_server = request.mt5_server
 
         # Link to user if not already linked (allows claiming)
         if not existing.user_id:
             existing.user_id = user_id
             existing.created_by = created_by or user_id
 
-        # Ensure existing accounts have an auth token
+        # Legacy: Ensure existing accounts have an auth token (for backward compatibility)
         if not existing.auth_token:
             existing.auth_token = _generate_auth_token()
 
@@ -146,8 +174,9 @@ def create_account_for_user(
         user_id=user_id,
         created_by=created_by or user_id,
         is_active=True,
-        last_seen_at=datetime.utcnow(),
-        auth_token=_generate_auth_token(),
+        mt5_password_encrypted=encrypted_password,
+        mt5_server=request.mt5_server if hasattr(request, "mt5_server") else None,
+        auth_token=_generate_auth_token(),  # Legacy field, kept for backward compatibility
     )
 
     db.add(account)
@@ -170,6 +199,18 @@ def create_account_for_user(
 
 def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountResponse:
     """Create a new MT5 account"""
+    # Encrypt password if provided
+    encrypted_password = None
+    if hasattr(request, "mt5_password") and request.mt5_password:
+        if not CREDENTIAL_MANAGER_AVAILABLE:
+            raise ValueError("CredentialManager not available - cannot encrypt password")
+        try:
+            credential_manager = CredentialManager()
+            encrypted_password = credential_manager.encrypt_password(request.mt5_password)
+        except Exception as e:
+            logger.error(f"Failed to encrypt password: {e}", exc_info=True)
+            raise ValueError(f"Failed to encrypt password: {e}")
+
     # Check if account already exists
     existing = get_account_by_login(db, request.account_login)
     if existing:
@@ -184,8 +225,14 @@ def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountR
         existing.account_currency = request.account_currency
         existing.account_leverage = request.account_leverage
         existing.is_active = True
-        existing.last_seen_at = datetime.utcnow()
-        # Ensure existing accounts have an auth token
+
+        # Update Python API credentials if provided
+        if encrypted_password:
+            existing.mt5_password_encrypted = encrypted_password
+        if hasattr(request, "mt5_server") and request.mt5_server:
+            existing.mt5_server = request.mt5_server
+
+        # Legacy: Ensure existing accounts have an auth token (for backward compatibility)
         if not existing.auth_token:
             existing.auth_token = _generate_auth_token()
         db.commit()
@@ -207,8 +254,9 @@ def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountR
         account_leverage=request.account_leverage,
         account_name=request.account_name,
         is_active=True,
-        last_seen_at=datetime.utcnow(),
-        auth_token=_generate_auth_token(),
+        mt5_password_encrypted=encrypted_password,
+        mt5_server=request.mt5_server if hasattr(request, "mt5_server") else None,
+        auth_token=_generate_auth_token(),  # Legacy field, kept for backward compatibility
     )
 
     db.add(account)
@@ -627,6 +675,9 @@ def _account_to_dict(account: MT5Account, db: Session) -> dict:
         "account_currency": account.account_currency,
         "account_leverage": account.account_leverage,
         "account_name": account.account_name,
+        "balance": float(account.balance) if account.balance is not None else None,
+        "equity": float(account.equity) if account.equity is not None else None,
+        "profit": float(account.profit) if account.profit is not None else None,
         "is_active": account.is_active,
         "last_seen_at": account.last_seen_at,
         "created_at": account.created_at,
@@ -637,4 +688,9 @@ def _account_to_dict(account: MT5Account, db: Session) -> dict:
         "current_model_id": current_model_id,
         "current_model_version": current_model_version,
         "trading_enabled": True,  # Default to True, can be enhanced later
+        # Connection details from EA
+        "terminal_id": connection.terminal_id if connection else None,
+        "ea_version": connection.ea_version if connection else None,
+        "connection_ip": connection.connection_ip if connection else None,
+        "connected_at": connection.connected_at if connection else None,
     }

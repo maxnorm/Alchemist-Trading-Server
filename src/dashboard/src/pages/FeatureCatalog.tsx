@@ -1,18 +1,88 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useFeatureFilters } from '@/features/features/hooks/useFeatureFilters'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
+import { RefreshCw, Download } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 
 export default function FeatureCatalog() {
   const { features, isLoading, filters, setFilters, searchQuery, setSearchQuery } =
     useFeatureFilters()
+  const queryClient = useQueryClient()
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['features'] })
+    toast.success('Features refreshed')
+  }
+
+  const handleExport = () => {
+    if (features.length === 0) {
+      toast.error('No features to export')
+      return
+    }
+
+    const headers = ['Name', 'Source', 'Category', 'Type', 'Available', 'Description']
+    const rows = features.map((feature) => [
+      feature.name,
+      feature.source || '',
+      feature.category || '',
+      feature.data_type || '',
+      feature.available ? 'Yes' : 'No',
+      feature.description || '',
+    ])
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `feature-catalog-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${features.length} features`)
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Feature Catalog</h1>
-        <p className="text-muted-foreground">Browse and explore all available features</p>
-      </div>
+      <PageHeader
+        title="Feature Catalog"
+        description="Browse and explore all available features"
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={features.length === 0}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+            <HealthDot 
+              status={features.length > 0 ? 'ok' : 'error'} 
+              label="Feature Catalog" 
+            />
+          </div>
+        }
+      />
 
       <Card>
         <CardHeader>

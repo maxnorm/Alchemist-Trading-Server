@@ -3,10 +3,16 @@ const getBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_URL
   // If env URL is explicitly set (including empty string), always use it (respects docker-compose configuration)
   if (envUrl !== undefined) {
+    // Handle case where env var contains a comment string (common in .env files)
+    // If it's a comment (starts with #) or whitespace-only, treat as empty string
+    const trimmed = typeof envUrl === 'string' ? envUrl.trim() : String(envUrl)
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      return ''
+    }
     // Empty string means use relative paths (endpoints already include /api/v1/)
     // If env URL is relative (starts with /), use it as-is for gateway
     // If absolute, use it directly
-    return envUrl
+    return trimmed
   }
   // Fallback: In development, check if we're accessing via gateway (port 80) or directly (port 8000)
   const isGateway = window.location.port === '' || window.location.port === '80'

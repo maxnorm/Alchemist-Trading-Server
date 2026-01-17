@@ -8,6 +8,8 @@ export const WS_CHANNELS = {
   tradingPositions: '/ws/trading/positions',
   performanceUpdates: '/ws/performance/updates',
   alerts: '/ws/alerts',
+  trades: '/ws/trades',
+  ticks: '/ws/ticks',
 } as const
 
 type MessageHandler = (data: unknown) => void

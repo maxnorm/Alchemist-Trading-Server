@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api-factory';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { WS_CHANNELS } from '@/services/websocket';
 import { 
   DataTable, 
   DataTableHeader, 
@@ -53,7 +54,7 @@ export function PositionTable({
       setPositions(data);
     };
 
-    const unsubscribe = subscribe('/ws/positions', handlePositionUpdate);
+    const unsubscribe = subscribe(WS_CHANNELS.tradingPositions, handlePositionUpdate);
 
     return () => {
       unsubscribe();

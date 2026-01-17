@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { WS_CHANNELS } from '@/services/websocket';
 import { 
   LineChart, 
   Line, 
@@ -58,7 +59,7 @@ export function TrainingMetricsChart({
       });
     };
 
-    const unsubscribe = subscribe('/ws/training', handleMetrics);
+    const unsubscribe = subscribe(WS_CHANNELS.trainingMetrics, handleMetrics);
 
     return () => {
       unsubscribe();

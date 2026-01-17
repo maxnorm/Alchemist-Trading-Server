@@ -6,8 +6,11 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import toast from 'react-hot-toast'
-import { formatRelativeTime } from '@/utils/formatters'
+import { formatRelativeTime, formatCurrency } from '@/utils/formatters'
 import { useModelAssignment } from '@/features/trading/hooks/useModelAssignment'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
+import { RefreshCw, Plus } from 'lucide-react'
 import type { AccountType } from '@/types/mt5'
 
 export default function MT5Accounts() {
@@ -17,18 +20,15 @@ export default function MT5Accounts() {
     account_login: string
     account_name: string
     account_type: AccountType
+    mt5_password: string
+    mt5_server: string
   }>({
     account_login: '',
     account_name: '',
     account_type: 'live',
+    mt5_password: '',
+    mt5_server: '',
   })
-  const [registrationResult, setRegistrationResult] = useState<{
-    account_login: number
-    account_type: string
-    auth_token: string
-    server_host?: string
-    server_port?: number
-  } | null>(null)
   const {
     assignAccountId,
     assignModelId,
@@ -74,18 +74,22 @@ export default function MT5Accounts() {
         account_login: Number(registerForm.account_login),
         account_type: registerForm.account_type,
         account_name: registerForm.account_name || undefined,
+        mt5_password: registerForm.mt5_password,
+        mt5_server: registerForm.mt5_server,
       }
       return api.postMt5AccountRegister(payload)
     },
-    onSuccess: (data) => {
-      toast.success('MT5 account registered')
-      setRegistrationResult({
-        account_login: data.account_login,
-        account_type: data.account_type,
-        auth_token: data.auth_token,
-        server_host: data.server_host,
-        server_port: data.server_port,
+    onSuccess: () => {
+      toast.success('MT5 account registered successfully')
+      // Reset form
+      setRegisterForm({
+        account_login: '',
+        account_name: '',
+        account_type: 'live',
+        mt5_password: '',
+        mt5_server: '',
       })
+      setShowRegister(false)
       queryClient.invalidateQueries({ queryKey: ['mt5-accounts'] })
     },
     onError: (error: Error) => {
@@ -99,32 +103,67 @@ export default function MT5Accounts() {
       toast.error('Account login is required')
       return
     }
+    if (!registerForm.mt5_password) {
+      toast.error('MT5 password is required')
+      return
+    }
+    if (!registerForm.mt5_server) {
+      toast.error('MT5 server is required')
+      return
+    }
     registerMutation.mutate()
   }
 
-  const eaConfigSnippet =
-    registrationResult &&
-    `ip = ${registrationResult.server_host}
-    port = ${registrationResult.server_port}
-    auth_token = ${registrationResult.auth_token}`
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['mt5-accounts'] })
+    queryClient.invalidateQueries({ queryKey: ['models'] })
+    toast.success('Accounts refreshed')
+  }
+
+  const connectedCount = accounts?.filter((acc) => {
+    // Use connection_status from API, which is based on actual MT5Connection records
+    return acc.connection_status === 'connected'
+  }).length || 0
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">MT5 Accounts</h1>
-        <p className="text-muted-foreground">Manage account connections and model assignments</p>
-      </div>
+      <PageHeader
+        title="MT5 Accounts"
+        description="Manage account connections, model assignments, and trading controls"
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={accountsLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${accountsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setShowRegister((v) => !v)}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              {showRegister ? 'Hide' : 'Register Account'}
+            </Button>
+            <HealthDot 
+              status={connectedCount > 0 ? 'ok' : accounts && accounts.length > 0 ? 'warn' : 'error'} 
+              label={`${connectedCount}/${accounts?.length || 0} connected`}
+            />
+          </div>
+        }
+      />
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Register MT5 Account</CardTitle>
-              <CardDescription>Generate connection details for a new MT5 account</CardDescription>
-            </div>
-            <Button variant="outline" onClick={() => setShowRegister((v) => !v)}>
-              {showRegister ? 'Hide' : 'Register Account'}
-            </Button>
+          <div>
+            <CardTitle>Register MT5 Account</CardTitle>
+            <CardDescription>Register a new MT5 account for Python API trading (no EA required)</CardDescription>
           </div>
         </CardHeader>
         {showRegister && (
@@ -167,24 +206,34 @@ export default function MT5Accounts() {
                     <option value="demo">Demo</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">MT5 Password</label>
+                  <Input
+                    type="password"
+                    value={registerForm.mt5_password}
+                    onChange={(e) =>
+                      setRegisterForm((f) => ({ ...f, mt5_password: e.target.value }))
+                    }
+                    required
+                    placeholder="Your MT5 account password"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">MT5 Server</label>
+                  <Input
+                    value={registerForm.mt5_server}
+                    onChange={(e) =>
+                      setRegisterForm((f) => ({ ...f, mt5_server: e.target.value }))
+                    }
+                    required
+                    placeholder="e.g., ICMarkets-Demo, FXCM-Demo"
+                  />
+                </div>
               </div>
               <Button type="submit" disabled={registerMutation.isPending}>
-                {registerMutation.isPending ? <LoadingSpinner size="sm" /> : 'Generate EA token'}
+                {registerMutation.isPending ? <LoadingSpinner size="sm" /> : 'Register Account'}
               </Button>
             </form>
-
-            {registrationResult && (
-              <div className="mt-4 space-y-2">
-                <h3 className="text-sm font-semibold">EA configuration</h3>
-                <p className="text-xs text-muted-foreground">
-                  Use these values as inputs in both <code>mt5_trading_operation.mq5</code> and{' '}
-                  <code>mt5_tick_streamer.mq5</code>.
-                </p>
-                <pre className="whitespace-pre-wrap rounded-md bg-muted p-3 text-xs">
-{eaConfigSnippet}
-                </pre>
-              </div>
-            )}
           </CardContent>
         )}
       </Card>
@@ -195,57 +244,164 @@ export default function MT5Accounts() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {accounts && accounts.length > 0 ? (
             accounts.map((account) => {
-              const isConnected = account.last_seen_at
-                ? new Date(account.last_seen_at).getTime() > Date.now() - 60000
-                : false
+              const isConnected = account.connection_status === 'connected'
 
               return (
                 <Card key={account.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">
-                    {account.account_name || `Account ${account.account_login}`}
-                  </CardTitle>
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      isConnected ? 'bg-green-500' : 'bg-gray-400'
-                    }`}
-                  />
-                </div>
-                <CardDescription>
-                  {account.account_login} ({account.account_type})
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-1 text-sm">
-                  <div>
-                    <span className="font-medium">Broker:</span> {account.broker_name || 'N/A'}
-                  </div>
-                  <div>
-                    <span className="font-medium">Status:</span>{' '}
-                    {isConnected ? 'Connected' : 'Disconnected'}
-                  </div>
-                  {account.last_seen_at && (
-                    <div className="text-xs text-muted-foreground">
-                      {formatRelativeTime(account.last_seen_at)}
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">
+                        {account.account_name || `Account ${account.account_login}`}
+                      </CardTitle>
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          isConnected ? 'bg-green-500' : 'bg-gray-400'
+                        }`}
+                      />
                     </div>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => openAssignmentDialog(account.id)}>
-                    Assign Model
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => pauseMutation.mutate(account.id)}
-                    disabled={pauseMutation.isPending}
-                  >
-                    Pause
-                  </Button>
-                </div>
-                </CardContent>
-              </Card>
+                    <CardDescription>
+                      {account.account_login} ({account.account_type})
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Financial Information */}
+                    {(account.balance !== undefined || account.equity !== undefined || account.profit !== undefined) && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Financials
+                        </div>
+                        <div className="space-y-1.5 text-sm">
+                          {account.balance !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Balance:</span>
+                              <span className="font-medium">
+                                {formatCurrency(account.balance, account.account_currency || 'USD')}
+                              </span>
+                            </div>
+                          )}
+                          {account.equity !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Equity:</span>
+                              <span className="font-medium">
+                                {formatCurrency(account.equity, account.account_currency || 'USD')}
+                              </span>
+                            </div>
+                          )}
+                          {account.profit !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Profit/Loss:</span>
+                              <span className={`font-medium ${account.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {formatCurrency(account.profit, account.account_currency || 'USD')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Account Information */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Account Details
+                      </div>
+                      <div className="space-y-1.5 text-sm">
+                        {account.broker_name && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Broker:</span>
+                            <span className="font-medium">{account.broker_name}</span>
+                          </div>
+                        )}
+                        {account.broker_server && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Server:</span>
+                            <span className="font-medium">{account.broker_server}</span>
+                          </div>
+                        )}
+                        {account.account_currency && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Currency:</span>
+                            <span className="font-medium">{account.account_currency}</span>
+                          </div>
+                        )}
+                        {account.account_leverage && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Leverage:</span>
+                            <span className="font-medium">1:{account.account_leverage}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Connection Information */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Connection
+                      </div>
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Status:</span>
+                          <span className={`font-medium ${isConnected ? 'text-green-500' : 'text-gray-400'}`}>
+                            {isConnected ? 'Connected' : 'Disconnected'}
+                          </span>
+                        </div>
+                        {account.ea_version && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">EA Version:</span>
+                            <span className="font-medium">{account.ea_version}</span>
+                          </div>
+                        )}
+                        {account.connected_at && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Connected:</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatRelativeTime(account.connected_at)}
+                            </span>
+                          </div>
+                        )}
+                        {account.last_seen_at && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Last Seen:</span>
+                            <span className="text-xs text-muted-foreground">
+                              {formatRelativeTime(account.last_seen_at)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Model Assignment */}
+                    {account.current_model_id && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Model Assignment
+                        </div>
+                        <div className="space-y-1.5 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Model:</span>
+                            <span className="font-medium">
+                              {account.current_model_version || `ID: ${account.current_model_id}`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-2 border-t">
+                      <Button size="sm" variant="outline" onClick={() => openAssignmentDialog(account.id)}>
+                        {account.current_model_id ? 'Change Model' : 'Assign Model'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => pauseMutation.mutate(account.id)}
+                        disabled={pauseMutation.isPending}
+                      >
+                        Pause
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               )
             })
           ) : (

@@ -4,7 +4,7 @@ import type { Experiment, CreateExperimentDto } from '@/types/experiment'
 import type { Feature, FeatureFilters } from '@/types/feature'
 import type { Model, ModelStage } from '@/types/model'
 import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
-import type { MT5Account, MT5AccountCreatePayload, MT5AccountSecret, ModelAssignment } from '@/types/mt5'
+import type { MT5Account, MT5AccountCreatePayload, ModelAssignment } from '@/types/mt5'
 import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade, ModelStatistics, ModelComparison } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
 import type { PaperSession, ValidationResult } from '@/types/model'
@@ -70,8 +70,23 @@ export class ApiClient {
 
   // Features
   async getFeatures(filters?: FeatureFilters): Promise<Feature[]> {
-    const response = await this.client.get<Feature[]>(API_ENDPOINTS.features, { params: filters })
-    return Array.isArray(response.data) ? response.data : []
+    const response = await this.client.get<{ features: Feature[]; total: number }>(API_ENDPOINTS.features, { params: filters })
+    // API returns { features: [...], total: number }, extract the features array
+    if (response.data && response.data.features && Array.isArray(response.data.features)) {
+      // Map is_available from API to available for frontend
+      return response.data.features.map(f => ({
+        ...f,
+        available: (f as any).is_available ?? true
+      }))
+    }
+    // Fallback: if response.data is already an array (backward compatibility)
+    if (Array.isArray(response.data)) {
+      return response.data.map(f => ({
+        ...f,
+        available: (f as any).is_available ?? f.available ?? true
+      }))
+    }
+    return []
   }
 
   async getFeature(id: number): Promise<Feature> {
@@ -241,12 +256,20 @@ export class ApiClient {
 
   // MT5 Accounts
   async getMT5Accounts(): Promise<MT5Account[]> {
-    const response = await this.client.get<MT5Account[]>(API_ENDPOINTS.mt5Accounts)
-    return Array.isArray(response.data) ? response.data : []
+    const response = await this.client.get<{ accounts: MT5Account[]; total: number } | MT5Account[]>(API_ENDPOINTS.mt5Accounts)
+    // Handle both response formats: { accounts: [], total: number } or MT5Account[]
+    if (Array.isArray(response.data)) {
+      return response.data
+    }
+    if (response.data && typeof response.data === 'object' && 'accounts' in response.data) {
+      return Array.isArray(response.data.accounts) ? response.data.accounts : []
+    }
+    return []
   }
 
-  async postMt5AccountRegister(payload: MT5AccountCreatePayload): Promise<MT5AccountSecret> {
-    const response = await this.client.post<MT5AccountSecret>(
+  async postMt5AccountRegister(payload: MT5AccountCreatePayload): Promise<MT5Account> {
+    // Response no longer includes auth_token, server_host, server_port for Python API accounts
+    const response = await this.client.post<MT5Account>(
       `${API_ENDPOINTS.mt5Accounts}/register`,
       payload
     )
@@ -417,4 +440,5 @@ export class ApiClient {
   }
 }
 
-export const api = new ApiClient()
+// Re-export the singleton instance from api-factory to ensure all components use the same instance
+export { api } from './api-factory'

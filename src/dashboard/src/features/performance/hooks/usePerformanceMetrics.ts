@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/services/api'
 import { useWebSocketContext } from '@/contexts/WebSocketContext'
+import { WS_CHANNELS } from '@/services/websocket'
 import type { PortfolioMetrics, ModelMetrics } from '@/types/performance'
 
 /**
@@ -25,7 +26,7 @@ export function usePerformanceMetrics(period: string = 'all_time', modelId?: num
   // WebSocket subscription for real-time updates
   useEffect(() => {
     const unsubscribe = subscribe<{ type: string; data?: { model_id?: number } }>(
-      'performanceUpdates',
+      WS_CHANNELS.performanceUpdates,
       (msg) => {
         if (
           msg.type === 'portfolio_update' ||

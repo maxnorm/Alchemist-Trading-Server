@@ -73,7 +73,32 @@ function AppContent() {
                 </Route>
               </Routes>
             </BrowserRouter>
-            <Toaster position="top-right" />
+            <Toaster
+              position="bottom-right"
+              toastOptions={{
+                className: '',
+                style: {
+                  background: 'hsl(var(--mono-200))',
+                  color: 'hsl(var(--mono-800))',
+                  border: '1px solid hsl(var(--mono-400))',
+                  borderRadius: 'var(--radius)',
+                  padding: '0.75rem 1rem',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
+                },
+                success: {
+                  iconTheme: {
+                    primary: 'hsl(var(--success))',
+                    secondary: 'hsl(var(--mono-200))',
+                  },
+                },
+                error: {
+                  iconTheme: {
+                    primary: 'hsl(var(--destructive))',
+                    secondary: 'hsl(var(--mono-200))',
+                  },
+                },
+              }}
+            />
             {/* React Query DevTools - only in development */}
             {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
           </WebSocketProvider>

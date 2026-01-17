@@ -9,6 +9,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api-factory';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { WS_CHANNELS } from '@/services/websocket';
 import { DenseCard, DenseCardHeader, DenseCardContent } from '@/components/common/DenseCard';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import type { TimeAndSale } from '@/types/market';
@@ -57,7 +58,7 @@ export function TimeAndSales({
       });
     };
 
-    const unsubscribe = subscribe('/ws/trades', handleTrade);
+    const unsubscribe = subscribe(WS_CHANNELS.trades, handleTrade);
 
     return () => {
       unsubscribe();

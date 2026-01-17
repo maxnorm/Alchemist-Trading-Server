@@ -2,7 +2,7 @@
 SQLAlchemy ORM models for MT5 Accounts
 """
 
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Text, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Text, ForeignKey, DateTime, UniqueConstraint, Numeric, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from . import Base
@@ -21,7 +21,12 @@ class MT5Account(Base):
     account_currency = Column(String(10), nullable=True)
     account_leverage = Column(Integer, nullable=True)
     account_name = Column(String(100), nullable=True)  # User-friendly name
-    auth_token = Column(String(128), nullable=True, index=True)
+    balance = Column(Numeric(15, 2), nullable=True)  # Account balance
+    equity = Column(Numeric(15, 2), nullable=True)  # Account equity
+    profit = Column(Numeric(15, 2), nullable=True)  # Account profit/loss
+    auth_token = Column(String(128), nullable=True, index=True)  # Legacy field, not used for Python API accounts
+    mt5_password_encrypted = Column(LargeBinary, nullable=True)  # Encrypted password for Python API
+    mt5_server = Column(String(100), nullable=True)  # MT5 broker server name
     user_id = Column(String(255), nullable=True, index=True)  # Clerk user ID (owner)
     created_by = Column(String(255), nullable=True)  # Clerk user ID (creator, for audit)
     is_active = Column(Boolean, default=True, nullable=False, index=True)

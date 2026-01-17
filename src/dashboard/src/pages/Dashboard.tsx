@@ -52,7 +52,7 @@ export default function Dashboard() {
               status={status?.is_active ? 'ok' : 'error'} 
               label="Trading System" 
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-mono-600 dark:text-mono-600 font-medium">
               Updated {new Date().toLocaleTimeString()}
             </span>
           </div>

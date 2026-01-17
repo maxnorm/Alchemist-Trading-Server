@@ -1,5 +1,7 @@
 export type AccountType = 'demo' | 'live'
 
+export type ConnectionStatusType = 'connected' | 'disconnected' | 'paused'
+
 export interface MT5Account {
   id: number
   account_login: number
@@ -9,14 +11,28 @@ export interface MT5Account {
   account_currency?: string
   account_leverage?: number
   account_name?: string
+  balance?: number
+  equity?: number
+  profit?: number
   is_active: boolean
   last_seen_at?: string
   created_at: string
   updated_at?: string
+  // Computed fields from API
+  connection_status?: ConnectionStatusType
+  current_model_id?: number
+  current_model_version?: string
+  trading_enabled?: boolean
+  // Connection details from EA
+  terminal_id?: number
+  ea_version?: string
+  connection_ip?: string
+  connected_at?: string
 }
 
 export interface MT5AccountSecret extends MT5Account {
-  auth_token: string
+  // Legacy fields - no longer used for Python API accounts
+  auth_token?: string
   server_host?: string
   server_port?: number
 }
@@ -29,6 +45,8 @@ export interface MT5AccountCreatePayload {
   account_currency?: string
   account_leverage?: number
   account_name?: string
+  mt5_password: string  // Required for Python API connection
+  mt5_server: string     // Required for Python API connection
 }
 
 export interface ModelAssignment {

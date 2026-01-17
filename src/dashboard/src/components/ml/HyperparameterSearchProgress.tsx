@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api-factory';
 import { useWebSocketContext } from '@/contexts/WebSocketContext';
+import { WS_CHANNELS } from '@/services/websocket';
 import { DenseCard, DenseCardHeader, DenseCardContent } from '@/components/common/DenseCard';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import type { OptunaStudy } from '@/types/optuna';
@@ -57,12 +58,12 @@ export function HyperparameterSearchProgress({
       });
     };
 
-    const unsubscribe = subscribe('/ws/optuna', handleUpdate);
+    const unsubscribe = subscribe(WS_CHANNELS.optunaTrials(experimentId), handleUpdate);
 
     return () => {
       unsubscribe();
     };
-  }, [subscribe]);
+  }, [subscribe, experimentId]);
 
   // Calculate progress percentage
   const progressPercent = studyData && studyData.n_trials_target

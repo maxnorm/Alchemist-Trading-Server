@@ -37,6 +37,9 @@ def get_all_features(
         for row in rows:
             # Convert row to dict
             row_dict = dict(row._mapping)
+            # Map database field 'available' to schema field 'is_available'
+            if "available" in row_dict:
+                row_dict["is_available"] = row_dict.pop("available")
             # Parse JSON statistics if present
             if row_dict.get("statistics") and isinstance(row_dict["statistics"], str):
                 import json

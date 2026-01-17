@@ -33,11 +33,16 @@ class MT5AccountBase(BaseModel):
     account_currency: Optional[str] = None
     account_leverage: Optional[int] = None
     account_name: Optional[str] = None
+    balance: Optional[float] = None
+    equity: Optional[float] = None
+    profit: Optional[float] = None
 
 
 class MT5AccountCreateRequest(MT5AccountBase):
     """Request schema for creating MT5 account"""
 
+    mt5_password: str = Field(..., description="MT5 account password (required for Python API connection)")
+    mt5_server: str = Field(..., description="MT5 broker server name (required, e.g., 'ICMarkets-Demo', 'FXCM-Demo')")
     ea_version: Optional[str] = None
     connection_ip: Optional[str] = None
     terminal_id: Optional[int] = None
@@ -66,6 +71,11 @@ class MT5AccountResponse(MT5AccountBase):
     current_model_id: Optional[int] = None
     current_model_version: Optional[str] = None
     trading_enabled: bool = True
+    # Connection details from EA
+    terminal_id: Optional[int] = None
+    ea_version: Optional[str] = None
+    connection_ip: Optional[str] = None
+    connected_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -114,9 +124,11 @@ class MT5ConnectionHistoryResponse(BaseModel):
 
 
 class MT5AccountSecretResponse(MT5AccountResponse):
-    """Response schema exposing auth token and connection parameters for EA setup"""
+    """Response schema for account registration (legacy - kept for backward compatibility)"""
 
-    auth_token: str
+    # Note: auth_token, server_host, server_port are no longer used for Python API accounts
+    # but kept in schema for backward compatibility with existing code
+    auth_token: Optional[str] = None
     server_host: Optional[str] = None
     server_port: Optional[int] = None
 
