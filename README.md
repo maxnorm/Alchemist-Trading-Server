@@ -25,20 +25,23 @@ The Alchemist provides:
 
 ```
 ┌─────────────────┐
-│  React Dashboard│ (Port 3000)
+│  React Dashboard│ (Port 3000, runs locally)
 └────────┬────────┘
-         │
+         │ HTTP/WebSocket
 ┌────────▼────────┐
-│  FastAPI Service│ (Port 8000)
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│ Trading Server  │ (Port 8080)
+│    Gateway     │ (Port 80, routes to backend)
 └────────┬────────┘
          │
     ┌────┴────┐
-    │   MT5   │
-    └─────────┘
+    │         │
+┌───▼───┐ ┌──▼────────┐
+│  API  │ │  Server   │
+│ :8000 │ │  :8080    │
+└───────┘ └────┬──────┘
+                │
+           ┌────┴────┐
+           │   MT5   │
+           └─────────┘
 ```
 
 ## Core Components
@@ -81,6 +84,7 @@ The Alchemist provides:
 ## Requirements
 - Docker and Docker Compose
 - Python 3.11
+- **Node.js 20.19+ or 22.12+** (for dashboard development)
 - MetaTrader 5 platform with a valid paper or live account
 
 ## Quick Start
@@ -121,10 +125,12 @@ The Alchemist provides:
    python scripts/run-migrations.py
    ```
 
-4. **Start the Docker environment**:
+4. **Start the Docker environment** (backend services only):
    ```bash
-   docker compose up -d --build
+   docker compose up -d --build gateway api server postgres redis mlflow
    ```
+   
+   **Note:** Dashboard is no longer included in Docker Compose. Run it locally via `npm run dev` (see step 3 above).
 
 5. **Verify the server is running**:
    ```bash
@@ -232,8 +238,19 @@ pytest tests/ --cov=src/trading_server/src --cov-report=html
    docker compose up -d
    ```
 
-3. **Access Dashboard**
+3. **Start Dashboard (Local Development)**
+   - Navigate to dashboard directory: `cd src/dashboard`
+   - Install dependencies: `npm install`
+   - Create `.env.local` file:
+     ```env
+     VITE_API_URL=http://localhost/api
+     VITE_WS_URL=ws://localhost/ws
+     VITE_CLERK_PUBLISHABLE_KEY=your_clerk_key
+     ```
+   - Start development server: `npm run dev`
    - Open http://localhost:3000
+   
+   **Note:** Dashboard now runs locally via `npm run dev` and connects to backend services via the gateway. The gateway serves only backend services (API + Server).
    - Create your first experiment!
 
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for detailed setup instructions.

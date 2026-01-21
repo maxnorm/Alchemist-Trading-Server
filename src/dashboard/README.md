@@ -6,8 +6,11 @@ React dashboard for The Alchemist AI Forex Experimentation Platform.
 
 ### Prerequisites
 
-- Node.js 20+
-- npm or yarn
+- **Node.js 20.19+ or 22.12+** (required for Vite 7)
+  - Check your version: `node --version`
+  - Upgrade if needed: [Download Node.js](https://nodejs.org/) or use [nvm](https://github.com/nvm-sh/nvm) (Windows: [nvm-windows](https://github.com/coreybutler/nvm-windows))
+- npm 10+ or yarn
+- Backend services running via Docker Compose (see main project README)
 
 ### Setup
 
@@ -16,18 +19,33 @@ React dashboard for The Alchemist AI Forex Experimentation Platform.
 npm install
 ```
 
-2. Create `.env` file (copy from `.env.example`):
+2. Create `.env.local` file for local development:
 ```bash
-VITE_API_URL=http://localhost:8000
-VITE_WS_URL=ws://localhost:8000
+# Point to gateway (recommended - consistent with production routing)
+VITE_API_URL=http://localhost/api
+VITE_WS_URL=ws://localhost/ws
+
+# Alternative: Point directly to API (bypasses gateway)
+# VITE_API_URL=http://localhost:8000
+# VITE_WS_URL=ws://localhost:8000/ws
+
+# Clerk authentication (get from your Clerk dashboard)
+# VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
 ```
 
-3. Start development server:
+**Note:** The dashboard is now run locally via `npm run dev` and connects to backend services running in Docker Compose. The gateway serves only backend services (API + Server).
+
+3. Start backend services (from project root):
+```bash
+docker compose up -d gateway api server postgres redis mlflow
+```
+
+4. Start development server:
 ```bash
 npm run dev
 ```
 
-The dashboard will be available at `http://localhost:3000`
+The dashboard will be available at `http://localhost:3000` and will connect to the backend via the gateway at `http://localhost/api`.
 
 ## Building for Production
 
@@ -37,15 +55,16 @@ npm run build
 
 The built files will be in the `dist` directory.
 
-## Docker
+## Docker (Legacy)
 
-Build and run with Docker Compose (from project root):
+**Note:** Dashboard is no longer deployed via Docker Compose. It runs locally for development.
+
+For production deployment, the dashboard can be built and deployed separately:
 
 ```bash
-docker compose up dashboard
+npm run build
+# Deploy dist/ directory to your hosting service (Vercel, Netlify, S3, etc.)
 ```
-
-The dashboard will be available at `http://localhost:3000`
 
 ## Features
 

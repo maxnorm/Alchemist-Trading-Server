@@ -236,6 +236,12 @@ data_gaps_detected_total = Counter(
     ["data_type", "symbol"],  # data_type: 'tick', 'bar', 'news', 'economic'
 )
 
+data_gap_minutes = Gauge(
+    "data_gap_minutes",
+    "Current data gap duration in minutes",
+    ["symbol", "data_type"],  # data_type: 'tick', 'bar', 'news', 'economic'
+)
+
 gap_fill_attempts_total = Counter(
     "gap_fill_attempts_total",
     "Total gap fill attempts",

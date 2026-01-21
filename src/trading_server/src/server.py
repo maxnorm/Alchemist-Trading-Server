@@ -117,6 +117,25 @@ class Server:
                 database=self.__db, experiment_runner=self.__experiment_runner
             )
 
+            # Initialize experiment event consumer (Redis pub/sub)
+            try:
+                from infrastructure.messaging.experiment_consumer import ExperimentConsumer
+
+                self.__experiment_consumer = ExperimentConsumer(
+                    experiment_runner=self.__experiment_runner
+                )
+                self.__experiment_consumer.start()
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime("Started Experiment Event Consumer")
+            except Exception as e:
+                # Experiment consumer is optional - log warning but don't fail
+                with self.__console_lock:
+                    print_with_datetime(
+                        f"Warning: Failed to start experiment consumer: {e}"
+                    )
+                self.__experiment_consumer = None
+
             if self.__verbose:
                 with self.__console_lock:
                     print_with_datetime("Initialized Experiment Management")
@@ -129,6 +148,7 @@ class Server:
             self.__experiment_builder = None
             self.__experiment_runner = None
             self.__optuna_tuner = None
+            self.__experiment_consumer = None
 
         # Initialize feature discovery (will be populated as providers register)
         if self.__verbose:

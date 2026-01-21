@@ -279,6 +279,29 @@ class ExperimentTracker:
             self.logger.warning(f"Failed to compute config hash: {e}")
             return None
 
+    def _compute_experiment_config_hash(
+        self, experiment_config: Dict[str, Any]
+    ) -> Optional[str]:
+        """
+        Compute deterministic hash of experiment config dictionary.
+
+        Args:
+            experiment_config: Experiment configuration dictionary
+
+        Returns:
+            SHA256 hash (first 16 chars) or None if computation fails
+        """
+        try:
+            # Serialize config dict to JSON with sorted keys for determinism
+            config_json = json.dumps(experiment_config, sort_keys=True, default=str)
+            # Compute SHA256 hash
+            hasher = hashlib.sha256()
+            hasher.update(config_json.encode("utf-8"))
+            return hasher.hexdigest()[:16]
+        except Exception as e:
+            self.logger.warning(f"Failed to compute experiment config hash: {e}")
+            return None
+
     def _compute_requirements_hash(self) -> Optional[Dict[str, str]]:
         """
         Compute hash of requirements.txt for reproducibility.
@@ -346,13 +369,18 @@ class ExperimentTracker:
             return None
 
     def log_reproducibility_metadata(
-        self, data_versioner: Optional[Any] = None
+        self,
+        data_versioner: Optional[Any] = None,
+        random_seed: Optional[int] = None,
+        experiment_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         Log complete reproducibility checklist.
 
         Args:
             data_versioner: Optional DataVersioner instance for data version information.
+            random_seed: Optional random seed value used for training.
+            experiment_config: Optional experiment configuration dictionary for config hash.
         """
         if not self.is_run_active:
             raise RuntimeError("No active run. Call start_run() first.")
@@ -360,16 +388,34 @@ class ExperimentTracker:
         # Compute requirements hash
         requirements_info = self._compute_requirements_hash()
 
+        # Get git commit hash
+        git_commit_full = self._get_git_commit(short=False)
+        git_commit_short = self._get_git_commit(short=True)
+
+        # Compute config hash - prefer experiment config if provided, otherwise params.yaml
+        config_hash = None
+        config_path = None
+        if experiment_config is not None:
+            config_hash = self._compute_experiment_config_hash(experiment_config)
+            config_path = "experiment_config"
+        else:
+            config_hash = self._compute_config_hash()
+            config_path = "params.yaml"
+
         reproducibility = {
-            "code_commit_hash": self._get_git_commit(short=False),
-            "code_commit_short": self._get_git_commit(short=True),
-            "config_hash": self._compute_config_hash(),
-            "config_path": "params.yaml",
+            "code_commit_hash": git_commit_full,
+            "code_commit_short": git_commit_short,
+            "config_hash": config_hash,
+            "config_path": config_path,
             "environment_id": self._get_environment_id(),
             "python_version": sys.version.split()[0],
             "platform": sys.platform,
             "timestamp": datetime.now().isoformat(),
         }
+
+        # Add random seed if provided
+        if random_seed is not None:
+            reproducibility["random_seed"] = random_seed
 
         # Add requirements hash if available
         if requirements_info:
@@ -385,13 +431,19 @@ class ExperimentTracker:
             except Exception as e:
                 self.logger.warning(f"Failed to get data versions: {e}")
 
-        # Log as tags for easy filtering
+        # Log required tags for Gate C: git_commit, random_seed, config_hash
+        mlflow.set_tag("git_commit", git_commit_full or "unknown")
+        if random_seed is not None:
+            mlflow.set_tag("random_seed", str(random_seed))
+        mlflow.set_tag("config_hash", config_hash or "unknown")
+
+        # Log as tags for easy filtering (backward compatibility)
         mlflow.set_tag(
             "reproducibility_code_commit",
-            reproducibility["code_commit_hash"] or "unknown",
+            git_commit_full or "unknown",
         )
         mlflow.set_tag(
-            "reproducibility_config_hash", reproducibility["config_hash"] or "unknown"
+            "reproducibility_config_hash", config_hash or "unknown"
         )
         mlflow.set_tag(
             "reproducibility_environment",
@@ -402,13 +454,19 @@ class ExperimentTracker:
                 "reproducibility_requirements_hash", requirements_info["hash"]
             )
 
-        # Log as parameters
+        # Log as parameters (for querying)
+        mlflow.log_param("git_commit", git_commit_full or "unknown")
+        if random_seed is not None:
+            mlflow.log_param("random_seed", random_seed)
+        mlflow.log_param("config_hash", config_hash or "unknown")
+
+        # Log as parameters (backward compatibility)
         mlflow.log_param(
             "reproducibility_code_commit",
-            reproducibility["code_commit_hash"] or "unknown",
+            git_commit_full or "unknown",
         )
         mlflow.log_param(
-            "reproducibility_config_hash", reproducibility["config_hash"] or "unknown"
+            "reproducibility_config_hash", config_hash or "unknown"
         )
         mlflow.log_param(
             "reproducibility_environment",

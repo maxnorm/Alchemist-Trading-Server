@@ -99,10 +99,11 @@ class ExperimentRunner:
                 logger.error(f"Experiment {experiment_id} not found")
                 return False
 
-            # Validate status
-            if experiment.status != ExperimentStatus.CREATED:
+            # Validate status - accept both CREATED and TRAINING
+            # (API may update status to TRAINING before Redis message arrives)
+            if experiment.status not in (ExperimentStatus.CREATED, ExperimentStatus.TRAINING):
                 logger.error(
-                    f"Experiment {experiment_id} is not in 'created' status (current: {experiment.status.value})"
+                    f"Experiment {experiment_id} is not in 'created' or 'training' status (current: {experiment.status.value})"
                 )
                 return False
 
@@ -175,6 +176,7 @@ class ExperimentRunner:
                                 "features": ",".join(experiment.features),
                             },
                             log_data_versions=False,  # Will log manually with data_versioner
+                            log_reproducibility=False,  # Will log manually with seed and config
                         )
 
                         # Log data versions if available
@@ -243,6 +245,18 @@ class ExperimentRunner:
                             self.experiment_tracker.enforce_random_seeds(seed)
                         except Exception as e:
                             logger.warning(f"Failed to log/enforce random seeds: {e}")
+
+                        # Log reproducibility metadata with seed and experiment config
+                        try:
+                            self.experiment_tracker.log_reproducibility_metadata(
+                                data_versioner=data_versioner,
+                                random_seed=seed,
+                                experiment_config=experiment_config,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to log reproducibility metadata: {e}"
+                            )
 
                     except Exception as e:
                         logger.warning(f"Failed to start MLflow run: {e}")

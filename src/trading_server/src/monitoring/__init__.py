@@ -43,6 +43,9 @@ from .metrics import (
     clock_drift_seconds,
     negative_latency_rate,
     clock_sync_status,
+    # Gap Detection Metrics
+    data_gaps_detected_total,
+    data_gap_minutes,
 )
 
 __all__ = [
@@ -78,4 +81,6 @@ __all__ = [
     "clock_drift_seconds",
     "negative_latency_rate",
     "clock_sync_status",
+    "data_gaps_detected_total",
+    "data_gap_minutes",
 ]

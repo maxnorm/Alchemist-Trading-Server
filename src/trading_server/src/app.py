@@ -15,7 +15,7 @@ from database import Database
 from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 from monitoring.mt5_clock_monitor import MT5ClockMonitor, set_global_mt5_monitor
 from monitoring.clock_sync_monitor import ClockSyncMonitor, set_global_monitor
-from monitoring.gap_detector import GapDetector
+from monitoring.gap_detector import GapDetector, set_global_gap_detector
 
 
 # Suppress TensorFlow informational warnings about CUDA/GPU
@@ -103,6 +103,8 @@ def create_composition_root(verbose: bool = False):
             enabled=os.getenv("GAP_DETECTOR_ENABLED", "true").lower() == "true",
         )
         gap_detector.start()
+        # Register as global gap detector for HTTP endpoint access
+        set_global_gap_detector(gap_detector)
         if verbose:
             print("Gap detector started")
     except Exception as e:
@@ -183,6 +185,12 @@ def start():
         if gap_detector:
             try:
                 gap_detector.stop()
+            except Exception:
+                pass
+        # Stop experiment consumer if available
+        if hasattr(server, '_Server__experiment_consumer') and server._Server__experiment_consumer:
+            try:
+                server._Server__experiment_consumer.stop()
             except Exception:
                 pass
         if args.verbose:

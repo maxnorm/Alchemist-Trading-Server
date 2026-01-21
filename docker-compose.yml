@@ -15,8 +15,6 @@ services:
             - "./src/gateway/conf.d:/etc/nginx/conf.d:ro"
             - "./logs/gateway:/var/log/nginx"  # Bind mount to sync logs to codebase
         depends_on:
-            dashboard:
-                condition: service_healthy
             api:
                 condition: service_healthy
         restart: unless-stopped
@@ -196,33 +194,6 @@ services:
             timeout: 10s
             retries: 5
             start_period: 60s
-
-    # ============================================
-    # Web Dashboard
-    # ============================================
-    dashboard:
-        container_name: "dashboard"
-        build:
-            context: ./src/dashboard
-            dockerfile: Dockerfile
-            args:
-                VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
-                VITE_API_URL: ${VITE_API_URL:-}
-                VITE_WS_URL: ${VITE_WS_URL:-}
-        environment:
-            VITE_API_URL: ${VITE_API_URL}
-            VITE_WS_URL: ${VITE_WS_URL}
-            VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
-        depends_on:
-            api:
-                condition: service_started
-        restart: unless-stopped
-        healthcheck:
-            test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1/health"]
-            interval: 30s
-            timeout: 10s
-            retries: 3
-            start_period: 30s
 
     # ============================================
     # Prometheus (Internal Only)

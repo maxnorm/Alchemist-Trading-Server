@@ -142,6 +142,67 @@ async def health_check_clock_sync():
         )
 
 
+@router.get("/health/data-quality")
+async def health_check_data_quality():
+    """Data quality health check - proxies to trading server (internal-only endpoint, not exposed through gateway)"""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{settings.trading_server_url}/health/data-quality"
+            )
+            if response.status_code == 200:
+                # Parse response and return
+                data = response.json()
+                return data
+            elif response.status_code == 503:
+                # Trading server returned unhealthy status
+                data = response.json()
+                return JSONResponse(
+                    status_code=503,
+                    content=data,
+                )
+            else:
+                # Unexpected status code
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "error",
+                        "service": "data_quality",
+                        "error": f"Trading server returned status {response.status_code}",
+                    },
+                )
+    except httpx.TimeoutException:
+        logger.error("Data quality health check timed out")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "service": "data_quality",
+                "error": "Trading server health check timed out",
+            },
+        )
+    except httpx.ConnectError:
+        logger.error("Data quality health check: could not connect to trading server")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unknown",
+                "service": "data_quality",
+                "message": "Trading server not available",
+            },
+        )
+    except Exception as e:
+        logger.error(f"Data quality health check failed: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "service": "data_quality",
+                "error": str(e),
+            },
+        )
+
+
 @router.get("/health/mlflow")
 async def health_check_mlflow():
     """MLflow health check (public endpoint)"""

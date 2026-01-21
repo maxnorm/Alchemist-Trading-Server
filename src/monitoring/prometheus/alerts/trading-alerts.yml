@@ -57,13 +57,13 @@ groups:
           description: "Quarantine rate for {{ $labels.symbol }} is {{ $value }}%, exceeding 10% threshold"
 
       - alert: DataGapDetected
-        expr: data_gap_duration_seconds > 300
+        expr: data_gap_minutes{symbol!=""} > 5
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "Data gap detected"
-          description: "Data gap of {{ $value }}s detected for {{ $labels.symbol }} during market hours"
+          summary: "Data gap detected for {{ $labels.symbol }}"
+          description: "Data gap of {{ $value }} minutes detected for {{ $labels.symbol }} ({{ $labels.data_type }}), exceeding 5 minute threshold"
 
       - alert: SystemWideGap
         expr: system_wide_gap_active == 1
@@ -75,10 +75,10 @@ groups:
           description: "Multiple symbols experiencing data gaps simultaneously - possible connection/server issue"
 
       - alert: ProlongedGap
-        expr: data_gap_duration_seconds > 1800
+        expr: data_gap_minutes{symbol!=""} > 30
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "Prolonged data gap detected"
-          description: "Prolonged data gap of {{ $value }}s (>30 minutes) detected for {{ $labels.symbol }}"
+          description: "Prolonged data gap of {{ $value }} minutes (>30 minutes) detected for {{ $labels.symbol }} ({{ $labels.data_type }})"

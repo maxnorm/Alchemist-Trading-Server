@@ -9,6 +9,7 @@ import os
 import socket
 import ssl
 import json
+from datetime import datetime
 from typing import Optional, Union, Dict, Any
 from utils.time_utils import print_with_datetime
 
@@ -181,6 +182,7 @@ class HTTPController:
         """Register default route handlers"""
         self.register_route("GET", "/metrics", self._handle_metrics)
         self.register_route("GET", "/health/clock-sync", self._handle_clock_sync_health)
+        self.register_route("GET", "/health/data-quality", self._handle_data_quality_health)
 
     def register_route(self, method: str, path: str, handler):
         """
@@ -557,6 +559,124 @@ class HTTPController:
             response_data = {
                 "status": "error",
                 "service": "clock_sync",
+                "error": str(e),
+            }
+            response_body = json.dumps(response_data).encode("utf-8")
+            return HTTPResponse(
+                status_code=500,
+                status_text="Internal Server Error",
+                headers={"Content-Type": "application/json"},
+                body=response_body,
+            )
+
+    def _handle_data_quality_health(
+        self, request: HTTPRequest, client: socket.socket
+    ) -> HTTPResponse:
+        """
+        Handle /health/data-quality endpoint
+
+        :param request: HTTP request
+        :param client: Client socket (for logging)
+        :return: HTTP response with data quality status
+        """
+        try:
+            from monitoring.gap_detector import get_global_gap_detector
+
+            gap_detector = get_global_gap_detector()
+
+            if gap_detector is None:
+                response_data = {
+                    "status": "unknown",
+                    "service": "data_quality",
+                    "message": "Gap detector not available",
+                }
+                response_body = json.dumps(response_data).encode("utf-8")
+                return HTTPResponse(
+                    status_code=503,
+                    status_text="Service Unavailable",
+                    headers={"Content-Type": "application/json"},
+                    body=response_body,
+                )
+
+            # Get gap detector status
+            status = gap_detector.get_status()
+            
+            # Detect current gaps to check if any exceed threshold
+            current_gaps = []
+            is_healthy = True
+            
+            if status.get("enabled", False):
+                try:
+                    # Get current gaps
+                    current_gaps = gap_detector.detect_gaps()
+                    
+                    # Check if any gaps exceed threshold (5 minutes)
+                    gap_threshold_minutes = status.get("gap_threshold_minutes", 5.0)
+                    for gap in current_gaps:
+                        gap_minutes = gap.get("gap_seconds", 0) / 60.0
+                        if gap_minutes > gap_threshold_minutes:
+                            is_healthy = False
+                            break
+                except Exception as e:
+                    # If gap detection fails, mark as unhealthy
+                    is_healthy = False
+                    if self.console_lock:
+                        with self.console_lock:
+                            print_with_datetime(
+                                f"Error detecting gaps for health check: {e}"
+                            )
+                    else:
+                        print_with_datetime(f"Error detecting gaps for health check: {e}")
+            else:
+                # Gap detector is disabled - consider it healthy but note disabled state
+                is_healthy = True
+
+            # Build response
+            response_data = {
+                "status": "healthy" if is_healthy else "unhealthy",
+                "service": "data_quality",
+                "enabled": status.get("enabled", False),
+                "last_check_time": status.get("last_check_time"),
+                "gap_count": status.get("gap_count", 0),
+                "system_wide_gap_count": status.get("system_wide_gap_count", 0),
+                "gap_threshold_minutes": status.get("gap_threshold_minutes", 5.0),
+                "current_gaps": [
+                    {
+                        "symbol": gap.get("symbol"),
+                        "data_type": gap.get("data_type"),
+                        "gap_minutes": gap.get("gap_seconds", 0) / 60.0,
+                        "gap_start": (
+                            gap.get("gap_start").isoformat()
+                            if isinstance(gap.get("gap_start"), datetime)
+                            else str(gap.get("gap_start"))
+                        ),
+                        "gap_end": (
+                            gap.get("gap_end").isoformat()
+                            if isinstance(gap.get("gap_end"), datetime)
+                            else str(gap.get("gap_end"))
+                        ),
+                    }
+                    for gap in current_gaps[:10]  # Limit to first 10 gaps
+                ],
+            }
+
+            response_body = json.dumps(response_data).encode("utf-8")
+
+            # Return appropriate status code
+            status_code = 200 if is_healthy else 503
+
+            return HTTPResponse(
+                status_code=status_code,
+                status_text="OK" if is_healthy else "Service Unavailable",
+                headers={"Content-Type": "application/json"},
+                body=response_body,
+            )
+
+        except Exception as e:
+            # If health check fails, return 500 error
+            response_data = {
+                "status": "error",
+                "service": "data_quality",
                 "error": str(e),
             }
             response_body = json.dumps(response_data).encode("utf-8")

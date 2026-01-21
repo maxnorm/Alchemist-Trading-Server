@@ -2,6 +2,7 @@
 Experiment management endpoints
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,6 +16,8 @@ from schemas.experiments import (
     ExperimentListResponse,
     ExperimentStartRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -95,8 +98,22 @@ async def start_experiment(
 
     try:
         # Update status to training
-        # In a real implementation, this would trigger the training loop
         updated = experiment_service.update_experiment_status(db, id, "training")
+        
+        # Publish experiment start event to Redis for Trading Server
+        try:
+            from infrastructure.messaging.experiment_publisher import ExperimentPublisher
+            
+            publisher = ExperimentPublisher.get_instance()
+            published = publisher.publish_experiment_start(id)
+            if published:
+                logger.info(f"Published experiment start event for experiment {id}")
+            else:
+                logger.warning(f"Failed to publish experiment start event for experiment {id} - Trading Server may not receive the event")
+        except Exception as e:
+            # Don't fail the endpoint if Redis publish fails - database is already updated
+            logger.warning(f"Failed to publish experiment start event to Redis: {e}. Experiment status updated in database but Trading Server may not receive the event.")
+        
         return updated
     except Exception as e:
         raise HTTPException(

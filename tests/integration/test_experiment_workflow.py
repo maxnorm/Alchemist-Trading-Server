@@ -190,6 +190,122 @@ class TestExperimentStartStop:
         assert 1 not in runner.running_experiments
 
 
+class TestExperimentReproducibilityMetadata:
+    """Test reproducibility metadata logging in MLflow"""
+    
+    @pytest.fixture
+    def mock_db(self):
+        """Create mock database"""
+        db = Mock()
+        mock_conn = Mock()
+        mock_cursor = Mock()
+        db.get_connection = Mock(return_value=mock_conn)
+        mock_conn.cursor.return_value = mock_cursor
+        return db, mock_conn, mock_cursor
+    
+    @pytest.fixture
+    def mock_experiment(self):
+        """Create mock experiment"""
+        return Experiment(
+            id=1,
+            name="test_experiment",
+            description="Test",
+            features=["price_bid_EURUSD"],
+            currency_pairs=["EURUSD"],
+            training_mode="live",
+            hyperparameters={"learning_rate": 0.001, "seed": 42},
+            status=ExperimentStatus.CREATED,
+            created_at=datetime.utcnow(),
+            started_at=None,
+            completed_at=None,
+            mlflow_run_id=None
+        )
+    
+    @pytest.fixture
+    def mock_mlflow(self):
+        """Mock MLflow module"""
+        with patch.dict(sys.modules, {'mlflow': MagicMock()}):
+            yield sys.modules['mlflow']
+    
+    def test_reproducibility_metadata_tags_logged(self, mock_db, mock_experiment, mock_mlflow):
+        """Test that git_commit, random_seed, and config_hash tags are logged when starting experiment"""
+        db, mock_conn, mock_cursor = mock_db
+        
+        from mlops.experiment_tracker import ExperimentTracker
+        
+        # Setup MLflow mocks
+        mock_mlflow.set_tracking_uri = MagicMock()
+        mock_mlflow.set_experiment = MagicMock()
+        mock_mlflow.get_experiment_by_name = MagicMock(return_value=MagicMock(experiment_id="1"))
+        mock_run = MagicMock(info=MagicMock(run_id="test-run-id"))
+        mock_mlflow.start_run = MagicMock(return_value=mock_run)
+        mock_mlflow.set_tag = MagicMock()
+        mock_mlflow.log_param = MagicMock()
+        mock_mlflow.log_params = MagicMock()
+        mock_mlflow.log_dict = MagicMock()
+        mock_mlflow.end_run = MagicMock()
+        
+        # Create tracker
+        tracker = ExperimentTracker(
+            tracking_uri="http://localhost:5000",
+            experiment_name="test-experiment"
+        )
+        
+        # Mock git commit
+        with patch.object(tracker, '_get_git_commit', return_value='abc123def456789'):
+            # Create repository mock
+            repository = Mock(spec=ExperimentRepository)
+            repository.get_experiment.return_value = mock_experiment
+            repository.update_experiment_status = Mock()
+            
+            # Create runner with mocked dependencies
+            runner = ExperimentRunner(
+                database=db,
+                experiment_tracker=tracker,
+                agent_factory=Mock(),
+                environment_factory=Mock(),
+                get_account_func=Mock(return_value=Mock()),
+                get_risk_manager_func=Mock(return_value=Mock())
+            )
+            runner.repository = repository
+            
+            # Mock all the internal methods that would normally create real objects
+            runner._create_agent_config = Mock(return_value=Mock())
+            runner._get_connectors_for_pairs = Mock(return_value=[])
+            runner.environment_factory.create_environment = Mock(return_value=Mock())
+            runner.agent_factory.create_agent = Mock(return_value=Mock())
+            runner._create_training_config = Mock(return_value=Mock())
+            runner._run_training = Mock()  # Prevent actual training thread
+            
+            # Mock data versioner
+            with patch('mlops.data_versioner.DataVersioner', return_value=Mock(_dvc_available=False)):
+                # Start experiment
+                success = runner.start_experiment(experiment_id=1)
+        
+        # Verify experiment was started
+        assert success
+        
+        # Verify required tags were set
+        tag_calls = {call[0][0]: call[0][1] for call in mock_mlflow.set_tag.call_args_list}
+        
+        # Check for required tags
+        assert 'git_commit' in tag_calls, f"git_commit tag not found. Tags: {list(tag_calls.keys())}"
+        assert tag_calls['git_commit'] == 'abc123def456789'
+        
+        assert 'random_seed' in tag_calls, f"random_seed tag not found. Tags: {list(tag_calls.keys())}"
+        assert tag_calls['random_seed'] == '42'
+        
+        assert 'config_hash' in tag_calls, f"config_hash tag not found. Tags: {list(tag_calls.keys())}"
+        assert tag_calls['config_hash'] is not None
+        assert tag_calls['config_hash'] != 'unknown'
+        
+        # Verify parameters were also logged
+        param_calls = {call[0][0]: call[0][1] for call in mock_mlflow.log_param.call_args_list}
+        assert 'git_commit' in param_calls
+        assert 'random_seed' in param_calls
+        assert 'config_hash' in param_calls
+
+
 class TestExperimentCloning:
     """Test cloning existing experiments"""
     

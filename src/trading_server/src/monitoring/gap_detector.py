@@ -11,7 +11,7 @@ from utils.time_utils import get_utc_time
 from utils.market_utils import check_if_market_open
 from utils.logging_config import get_logger
 from database import Database
-from monitoring.metrics import data_gaps_detected_total
+from monitoring.metrics import data_gaps_detected_total, data_gap_minutes
 from infrastructure.messaging.alert_publisher import AlertPublisher
 
 
@@ -198,14 +198,23 @@ class GapDetector:
                 try:
                     # Group gaps by data_type and symbol for metrics
                     gap_counts: Dict[tuple, int] = {}
+                    max_gap_duration: Dict[tuple, float] = {}
                     for gap in detected_gaps:
                         key = (gap["data_type"], gap["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
+                        # Track maximum gap duration per symbol/data_type
+                        gap_minutes = gap["gap_seconds"] / 60.0
+                        if key not in max_gap_duration or gap_minutes > max_gap_duration[key]:
+                            max_gap_duration[key] = gap_minutes
 
                     for (data_type, symbol), count in gap_counts.items():
                         data_gaps_detected_total.labels(
                             data_type=data_type, symbol=symbol
                         ).inc(count)
+                        # Update gap duration metric with maximum gap
+                        data_gap_minutes.labels(
+                            symbol=symbol, data_type=data_type
+                        ).set(max_gap_duration[(data_type, symbol)])
                 except Exception as metric_error:
                     if self._use_structured:
                         self.logger.log_event(
@@ -217,6 +226,11 @@ class GapDetector:
                         self.logger.warning(
                             f"Failed to emit gap metrics: {metric_error}"
                         )
+            else:
+                # No gaps detected - update metrics to 0 for tick data type
+                # We need to track which symbols we've checked to reset their metrics
+                # For now, we'll leave metrics as-is if no gaps (they represent current state)
+                pass
 
             self._last_check_time = current_time
             return detected_gaps
@@ -317,14 +331,23 @@ class GapDetector:
                 # Emit metrics for detected gaps
                 try:
                     gap_counts: Dict[tuple, int] = {}
+                    max_gap_duration: Dict[tuple, float] = {}
                     for gap in detected_gaps:
                         key = (gap["data_type"], gap["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
+                        # Track maximum gap duration per symbol/data_type
+                        gap_minutes = gap["gap_seconds"] / 60.0
+                        if key not in max_gap_duration or gap_minutes > max_gap_duration[key]:
+                            max_gap_duration[key] = gap_minutes
 
                     for (data_type, symbol), count in gap_counts.items():
                         data_gaps_detected_total.labels(
                             data_type=data_type, symbol=symbol
                         ).inc(count)
+                        # Update gap duration metric with maximum gap
+                        data_gap_minutes.labels(
+                            symbol=symbol, data_type=data_type
+                        ).set(max_gap_duration[(data_type, symbol)])
                 except Exception as metric_error:
                     if self._use_structured:
                         self.logger.log_event(
@@ -425,14 +448,23 @@ class GapDetector:
                 # Emit metrics for detected gaps
                 try:
                     gap_counts: Dict[tuple, int] = {}
+                    max_gap_duration: Dict[tuple, float] = {}
                     for gap in detected_gaps:
                         key = (gap["data_type"], gap["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
+                        # Track maximum gap duration per symbol/data_type
+                        gap_minutes = gap["gap_seconds"] / 60.0
+                        if key not in max_gap_duration or gap_minutes > max_gap_duration[key]:
+                            max_gap_duration[key] = gap_minutes
 
                     for (data_type, symbol), count in gap_counts.items():
                         data_gaps_detected_total.labels(
                             data_type=data_type, symbol=symbol
                         ).inc(count)
+                        # Update gap duration metric with maximum gap
+                        data_gap_minutes.labels(
+                            symbol=symbol, data_type=data_type
+                        ).set(max_gap_duration[(data_type, symbol)])
                 except Exception as metric_error:
                     if self._use_structured:
                         self.logger.log_event(
@@ -546,14 +578,23 @@ class GapDetector:
                 # Emit metrics for detected gaps
                 try:
                     gap_counts: Dict[tuple, int] = {}
+                    max_gap_duration: Dict[tuple, float] = {}
                     for gap in detected_gaps:
                         key = (gap["data_type"], gap["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
+                        # Track maximum gap duration per symbol/data_type
+                        gap_minutes = gap["gap_seconds"] / 60.0
+                        if key not in max_gap_duration or gap_minutes > max_gap_duration[key]:
+                            max_gap_duration[key] = gap_minutes
 
                     for (data_type, symbol), count in gap_counts.items():
                         data_gaps_detected_total.labels(
                             data_type=data_type, symbol=symbol
                         ).inc(count)
+                        # Update gap duration metric with maximum gap
+                        data_gap_minutes.labels(
+                            symbol=symbol, data_type=data_type
+                        ).set(max_gap_duration[(data_type, symbol)])
                 except Exception as metric_error:
                     if self._use_structured:
                         self.logger.log_event(
@@ -813,5 +854,29 @@ class GapDetector:
             "gap_count": self._gap_count,
             "system_wide_gap_count": self._system_wide_gap_count,
             "gap_threshold_seconds": self.gap_threshold_seconds,
+            "gap_threshold_minutes": self.gap_threshold_seconds / 60.0,
             "check_interval_seconds": self.check_interval_seconds,
         }
+
+
+# Module-level singleton for global gap detector access
+_global_gap_detector: Optional["GapDetector"] = None
+
+
+def get_global_gap_detector() -> Optional["GapDetector"]:
+    """
+    Get the global GapDetector instance.
+
+    :return: GapDetector instance or None if not set
+    """
+    return _global_gap_detector
+
+
+def set_global_gap_detector(detector: "GapDetector") -> None:
+    """
+    Set the global GapDetector instance.
+
+    :param detector: GapDetector instance to set as global
+    """
+    global _global_gap_detector
+    _global_gap_detector = detector

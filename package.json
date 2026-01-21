@@ -1,5 +1,18 @@
 {
+  "engines": {
+    "node": ">=20.19.0 || >=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dashboard:dev": "cd src/dashboard && npm run dev",
+    "dashboard:build": "cd src/dashboard && npm run build",
+    "dashboard:preview": "cd src/dashboard && npm run preview"
+  },
   "dependencies": {
     "dukascopy-node": "^1.46.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.7.3"
   }
 }
