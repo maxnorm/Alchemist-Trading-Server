@@ -1,6 +1,6 @@
 """
-MT5 tick connector implementing IDataSourceConnector
-Wraps MT5TickStreamer and adds normalization
+MT5 tick connector implementing IDataSourceConnector.
+Wraps ZeroMQTickStreamer and adds normalization.
 """
 
 import threading
@@ -11,7 +11,7 @@ import time
 from utils.logging_config import get_logger
 from events.normalizer import EventNormalizer
 from .base import IDataSourceConnector, ConnectorConfig
-from mt5_connection.tick_streamer import MT5TickStreamer
+from mt5_connection.zeromq_tick_streamer import ZeroMQTickStreamer
 from models.currency_pair import CurrencyPair
 
 # Connection state management (optional)
@@ -24,26 +24,23 @@ except ImportError:
 
 class MT5TickConnector(IDataSourceConnector):
     """
-    MT5 tick connector implementing IDataSourceConnector interface
-    Wraps MT5TickStreamer and adds event normalization
+    MT5 tick connector implementing IDataSourceConnector interface.
+    Wraps ZeroMQTickStreamer and adds event normalization.
     """
 
     def __init__(
         self,
-        socket,
         symbol: str,
         config: ConnectorConfig,
-        streamer: Optional[MT5TickStreamer] = None,
+        streamer: Optional[ZeroMQTickStreamer] = None,
     ):
         """
         Initialize MT5 tick connector
 
-        :param socket: Socket connection to MT5
         :param symbol: Trading symbol (e.g., "EURUSD")
         :param config: Connector configuration
-        :param streamer: Optional existing MT5TickStreamer instance (for backward compatibility)
+        :param streamer: Optional existing ZeroMQTickStreamer instance
         """
-        self.socket = socket
         self.symbol = symbol
         self.config = config
         self.normalizer = EventNormalizer()
@@ -112,20 +109,11 @@ class MT5TickConnector(IDataSourceConnector):
         attempt = 0
         while attempt < self._max_reconnect_attempts:
             try:
-                # If streamer not provided, create one
                 if self.streamer is None:
-                    from database import Database
-
-                    db = Database()
-
-                    self.streamer = MT5TickStreamer(
-                        sock=self.socket,
-                        asset=self.currency_pair,
-                        stop_char="\n",
-                        verbose=False,
-                        console_lock=None,
-                        db=db,
+                    self.logger.error(
+                        "ZeroMQTickStreamer instance required for MT5TickConnector"
                     )
+                    return False
 
                 # Start streamer thread
                 self._streamer_thread = threading.Thread(

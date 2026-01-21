@@ -1,6 +1,6 @@
 """
 MT5 Broker Adapter
-Wraps MT5Terminal to implement IBrokerAdapter interface
+Wraps ZeroMQTerminal to implement IBrokerAdapter interface
 """
 
 import asyncio
@@ -9,7 +9,7 @@ from datetime import datetime
 from risk.oms import Order, Position, Discrepancy, OrderState
 from trading.brokers.base import IBrokerAdapter, OrderStatus
 from domain.entities.account_info import AccountInfo
-from mt5_connection.terminal import MT5Terminal
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 from models.currency_pair import CurrencyPair
 from codes.order_type import OrderType as MT5OrderType
 from utils.logging_config import get_logger
@@ -18,14 +18,14 @@ from utils.logging_config import get_logger
 class MT5BrokerAdapter(IBrokerAdapter):
     """
     MT5 broker adapter implementing IBrokerAdapter interface
-    Wraps existing MT5Terminal functionality
+    Wraps existing ZeroMQTerminal functionality
     """
 
-    def __init__(self, terminal: MT5Terminal, oms=None):
+    def __init__(self, terminal: ZeroMQTerminal, oms=None):
         """
         Initialize MT5 broker adapter
 
-        :param terminal: MT5Terminal instance
+        :param terminal: ZeroMQTerminal instance
         :param oms: Optional OrderManagementSystem for idempotency
         """
         self.terminal = terminal
@@ -54,7 +54,7 @@ class MT5BrokerAdapter(IBrokerAdapter):
             mt5_order_type = self._convert_order_side_to_mt5(order.side)
             currency_pair = CurrencyPair(order.symbol, 5)  # Default to 5 digits
 
-            # Execute order via MT5Terminal
+            # Execute order via ZeroMQTerminal
             trade = asyncio.run(
                 self.terminal.send_order(
                     order_type=mt5_order_type,
@@ -104,8 +104,8 @@ class MT5BrokerAdapter(IBrokerAdapter):
         :return: List of Position objects
         """
         try:
-            # Get positions from MT5Terminal
-            # Note: MT5Terminal may need a method to get positions
+            # Get positions from ZeroMQTerminal
+            # Note: ZeroMQTerminal may need a method to get positions
             # For now, we'll use account's current_trade
             positions: List[Position] = []
 
@@ -241,11 +241,11 @@ class MT5BrokerAdapter(IBrokerAdapter):
             raise ValueError(f"Invalid order side: {side}")
 
     @classmethod
-    def from_terminal(cls, terminal: MT5Terminal, oms=None) -> "MT5BrokerAdapter":
+    def from_terminal(cls, terminal: ZeroMQTerminal, oms=None) -> "MT5BrokerAdapter":
         """
-        Create adapter from MT5Terminal (convenience method)
+        Create adapter from ZeroMQTerminal (convenience method)
 
-        :param terminal: MT5Terminal instance
+        :param terminal: ZeroMQTerminal instance
         :param oms: Optional OrderManagementSystem
         :return: MT5BrokerAdapter instance
         """

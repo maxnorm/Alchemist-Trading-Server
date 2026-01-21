@@ -1,13 +1,13 @@
 """
-Class for the trading interaction between MT5 and Python
+ZeroMQ-based MT5 terminal connection for trading.
 """
 
-import json
 import time
+
 from codes.terminal_code import Terminal
 from codes.trade_request_code import TradeRequest
 from models.trade import Trade
-from mt5_connection.conn import Connection
+from mt5_connection.zeromq_conn import ZeroMQConnection
 
 
 def generate_new_id():
@@ -15,21 +15,21 @@ def generate_new_id():
     Generate a new id for each trading terminal
     by incrementing the last id
     """
-    new_id = MT5Terminal.last_id + 1
-    MT5Terminal.last_id = new_id
+    new_id = ZeroMQTerminal.last_id + 1
+    ZeroMQTerminal.last_id = new_id
     return new_id
 
 
-class MT5Terminal(Connection):
+class ZeroMQTerminal:
     """
-    MT5 terminal connection for trading operation
+    MT5 terminal connection for trading operation (ZeroMQ REQ/REP).
     """
 
     last_id = 0
     __trade_request_executed_code = 10009
 
-    def __init__(self, socket, stop_char="\n", verbose=False, console_lock=None):
-        super().__init__(socket, stop_char, verbose, console_lock)
+    def __init__(self, zmq_conn: ZeroMQConnection):
+        self._zmq_conn = zmq_conn
         self.id = generate_new_id()
         self._idle_threshold = 60  # seconds before we proactively ping
         self._account_id = None  # Set by server for disconnect tracking
@@ -45,36 +45,14 @@ class MT5Terminal(Connection):
             }
         """
         data = {"request": Terminal.ACCOUNT_INFO.value}
-        self.send_msg(json.dumps(data))
-        return await self.get_response()
-
-    def __del__(self):
-        """Cleanup on terminal deletion - notify server of disconnect"""
-        try:
-            # Notify server of disconnect if account_id is set
-            if hasattr(self, "_account_id") and self._account_id:
-                # Try to import and call disconnect handler
-                try:
-                    # sys and os not used in this context
-
-                    # Find server instance (this is a bit hacky but necessary)
-                    # The server should handle cleanup via its own tracking
-                    pass  # Server will detect disconnect via socket errors
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        # Call parent cleanup
-        try:
-            super().__del__()
-        except Exception:
-            pass
+        self._zmq_conn.send_msg(data)
+        return await self._zmq_conn.get_response()
 
     async def ping(self):
         """Lightweight ping to validate connection (ACCOUNT_INFO request)."""
         data = {"request": Terminal.ACCOUNT_INFO.value}
-        self.send_msg(json.dumps(data))
-        return await self.get_response()
+        self._zmq_conn.send_msg(data)
+        return await self._zmq_conn.get_response()
 
     def ping_sync(self):
         """Synchronous wrapper for heartbeat threads."""
@@ -102,19 +80,7 @@ class MT5Terminal(Connection):
         :param price: Order price (optional if Market Order)
         :param sl: Stop loss (optional)
         :param tp: Take profit (optional)
-
-        Expected message format exemple:
-            {
-                "request": 101,\n
-                "order_type": 0,\n
-                "symbol": "EURUSD",\n
-                "lotsize": 0.01,\n
-                "price": 1.12345,\n
-                "sl": 1.12345,\n
-                "tp": 1.12345
-            }
         """
-        # Ensure connection is healthy or ping if stale
         await self._ensure_connection()
 
         data = {
@@ -127,31 +93,29 @@ class MT5Terminal(Connection):
             "tp": tp,
         }
 
-        self.send_msg(json.dumps(data))
+        self._zmq_conn.send_msg(data)
 
         try:
-            response = await self.get_response()
-        except TimeoutError as e:
+            response = await self._zmq_conn.get_response()
+        except TimeoutError as exc:
             raise TimeoutError(
-                f"Timeout waiting for order response from MT5 terminal: {e}. "
+                f"Timeout waiting for order response from MT5 terminal: {exc}. "
                 f"Order may not have been processed. Check MT5 terminal connection."
             )
-        except ConnectionError as e:
-            # Retry once after a forced ping if allowed
+        except ConnectionError as exc:
             if _retry:
                 await self._ensure_connection(force_ping=True)
                 return await self.send_order(
                     order_type, pair, lotsize, price, sl, tp, _retry=False
                 )
             raise ConnectionError(
-                f"Connection error while waiting for order response: {e}. "
+                f"Connection error while waiting for order response: {exc}. "
                 f"MT5 terminal connection may be lost."
             )
 
         return_code = response.get("return_code", -1)
         comment = response.get("comment", "Unknown error")
 
-        # Accept both EXECUTED (10009) for market orders and PLACED (10008) for pending orders
         if (
             return_code == TradeRequest.EXECUTED.value
             or return_code == TradeRequest.PLACED.value
@@ -166,49 +130,35 @@ class MT5Terminal(Connection):
                 tp,
             )
             return trade
-        else:
-            # Get human-readable retcode description
-            retcode_desc = self._get_retcode_description(return_code)
 
-            # Log full response for debugging
-            error_details = (
-                f"Order failed - Return code: {return_code} ({retcode_desc}), "
-                f"Expected: {TradeRequest.EXECUTED.value} (EXECUTED) or {TradeRequest.PLACED.value} (PLACED), "
-                f"Comment: {comment}, "
-                f"Full response: {response}"
-            )
-            raise Exception(f"Error while sending order: {error_details}")
+        retcode_desc = self._get_retcode_description(return_code)
+        error_details = (
+            f"Order failed - Return code: {return_code} ({retcode_desc}), "
+            f"Expected: {TradeRequest.EXECUTED.value} (EXECUTED) or {TradeRequest.PLACED.value} (PLACED), "
+            f"Comment: {comment}, "
+            f"Full response: {response}"
+        )
+        raise Exception(f"Error while sending order: {error_details}")
 
     def _get_retcode_description(self, retcode: int) -> str:
-        """
-        Get human-readable description for MT5 retcode
-        :param retcode: MT5 return code
-        :return: Description string with constant name and description
-        """
         trade_request = TradeRequest.from_code(retcode)
         if trade_request:
             return f"{trade_request.name} - {trade_request.get_description()}"
         return f"Unknown retcode: {retcode}"
 
     async def close_order(self, trade, lotsize):
-        """
-        Close an order
-        :param trade: Trade to close
-        :param lotsize: Lot size to close (optional for partial close)
-        """
-
         data = {
             "request": Terminal.CLOSE_ORDER.value,
             "ticket": trade.ticket,
             "lotsize": lotsize,
         }
 
-        self.send_msg(json.dumps(data))
-        response = await self.get_response()
+        self._zmq_conn.send_msg(data)
+        response = await self._zmq_conn.get_response()
+        return response
 
-        print(response)
+    def is_alive(self) -> bool:
+        return self._zmq_conn.is_alive()
 
-        if response["return_code"] == TradeRequest.EXECUTED.value:
-            return response
-        else:
-            raise Exception(f"Error while closing order: {response['comment']}")
+    def last_recv_ts(self):
+        return self._zmq_conn.last_recv_ts()

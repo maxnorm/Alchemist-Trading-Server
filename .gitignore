@@ -2,6 +2,8 @@
 /mt5-python_server/venv
 /drivers
 /docs/generated
+.dukascopy-cache
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -196,3 +198,5 @@ cython_debug/
 
 # Node.js
 node_modules/
+
+/venv/

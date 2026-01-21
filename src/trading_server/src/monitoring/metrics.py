@@ -266,3 +266,21 @@ backfill_records_processed_total = Counter(
     "Total records processed during backfill",
     ["symbol", "data_type"],
 )
+
+# Clock Synchronization Metrics
+clock_drift_seconds = Gauge(
+    "clock_drift_seconds",
+    "Clock drift in seconds",
+    ["source"],  # source: "server_ntp" or "mt5_broker"
+)
+
+negative_latency_rate = Gauge(
+    "negative_latency_rate",
+    "Percentage of ticks with negative latency (0.0-1.0)",
+)
+
+clock_sync_status = Gauge(
+    "clock_sync_status",
+    "Clock synchronization status (1=healthy, 0=unhealthy)",
+    ["source"],  # source: "server_ntp" or "mt5_broker"
+)

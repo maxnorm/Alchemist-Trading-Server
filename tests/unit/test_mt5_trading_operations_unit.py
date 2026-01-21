@@ -26,7 +26,7 @@ from models.currency_pair import CurrencyPair
 from models.account import Account
 from models.trade import Trade
 from trading.brokers.mt5_adapter import MT5BrokerAdapter
-from mt5_connection.terminal import MT5Terminal
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 from application.trading.trade_executor import TradeExecutor
 from domain.entities.account_info import AccountInfo
 
@@ -37,7 +37,7 @@ class TestMT5OrderExecutionUnit:
     @pytest.fixture
     def mock_terminal(self):
         """Create mock MT5 terminal"""
-        terminal = Mock(spec=MT5Terminal)
+        terminal = Mock(spec=ZeroMQTerminal)
         terminal.is_alive.return_value = True
         terminal.send_order = AsyncMock()
         terminal.close_order = AsyncMock()
@@ -308,7 +308,7 @@ class TestMT5AccountInfoUnit:
     @pytest.fixture
     def mock_terminal(self):
         """Create mock terminal with account info"""
-        terminal = Mock(spec=MT5Terminal)
+        terminal = Mock(spec=ZeroMQTerminal)
         terminal.is_alive.return_value = True
         
         async def mock_get_all_infos():

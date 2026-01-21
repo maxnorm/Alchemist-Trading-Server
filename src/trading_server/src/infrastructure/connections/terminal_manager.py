@@ -3,41 +3,39 @@ Terminal connection manager
 Manages MT5 terminal connections
 """
 
-import json
-import socket
 import threading
 import time
 from typing import Dict, List, Optional
 
-from codes.socket_code import Socket
+from infrastructure.zeromq.zeromq_connection_manager import ZeroMQConnectionManager
 from models.account import Account
-from mt5_connection.terminal import MT5Terminal
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 
 
 class TerminalManager:
     """Manages MT5 terminal connections"""
 
-    def __init__(self) -> None:
+    def __init__(self, zmq_manager: ZeroMQConnectionManager) -> None:
         """Initialize terminal manager"""
         self.accounts: List[Account] = []
+        self.zmq_manager = zmq_manager
 
-    def authenticate_terminal(
-        self, client: socket.socket, infos: Dict
-    ) -> Optional[Account]:
+    def authenticate_terminal(self, infos: Dict) -> Optional[Account]:
         """
         Authenticate and set up a terminal connection
-        :param client: Client socket
         :param infos: Authentication info dictionary
         :return: Account instance or None if failed
         """
-        if len(infos) != 2:
+        login = infos.get("login")
+        auth_token = infos.get("auth_token")
+        if not login or not auth_token:
             return None
 
-        terminal = MT5Terminal(client)
-
-        # Send successful auth response
-        data = {"auth_status": Socket.SUCCESSFUL_AUTH.value, "terminal_id": terminal.id}
-        client.send(bytes(json.dumps(data) + "\n", "utf-8"))
+        terminal = self.zmq_manager.connect_terminal(
+            account_login=login,
+            auth_token=auth_token,
+            port_offset=(login % 100),
+        )
 
         # Find existing account or create new one
         login = infos["login"]
@@ -50,7 +48,7 @@ class TerminalManager:
             self.accounts.append(account)
 
         # Start heartbeat to keep connection alive
-        self._start_heartbeat(terminal)
+        self._start_heartbeat(terminal, login)
 
         return account
 
@@ -69,14 +67,21 @@ class TerminalManager:
         """Get all accounts"""
         return self.accounts.copy()
 
-    def _start_heartbeat(self, terminal: MT5Terminal, interval: int = 30):
+    def _start_heartbeat(
+        self, terminal: ZeroMQTerminal, login: int, interval: int = 30
+    ):
         """Background heartbeat to keep MT5 terminal connection alive"""
 
         def _loop():
             while True:
                 time.sleep(interval)
                 try:
-                    terminal.ping_sync()
+                    lock = self.zmq_manager.get_terminal_lock(login)
+                    if lock:
+                        with lock:
+                            terminal.ping_sync()
+                    else:
+                        terminal.ping_sync()
                 except Exception:
                     break
 

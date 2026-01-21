@@ -211,6 +211,9 @@ class ClockSyncMonitor:
 
             self._last_status = status
 
+            # Update Prometheus metrics
+            self._update_metrics(avg_drift, status)
+
             # Log result
             if self._use_structured:
                 self.logger.log_event(
@@ -282,6 +285,29 @@ class ClockSyncMonitor:
             "check_interval_seconds": self.check_interval,
             "drift_threshold_seconds": self.drift_threshold,
         }
+
+    def _update_metrics(self, drift_seconds: float, status: str) -> None:
+        """Update Prometheus metrics"""
+        try:
+            from monitoring.metrics import clock_drift_seconds, clock_sync_status
+
+            # Update drift metric
+            clock_drift_seconds.labels(source="server_ntp").set(drift_seconds)
+
+            # Update health status (1=healthy, 0=unhealthy)
+            is_healthy = status in ["ok", "warning"]
+            clock_sync_status.labels(source="server_ntp").set(1.0 if is_healthy else 0.0)
+
+        except Exception as e:
+            # Don't fail if metrics update fails
+            if self._use_structured:
+                self.logger.log_event(
+                    event_type="clock_sync_metrics_error",
+                    message=f"Error updating Prometheus metrics: {e}",
+                    level="WARNING",
+                )
+            else:
+                self.logger.warning(f"Error updating Prometheus metrics: {e}")
 
     def is_healthy(self) -> bool:
         """

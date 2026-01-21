@@ -4,7 +4,7 @@ from trading.brokers.base import IBrokerAdapter
 from utils.time_utils import print_with_datetime
 from domain.entities.account_info import AccountInfo
 from application.trading.trade_executor import TradeExecutor
-from mt5_connection.terminal import MT5Terminal  # Keep for backward compatibility
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 
 
 class Account:
@@ -16,14 +16,14 @@ class Account:
         self,
         login,
         broker_adapter: Optional[IBrokerAdapter] = None,
-        terminal: Optional[MT5Terminal] = None,
+        terminal: Optional[ZeroMQTerminal] = None,
     ):
         """
         Initialize account
 
         :param login: Account login ID
         :param broker_adapter: IBrokerAdapter instance (preferred)
-        :param terminal: MT5Terminal instance (for backward compatibility)
+        :param terminal: ZeroMQTerminal instance
         """
         self.login = login
 
@@ -45,9 +45,9 @@ class Account:
         self.info = self._fetch_account_info()
         print(self)
 
-    def set_terminal(self, terminal: MT5Terminal):
+    def set_terminal(self, terminal: ZeroMQTerminal):
         """
-        Set the terminal for the account (backward compatibility)
+        Set the terminal for the account
         :param terminal: Terminal to set
         """
         from trading.brokers.mt5_adapter import MT5BrokerAdapter

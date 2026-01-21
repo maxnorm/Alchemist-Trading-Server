@@ -476,45 +476,78 @@ class HTTPController:
         """
         try:
             from monitoring.clock_sync_monitor import get_global_monitor
+            from monitoring.mt5_clock_monitor import get_global_mt5_monitor
 
-            monitor = get_global_monitor()
+            server_monitor = get_global_monitor()
+            mt5_monitor = get_global_mt5_monitor()
 
-            if monitor is None:
-                # Monitor not initialized
-                response_data = {
+            # Build response with server-NTP status
+            server_ntp_status = None
+            server_healthy = True
+
+            if server_monitor is None:
+                server_ntp_status = {
                     "status": "unknown",
-                    "service": "clock_sync",
                     "message": "Clock sync monitor not available",
                 }
-                response_body = json.dumps(response_data).encode("utf-8")
-                return HTTPResponse(
-                    status_code=503,
-                    status_text="Service Unavailable",
-                    headers={"Content-Type": "application/json"},
-                    body=response_body,
-                )
+                server_healthy = False
+            else:
+                server_status = server_monitor.get_status()
+                server_healthy = server_monitor.is_healthy()
+                server_ntp_status = {
+                    "last_drift_seconds": server_status.get("last_drift_seconds"),
+                    "last_status": server_status.get("last_status"),
+                    "check_count": server_status.get("check_count"),
+                }
 
-            # Get monitor status
-            status = monitor.get_status()
-            is_healthy = monitor.is_healthy()
+            # Build response with MT5 broker status
+            mt5_broker_status = None
+            mt5_healthy = True
+            negative_latency_rate = None
+
+            if mt5_monitor is None:
+                mt5_broker_status = {
+                    "status": "unknown",
+                    "message": "MT5 clock monitor not available",
+                }
+                mt5_healthy = False
+            else:
+                mt5_status = mt5_monitor.get_status()
+                mt5_healthy = mt5_monitor.is_healthy()
+                drift_stats = mt5_status.get("drift_stats", {})
+                negative_latency_stats = mt5_status.get("negative_latency_stats", {})
+
+                mt5_broker_status = {
+                    "avg_drift_seconds": drift_stats.get("avg_drift_seconds"),
+                    "min_drift_seconds": drift_stats.get("min_drift_seconds"),
+                    "max_drift_seconds": drift_stats.get("max_drift_seconds"),
+                    "median_drift_seconds": drift_stats.get("median_drift_seconds"),
+                    "sample_count": drift_stats.get("sample_count"),
+                    "status": mt5_status.get("status"),
+                }
+
+                negative_latency_rate = negative_latency_stats.get("negative_latency_rate")
+
+            # Determine overall health
+            overall_healthy = server_healthy and mt5_healthy
 
             # Build response
             response_data = {
-                "status": "healthy" if is_healthy else "unhealthy",
+                "status": "healthy" if overall_healthy else "unhealthy",
                 "service": "clock_sync",
-                "last_drift_seconds": status.get("last_drift_seconds"),
-                "last_status": status.get("last_status"),
-                "check_count": status.get("check_count"),
+                "server_ntp": server_ntp_status,
+                "mt5_broker": mt5_broker_status,
+                "negative_latency_rate": negative_latency_rate,
             }
 
             response_body = json.dumps(response_data).encode("utf-8")
 
             # Return appropriate status code
-            status_code = 200 if is_healthy else 503
+            status_code = 200 if overall_healthy else 503
 
             return HTTPResponse(
                 status_code=status_code,
-                status_text="OK" if is_healthy else "Service Unavailable",
+                status_text="OK" if overall_healthy else "Service Unavailable",
                 headers={"Content-Type": "application/json"},
                 body=response_body,
             )

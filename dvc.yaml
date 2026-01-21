@@ -10,6 +10,23 @@
 #   4. create_splits - Create train/val/test splits
 
 stages:
+  # Collect historical data from Dukascopy
+  collect_dukascopy:
+    cmd: python scripts/backfill_dukascopy_data.py --output-dir data/dukascopy
+    deps:
+      - scripts/backfill_dukascopy_data.py
+      - scripts/utils/parquet_converter.py
+    outs:
+      - data/dukascopy:
+          cache: true
+          desc: "Dukascopy historical tick data (2003-present, 28 pairs)"
+    params:
+      - dukascopy.pairs
+      - dukascopy.start_date
+      - dukascopy.end_date
+      - dukascopy.rate_limit.batch_size
+      - dukascopy.rate_limit.pause_ms
+
   export_ticks:
     cmd: python scripts/export-data.py --type ticks --output data/raw/ticks.parquet --days 90
     deps:

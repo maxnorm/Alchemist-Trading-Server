@@ -1,392 +1,425 @@
-#!/usr/bin/env python3
 """
-Alternative Data Backfill Script
-Backfills news and economic indicator data from various sources
+Alternative Data Backfill Orchestrator
+Coordinates backfill from all alternative data sources (FRED, ECB, World Bank)
 """
 
-import argparse
 import sys
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional, List
 
-# Add src/trading_server/src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "trading_server", "src"))
+# Add trading_server to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src', 'trading_server', 'src'))
 
-from database import Database
-from connectors.rss_feed_connector import RSSFeedConnector
-from connectors.web_scraping_connector import WebScrapingConnector
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+import psycopg2
+from psycopg2.extras import execute_batch
+import argparse
+
 from connectors.fred_connector import FREDConnector
-from connectors.world_bank_connector import WorldBankConnector
 from connectors.ecb_connector import ECBConnector
+from connectors.world_bank_connector import WorldBankConnector
 from connectors.base import ConnectorConfig
-from infrastructure.backfill.progress_tracker import BackfillProgressTracker
 from utils.logging_config import get_logger
 
-
-def parse_args():
-    """Parse command-line arguments"""
-    parser = argparse.ArgumentParser(description="Backfill alternative data (news, economic indicators)")
-    parser.add_argument(
-        "--source",
-        type=str,
-        required=True,
-        choices=["news", "economic", "all"],
-        help="Data source to backfill: news, economic, or all",
-    )
-    parser.add_argument(
-        "--start-time",
-        type=str,
-        required=True,
-        help="Start time (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
-    )
-    parser.add_argument(
-        "--end-time",
-        type=str,
-        required=True,
-        help="End time (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="Resume from last successful checkpoint",
-    )
-    parser.add_argument(
-        "--connector",
-        type=str,
-        choices=["rss", "web_scraping", "fred", "world_bank", "ecb", "all"],
-        default="all",
-        help="Specific connector to use (default: all)",
-    )
-    return parser.parse_args()
+logger = get_logger("alternative_data_backfill", "alternative_data_backfill.log")
 
 
-def parse_datetime(dt_str: str) -> datetime:
-    """Parse datetime string to datetime object"""
-    try:
-        # Try ISO format first
-        if "T" in dt_str:
-            return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        else:
-            # Date only - assume start of day UTC
-            return datetime.strptime(dt_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    except ValueError as e:
-        raise ValueError(f"Invalid datetime format: {dt_str}. Use YYYY-MM-DD or ISO format.") from e
-
-
-def backfill_news(
-    connector_type: str,
-    start_time: datetime,
-    end_time: datetime,
-    progress_tracker: BackfillProgressTracker,
-    progress_id: int,
-    db: Database,
-) -> int:
-    """
-    Backfill news data from specified connector
+class AlternativeDataBackfiller:
+    """Orchestrates backfill from multiple alternative data sources"""
     
-    :param connector_type: Type of connector (rss, web_scraping)
-    :param start_time: Start time
-    :param end_time: End time
-    :param progress_tracker: Progress tracker
-    :param progress_id: Progress record ID
-    :param db: Database instance
-    :return: Number of articles collected
-    """
-    logger = get_logger("backfill_alternative_data", "backfill_alternative_data.log")
-    logger.info(f"Starting news backfill from {connector_type} from {start_time} to {end_time}")
-
-    articles_collected = 0
-    last_successful_time = start_time
-    batch_size = 100
-
-    article_batch = []
-
-    try:
-        # Create connector
-        if connector_type == "rss":
-            config = ConnectorConfig(
-                source="rss",
-                symbol="*",
-                extra_config={}
-            )
-            connector = RSSFeedConnector(config)
-        elif connector_type == "web_scraping":
-            config = ConnectorConfig(
-                source="web_scraping",
-                symbol="*",
-                extra_config={
-                    "websites": ["tradingeconomics", "investing", "forexfactory"],
-                }
-            )
-            connector = WebScrapingConnector(config)
-        else:
-            raise ValueError(f"Unknown news connector type: {connector_type}")
-
-        if not connector.connect():
-            raise ConnectionError(f"Failed to connect to {connector_type} connector")
-
-        # Backfill news
-        for article in connector.backfill(start_time, end_time):
-            # Store article
-            timestamp = article.get("timestamp") or article.get("datetime")
-            if not timestamp:
-                continue
-
-            # Convert timestamp to datetime if needed
-            if isinstance(timestamp, str):
-                timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-
-            # Add to batch
-            article_batch.append({
-                "timestamp": timestamp,
-                "source": article.get("source", connector_type),
-                "title": article.get("title", ""),
-                "url": article.get("url", ""),
-                "content": article.get("content"),
-                "symbol": article.get("symbol"),
-                "sentiment_score": article.get("sentiment_score"),
-                "sentiment_label": article.get("sentiment_label"),
-                "entities": article.get("entities"),
-                "receive_time": article.get("receive_time"),
-            })
-
-            # Store batch when it reaches size
-            if len(article_batch) >= batch_size:
-                inserted = db.insert_news_articles_batch(article_batch)
-                articles_collected += inserted
-                article_batch = []
-
-                # Update progress
-                last_successful_time = timestamp
-                progress_tracker.update_progress(
-                    progress_id, last_successful_time, articles_collected
-                )
-
-                logger.debug(f"Collected {articles_collected} articles so far...")
-
-        # Store remaining articles
-        if article_batch:
-            inserted = db.insert_news_articles_batch(article_batch)
-            articles_collected += inserted
-            if article_batch:
-                last_successful_time = article_batch[-1]["timestamp"]
-            progress_tracker.update_progress(
-                progress_id, last_successful_time, articles_collected
-            )
-
-        connector.disconnect()
-        logger.info(f"News backfill completed: {articles_collected} articles collected")
-        return articles_collected
-
-    except Exception as e:
-        logger.error(f"Error during news backfill: {e}", exc_info=True)
-        progress_tracker.mark_failed(progress_id, str(e))
-        raise
-
-
-def backfill_economic(
-    connector_type: str,
-    start_time: datetime,
-    end_time: datetime,
-    progress_tracker: BackfillProgressTracker,
-    progress_id: int,
-    db: Database,
-) -> int:
-    """
-    Backfill economic indicator data from specified connector
+    def __init__(self, db_config: Dict):
+        self.db_config = db_config
+        self.conn = None
+        
+    def connect_db(self):
+        """Connect to PostgreSQL/TimescaleDB"""
+        try:
+            self.conn = psycopg2.connect(**self.db_config)
+            logger.info("Connected to database")
+        except Exception as e:
+            logger.error(f"Failed to connect to database: {e}")
+            raise
     
-    :param connector_type: Type of connector (fred, world_bank, ecb)
-    :param start_time: Start time
-    :param end_time: End time
-    :param progress_tracker: Progress tracker
-    :param progress_id: Progress record ID
-    :param db: Database instance
-    :return: Number of indicators collected
-    """
-    logger = get_logger("backfill_alternative_data", "backfill_alternative_data.log")
-    logger.info(f"Starting economic backfill from {connector_type} from {start_time} to {end_time}")
-
-    indicators_collected = 0
-    last_successful_time = start_time
-    batch_size = 100
-
-    indicator_batch = []
-
-    try:
-        # Create connector
-        if connector_type == "fred":
-            config = ConnectorConfig(
-                source="FRED",
-                symbol="US",
-                extra_config={}
-            )
-            connector = FREDConnector(config)
-        elif connector_type == "world_bank":
-            config = ConnectorConfig(
-                source="WORLD_BANK",
-                symbol="*",
-                extra_config={}
-            )
-            connector = WorldBankConnector(config)
-        elif connector_type == "ecb":
-            config = ConnectorConfig(
-                source="ECB",
-                symbol="EU",
-                extra_config={}
-            )
-            connector = ECBConnector(config)
-        else:
-            raise ValueError(f"Unknown economic connector type: {connector_type}")
-
-        if not connector.connect():
-            logger.warning(f"{connector_type} connector not available (may need API keys)")
-            return 0
-
-        # Backfill indicators
-        for indicator in connector.backfill(start_time, end_time):
-            # Store indicator
-            timestamp = indicator.get("timestamp") or indicator.get("datetime")
-            if not timestamp:
-                continue
-
-            # Convert timestamp to datetime if needed
-            if isinstance(timestamp, str):
-                timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-
-            # Add to batch
-            indicator_batch.append({
-                "timestamp": timestamp,
-                "series_id": indicator.get("series_id", ""),
-                "value": indicator.get("value"),
-                "source": indicator.get("source", connector_type),
-                "country": indicator.get("country"),
-                "frequency": indicator.get("frequency"),
-                "receive_time": indicator.get("receive_time"),
-            })
-
-            # Store batch when it reaches size
-            if len(indicator_batch) >= batch_size:
-                inserted = db.insert_economic_indicators_batch(indicator_batch)
-                indicators_collected += inserted
-                indicator_batch = []
-
-                # Update progress
-                last_successful_time = timestamp
-                progress_tracker.update_progress(
-                    progress_id, last_successful_time, indicators_collected
-                )
-
-                logger.debug(f"Collected {indicators_collected} indicators so far...")
-
-        # Store remaining indicators
-        if indicator_batch:
-            inserted = db.insert_economic_indicators_batch(indicator_batch)
-            indicators_collected += inserted
-            if indicator_batch:
-                last_successful_time = indicator_batch[-1]["timestamp"]
-            progress_tracker.update_progress(
-                progress_id, last_successful_time, indicators_collected
-            )
-
-        connector.disconnect()
-        logger.info(f"Economic backfill completed: {indicators_collected} indicators collected")
-        return indicators_collected
-
-    except Exception as e:
-        logger.error(f"Error during economic backfill: {e}", exc_info=True)
-        progress_tracker.mark_failed(progress_id, str(e))
-        raise
+    def disconnect_db(self):
+        """Disconnect from database"""
+        if self.conn:
+            self.conn.close()
+            logger.info("Disconnected from database")
+    
+    def backfill_fred(self, start_date: datetime, end_date: datetime):
+        """Backfill FRED economic indicators"""
+        
+        logger.info("=" * 80)
+        logger.info("BACKFILLING FRED (US ECONOMIC INDICATORS)")
+        logger.info(f"Period: {start_date.date()} to {end_date.date()}")
+        logger.info("=" * 80)
+        
+        fred_config = ConnectorConfig(name="fred", enabled=True, extra_config={})
+        fred = FREDConnector(fred_config)
+        
+        if not fred.connect():
+            logger.error("Failed to connect to FRED API. Check FRED_API_KEY environment variable.")
+            return
+        
+        self._log_backfill_status('economic_indicator', 'FRED', start_date, end_date, 'in_progress')
+        
+        try:
+            rows_inserted = 0
+            rows_rejected = 0
+            
+            for event in fred.backfill(start_date, end_date):
+                try:
+                    self._insert_economic_indicator(event)
+                    rows_inserted += 1
+                    
+                    if rows_inserted % 100 == 0:
+                        logger.info(f"  FRED: Inserted {rows_inserted} indicators...")
+                        
+                except Exception as e:
+                    rows_rejected += 1
+                    logger.warning(f"  Failed to insert indicator: {e}")
+            
+            self._log_backfill_status('economic_indicator', 'FRED', start_date, end_date, 
+                                     'completed', rows_inserted=rows_inserted, rows_rejected=rows_rejected)
+            logger.info(f"✓ FRED backfill completed: {rows_inserted} inserted, {rows_rejected} rejected")
+            
+        except Exception as e:
+            self._log_backfill_status('economic_indicator', 'FRED', start_date, end_date, 
+                                     'failed', error_message=str(e))
+            logger.error(f"✗ FRED backfill failed: {e}", exc_info=True)
+        finally:
+            fred.disconnect()
+    
+    def backfill_ecb(self, start_date: datetime, end_date: datetime):
+        """Backfill ECB economic indicators"""
+        
+        logger.info("=" * 80)
+        logger.info("BACKFILLING ECB (EUROZONE ECONOMIC INDICATORS)")
+        logger.info(f"Period: {start_date.date()} to {end_date.date()}")
+        logger.info("=" * 80)
+        
+        ecb_config = ConnectorConfig(name="ecb", enabled=True, extra_config={})
+        ecb = ECBConnector(ecb_config)
+        
+        if not ecb.connect():
+            logger.error("Failed to connect to ECB API")
+            return
+        
+        self._log_backfill_status('economic_indicator', 'ECB', start_date, end_date, 'in_progress')
+        
+        try:
+            rows_inserted = 0
+            rows_rejected = 0
+            
+            for event in ecb.backfill(start_date, end_date):
+                try:
+                    self._insert_economic_indicator(event)
+                    rows_inserted += 1
+                    
+                    if rows_inserted % 50 == 0:
+                        logger.info(f"  ECB: Inserted {rows_inserted} indicators...")
+                        
+                except Exception as e:
+                    rows_rejected += 1
+                    logger.warning(f"  Failed to insert indicator: {e}")
+            
+            self._log_backfill_status('economic_indicator', 'ECB', start_date, end_date, 
+                                     'completed', rows_inserted=rows_inserted, rows_rejected=rows_rejected)
+            logger.info(f"✓ ECB backfill completed: {rows_inserted} inserted, {rows_rejected} rejected")
+            
+        except Exception as e:
+            self._log_backfill_status('economic_indicator', 'ECB', start_date, end_date, 
+                                     'failed', error_message=str(e))
+            logger.error(f"✗ ECB backfill failed: {e}", exc_info=True)
+        finally:
+            ecb.disconnect()
+    
+    def backfill_world_bank(self, start_date: datetime, end_date: datetime):
+        """Backfill World Bank economic indicators"""
+        
+        logger.info("=" * 80)
+        logger.info("BACKFILLING WORLD BANK (GLOBAL ECONOMIC INDICATORS)")
+        logger.info(f"Period: {start_date.date()} to {end_date.date()}")
+        logger.info("=" * 80)
+        
+        wb_config = ConnectorConfig(name="world_bank", enabled=True, extra_config={})
+        wb = WorldBankConnector(wb_config)
+        
+        if not wb.connect():
+            logger.error("Failed to connect to World Bank API. Check wbdata library installation.")
+            return
+        
+        self._log_backfill_status('economic_indicator', 'WORLD_BANK', start_date, end_date, 'in_progress')
+        
+        try:
+            rows_inserted = 0
+            rows_rejected = 0
+            
+            for event in wb.backfill(start_date, end_date):
+                try:
+                    self._insert_economic_indicator(event)
+                    rows_inserted += 1
+                    
+                    if rows_inserted % 50 == 0:
+                        logger.info(f"  World Bank: Inserted {rows_inserted} indicators...")
+                        
+                except Exception as e:
+                    rows_rejected += 1
+                    logger.warning(f"  Failed to insert indicator: {e}")
+            
+            self._log_backfill_status('economic_indicator', 'WORLD_BANK', start_date, end_date, 
+                                     'completed', rows_inserted=rows_inserted, rows_rejected=rows_rejected)
+            logger.info(f"✓ World Bank backfill completed: {rows_inserted} inserted, {rows_rejected} rejected")
+            
+        except Exception as e:
+            self._log_backfill_status('economic_indicator', 'WORLD_BANK', start_date, end_date, 
+                                     'failed', error_message=str(e))
+            logger.error(f"✗ World Bank backfill failed: {e}", exc_info=True)
+        finally:
+            wb.disconnect()
+    
+    def _insert_economic_indicator(self, event: Dict):
+        """Insert economic indicator into database"""
+        
+        cursor = self.conn.cursor()
+        
+        query = """
+            INSERT INTO economic_indicators 
+                (timestamp, series_id, value, source, country, frequency, receive_time)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (timestamp, series_id, source) DO NOTHING
+        """
+        
+        cursor.execute(query, (
+            event['timestamp'],
+            event['series_id'],
+            event['value'],
+            event['source'],
+            event.get('country'),
+            event.get('frequency'),
+            event.get('receive_time', datetime.now())
+        ))
+        
+        self.conn.commit()
+        cursor.close()
+    
+    def _log_backfill_status(self, data_type, source, start_date, end_date, status, 
+                            rows_inserted=None, rows_rejected=None, error_message=None):
+        """Log backfill progress"""
+        
+        cursor = self.conn.cursor()
+        
+        query = """
+            INSERT INTO alternative_data_backfill_status 
+                (data_type, source, start_date, end_date, status, 
+                 rows_inserted, rows_rejected, error_message, completed_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (data_type, source, start_date, end_date) 
+            DO UPDATE SET 
+                status = EXCLUDED.status,
+                rows_inserted = EXCLUDED.rows_inserted,
+                rows_rejected = EXCLUDED.rows_rejected,
+                error_message = EXCLUDED.error_message,
+                completed_at = EXCLUDED.completed_at
+        """
+        
+        completed_at = datetime.now() if status in ['completed', 'failed'] else None
+        
+        cursor.execute(query, (
+            data_type, source, start_date, end_date, status,
+            rows_inserted, rows_rejected, error_message, completed_at
+        ))
+        
+        self.conn.commit()
+        cursor.close()
+    
+    def backfill_all(self, start_date: datetime, end_date: datetime, sources: list = None):
+        """Backfill all alternative data sources"""
+        
+        if sources is None:
+            sources = ['fred', 'ecb', 'world_bank']
+        
+        logger.info("=" * 80)
+        logger.info("ALTERNATIVE DATA BACKFILL - MASTER ORCHESTRATOR")
+        logger.info(f"Period: {start_date.date()} to {end_date.date()}")
+        logger.info(f"Sources: {', '.join(sources)}")
+        logger.info("=" * 80)
+        
+        start_time = datetime.now()
+        
+        # Backfill each source
+        if 'fred' in sources:
+            self.backfill_fred(start_date, end_date)
+        
+        if 'ecb' in sources:
+            self.backfill_ecb(start_date, end_date)
+        
+        if 'world_bank' in sources:
+            self.backfill_world_bank(start_date, end_date)
+        
+        # Print summary
+        elapsed = datetime.now() - start_time
+        logger.info("=" * 80)
+        logger.info("BACKFILL SUMMARY")
+        logger.info(f"Total time: {elapsed}")
+        logger.info("=" * 80)
+        
+        self._print_summary()
+    
+    def _print_summary(self):
+        """Print backfill summary"""
+        
+        cursor = self.conn.cursor()
+        
+        query = """
+            SELECT 
+                data_type,
+                source,
+                status,
+                rows_inserted,
+                rows_rejected,
+                ROUND(rows_rejected::NUMERIC / NULLIF(rows_inserted + rows_rejected, 0) * 100, 2) as rejection_rate_pct,
+                completed_at - created_at as duration
+            FROM alternative_data_backfill_status
+            ORDER BY completed_at DESC
+            LIMIT 10
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        
+        if results:
+            logger.info("\nRecent backfill jobs:")
+            logger.info("-" * 120)
+            logger.info(f"{'Data Type':<20} {'Source':<15} {'Status':<12} {'Inserted':<10} {'Rejected':<10} {'Rej %':<8} {'Duration':<15}")
+            logger.info("-" * 120)
+            
+            for row in results:
+                data_type, source, status, inserted, rejected, rej_pct, duration = row
+                logger.info(f"{data_type:<20} {source:<15} {status:<12} {inserted or 0:<10} {rejected or 0:<10} {rej_pct or 0:<8} {str(duration) if duration else 'N/A':<15}")
+            
+            logger.info("-" * 120)
+        
+        # Print data statistics
+        query = """
+            SELECT 
+                source,
+                COUNT(*) as total_indicators,
+                COUNT(DISTINCT series_id) as unique_series,
+                MIN(timestamp) as earliest,
+                MAX(timestamp) as latest
+            FROM economic_indicators
+            GROUP BY source
+            ORDER BY source
+        """
+        
+        cursor.execute(query)
+        results = cursor.fetchall()
+        
+        if results:
+            logger.info("\nEconomic Indicators in Database:")
+            logger.info("-" * 100)
+            logger.info(f"{'Source':<15} {'Total':<10} {'Series':<10} {'Earliest':<25} {'Latest':<25}")
+            logger.info("-" * 100)
+            
+            for row in results:
+                source, total, series, earliest, latest = row
+                logger.info(f"{source:<15} {total:<10} {series:<10} {str(earliest):<25} {str(latest):<25}")
+            
+            logger.info("-" * 100)
+        
+        cursor.close()
 
 
 def main():
-    """Main backfill function"""
-    args = parse_args()
-    logger = get_logger("backfill_alternative_data", "backfill_alternative_data.log")
-
-    # Parse times
-    start_time = parse_datetime(args.start_time)
-    end_time = parse_datetime(args.end_time)
-
-    if start_time >= end_time:
-        logger.error("start_time must be < end_time")
-        sys.exit(1)
-
-    logger.info(
-        f"Starting alternative data backfill for {args.source} from {start_time} to {end_time}"
-    )
-
-    # Initialize components
-    db = Database()
-    progress_tracker = BackfillProgressTracker(db)
-
-    # Determine connectors to use
-    if args.source == "news":
-        connectors = ["rss", "web_scraping"] if args.connector == "all" else [args.connector]
-    elif args.source == "economic":
-        connectors = ["fred", "world_bank", "ecb"] if args.connector == "all" else [args.connector]
-    else:  # all
-        if args.connector == "all":
-            connectors = ["rss", "web_scraping", "fred", "world_bank", "ecb"]
-        else:
-            connectors = [args.connector]
-
-    total_collected = 0
-
-    for connector_type in connectors:
-        # Determine connector category
-        if connector_type in ["rss", "web_scraping"]:
-            category = "news"
-        else:
-            category = "economic"
-
-        # Check for existing progress
-        existing_progress = progress_tracker.get_progress(
-            f"{connector_type}_{category}", "*", start_time, end_time
-        )
-
-        if args.resume and existing_progress:
-            progress_id = existing_progress["id"]
-            resume_point = progress_tracker.get_resume_point(progress_id)
-            if resume_point:
-                logger.info(f"Resuming {connector_type} from {resume_point}")
-                actual_start_time = resume_point
-            else:
-                actual_start_time = start_time
-        else:
-            # Create new progress record
-            progress_id = progress_tracker.start_backfill(
-                f"{connector_type}_{category}", "*", start_time, end_time
-            )
-            actual_start_time = start_time
-
-        try:
-            # Backfill based on category
-            if category == "news":
-                collected = backfill_news(
-                    connector_type, actual_start_time, end_time, progress_tracker, progress_id, db
-                )
-            else:
-                collected = backfill_economic(
-                    connector_type, actual_start_time, end_time, progress_tracker, progress_id, db
-                )
-
-            # Mark as completed
-            progress_tracker.mark_completed(progress_id)
-            total_collected += collected
-
-            logger.info(
-                f"{connector_type} backfill completed successfully: {collected} records collected"
-            )
-
-        except Exception as e:
-            logger.error(f"{connector_type} backfill failed: {e}", exc_info=True)
-            progress_tracker.mark_failed(progress_id, str(e))
-            # Continue with other connectors
-            continue
-
-    logger.info(f"Alternative data backfill completed: {total_collected} total records collected")
+    """Main entry point"""
+    
+    parser = argparse.ArgumentParser(description='Backfill alternative data sources')
+    parser.add_argument('--start', type=str, required=True, 
+                       help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--end', type=str, required=True, 
+                       help='End date (YYYY-MM-DD)')
+    parser.add_argument('--sources', type=str, default='fred,ecb,world_bank',
+                       help='Comma-separated list of sources (fred,ecb,world_bank)')
+    parser.add_argument('--db-host', type=str, default='localhost',
+                       help='Database host')
+    parser.add_argument('--db-port', type=int, default=5432,
+                       help='Database port')
+    parser.add_argument('--db-name', type=str, default='db_forex',
+                       help='Database name')
+    parser.add_argument('--db-user', type=str, default='forex_user',
+                       help='Database user')
+    
+    args = parser.parse_args()
+    
+    # Parse dates
+    try:
+        start_date = datetime.strptime(args.start, '%Y-%m-%d')
+        end_date = datetime.strptime(args.end, '%Y-%m-%d')
+    except ValueError as e:
+        logger.error(f"Invalid date format: {e}")
+        logger.error("Use YYYY-MM-DD format (e.g., 2020-01-01)")
+        return 1
+    
+    # Validate date range
+    if start_date >= end_date:
+        logger.error("Start date must be before end date")
+        return 1
+    
+    if end_date > datetime.now():
+        logger.warning("End date is in the future. Adjusting to current date.")
+        end_date = datetime.now()
+    
+    # Parse sources
+    sources = [s.strip().lower() for s in args.sources.split(',')]
+    valid_sources = ['fred', 'ecb', 'world_bank']
+    invalid_sources = [s for s in sources if s not in valid_sources]
+    
+    if invalid_sources:
+        logger.error(f"Invalid sources: {invalid_sources}")
+        logger.error(f"Valid sources: {valid_sources}")
+        return 1
+    
+    # Database config
+    db_password = os.getenv('POSTGRES_PASSWORD')
+    if not db_password:
+        logger.error("POSTGRES_PASSWORD environment variable not set")
+        return 1
+    
+    db_config = {
+        'host': args.db_host,
+        'port': args.db_port,
+        'database': args.db_name,
+        'user': args.db_user,
+        'password': db_password
+    }
+    
+    # Check API keys
+    if 'fred' in sources:
+        if not os.getenv('FRED_API_KEY'):
+            logger.warning("FRED_API_KEY not set. FRED backfill will be skipped.")
+            sources.remove('fred')
+    
+    if not sources:
+        logger.error("No valid sources to backfill")
+        return 1
+    
+    # Run backfill
+    try:
+        backfiller = AlternativeDataBackfiller(db_config)
+        backfiller.connect_db()
+        
+        backfiller.backfill_all(start_date, end_date, sources)
+        
+        backfiller.disconnect_db()
+        
+        logger.info("\n✓ All backfill operations completed successfully")
+        return 0
+        
+    except Exception as e:
+        logger.error(f"Backfill failed: {e}", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    exit(main())

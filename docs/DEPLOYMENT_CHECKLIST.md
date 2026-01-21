@@ -10,12 +10,29 @@ Use this checklist when deploying the data collection pipeline improvements to p
   - [ ] Linux: `timedatectl status` shows "NTP service: active"
   - [ ] Windows: Time sync is enabled in settings
   - [ ] Cloud: Verify cloud provider time sync (usually automatic)
+- [ ] Run host NTP verification: `python scripts/verify_host_ntp.py`
+  - [ ] Verify NTP service status
+  - [ ] Verify NTP server connectivity
+  - [ ] Verify clock drift < 1 second
+  - [ ] Verify Docker container time inheritance (if using Docker)
 - [ ] Test clock sync monitor: `python scripts/check_clock_sync.py`
-- [ ] Verify drift is < 1 second
-- [ ] Configure environment variables:
+- [ ] Verify server-NTP drift is < 1 second
+- [ ] Configure server-NTP monitoring environment variables:
   - [ ] `CLOCK_SYNC_MONITOR_ENABLED=true`
   - [ ] `CLOCK_SYNC_CHECK_INTERVAL=300`
   - [ ] `CLOCK_SYNC_DRIFT_THRESHOLD=1.0`
+- [ ] Configure MT5 clock monitoring environment variables:
+  - [ ] `MT5_CLOCK_MONITOR_ENABLED=true`
+  - [ ] `MT5_CLOCK_WINDOW_SIZE=1000`
+  - [ ] `MT5_CLOCK_DRIFT_THRESHOLD=1.0`
+  - [ ] `MT5_CLOCK_ALERT_COOLDOWN_MINUTES=5`
+- [ ] Configure negative latency compliance thresholds:
+  - [ ] `NEGATIVE_LATENCY_WARNING_THRESHOLD=0.1` (10%)
+  - [ ] `NEGATIVE_LATENCY_CRITICAL_THRESHOLD=0.2` (20%)
+- [ ] Verify MT5 clock monitoring is active after deployment
+- [ ] Test health check endpoint: `curl http://localhost:8000/api/health/clock-sync`
+  - [ ] Verify response includes `server_ntp` and `mt5_broker` sections
+  - [ ] Verify negative latency rate is reported
 
 ### Connection Monitoring
 
@@ -61,11 +78,17 @@ Use this checklist when deploying the data collection pipeline improvements to p
 ### Monitoring and Alerting
 
 - [ ] Set up monitoring dashboards:
-  - [ ] Clock sync drift
+  - [ ] Server-NTP clock sync drift (`clock_drift_seconds{source="server_ntp"}`)
+  - [ ] MT5 broker clock drift (`clock_drift_seconds{source="mt5_broker"}`)
+  - [ ] Negative latency rate (`negative_latency_rate`)
+  - [ ] Clock sync health status (`clock_sync_status`)
   - [ ] Connection health
   - [ ] Gap detection metrics
 - [ ] Configure alerts:
-  - [ ] Clock drift > 1 second
+  - [ ] Server-NTP clock drift > 1 second
+  - [ ] MT5 broker clock drift > 1 second (persistent)
+  - [ ] Negative latency rate > 10% (warning) or > 20% (critical)
+  - [ ] Clock sync status unhealthy
   - [ ] Connection failures
   - [ ] System-wide gaps
   - [ ] Prolonged gaps (>30 minutes)

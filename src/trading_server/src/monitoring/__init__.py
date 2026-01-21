@@ -39,6 +39,10 @@ from .metrics import (
     lineage_runs_failed_total,
     lineage_datasets_total,
     lineage_events_emitted_total,
+    # Clock Synchronization Metrics
+    clock_drift_seconds,
+    negative_latency_rate,
+    clock_sync_status,
 )
 
 __all__ = [
@@ -71,4 +75,7 @@ __all__ = [
     "lineage_runs_failed_total",
     "lineage_datasets_total",
     "lineage_events_emitted_total",
+    "clock_drift_seconds",
+    "negative_latency_rate",
+    "clock_sync_status",
 ]

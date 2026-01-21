@@ -6,7 +6,6 @@ Validates tick data against schema contract v1.0.0
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 from .base import IContractValidator
-from utils.market_utils import infer_pip_value_from_price
 
 
 class TickContractValidator(IContractValidator):
@@ -90,20 +89,9 @@ class TickContractValidator(IContractValidator):
         if spread <= 0:
             return False, "Invalid spread: ask must be greater than bid"
 
-        # Infer pip value from price (more maintainable than hardcoding currencies)
-        mid_price = (bid + ask) / 2
-        pip_value = infer_pip_value_from_price(mid_price)
-
-        # Maximum spread: 100 pips (reasonable for most market conditions)
-        max_spread_pips = 100
-        max_spread_value = pip_value * max_spread_pips
-
-        if spread > max_spread_value:
-            spread_pips = spread / pip_value
-            return (
-                False,
-                f"Unrealistic spread: {spread:.6f} ({spread_pips:.1f} pips > {max_spread_pips} pips)",
-            )
+        # Removed absolute spread threshold check
+        # Market spreads vary by instrument - accept all legitimate spreads
+        # Basic validation (ask > bid) already checked above
 
         # Validate optional receive_time
         if "receive_time" in data and data["receive_time"] is not None:

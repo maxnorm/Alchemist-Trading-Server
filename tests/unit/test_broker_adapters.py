@@ -19,7 +19,7 @@ from trading.brokers.mt5_adapter import MT5BrokerAdapter
 from trading.brokers.factory import BrokerFactory
 from risk.oms import Order, OrderState, Position, Discrepancy
 from domain.entities.account_info import AccountInfo
-from mt5_connection.terminal import MT5Terminal
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 from models.trade import Trade
 from codes.order_type import OrderType as MT5OrderType
 
@@ -80,7 +80,7 @@ class TestMT5BrokerAdapter(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures"""
-        self.mock_terminal = Mock(spec=MT5Terminal)
+        self.mock_terminal = Mock(spec=ZeroMQTerminal)
         self.adapter = MT5BrokerAdapter(terminal=self.mock_terminal)
     
     def test_adapter_implements_interface(self):
@@ -240,7 +240,7 @@ class TestBrokerFactory(unittest.TestCase):
     
     def test_create_mt5_adapter(self):
         """Test creating MT5 adapter"""
-        mock_terminal = Mock(spec=MT5Terminal)
+        mock_terminal = Mock(spec=ZeroMQTerminal)
         
         adapter = BrokerFactory.create_mt5_adapter(mock_terminal)
         
@@ -249,7 +249,7 @@ class TestBrokerFactory(unittest.TestCase):
     
     def test_create_from_config_mt5(self):
         """Test creating adapter from config"""
-        mock_terminal = Mock(spec=MT5Terminal)
+        mock_terminal = Mock(spec=ZeroMQTerminal)
         config = {"broker_type": "mt5"}
         
         adapter = BrokerFactory.create_from_config(config, terminal=mock_terminal)

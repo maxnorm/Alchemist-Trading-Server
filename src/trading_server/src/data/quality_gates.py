@@ -10,7 +10,6 @@ from collections import defaultdict
 import statistics
 import pytz
 from .contracts import get_contract_registry
-from utils.market_utils import infer_pip_value_from_price
 
 # Import Great Expectations
 from infrastructure.data_quality.ge_context import get_ge_context
@@ -194,7 +193,8 @@ class QualityGate:
             return False, duplicate_reason, None
 
         # Check 4: Outliers (only reject extreme outliers in capture-all mode)
-        outlier_reason = self._check_outliers(bid, ask, symbol)
+        # Pass tick dictionary to access _digits field for accurate pip calculation
+        outlier_reason = self._check_outliers(bid, ask, symbol, tick)
         if outlier_reason:
             self.metrics["outliers_rejected"] += 1
             return False, outlier_reason, None
@@ -440,7 +440,9 @@ class QualityGate:
             self.last_seen_prices[symbol] = (bid, ask)
         return None
 
-    def _check_outliers(self, bid: float, ask: float, symbol: str) -> Optional[str]:
+    def _check_outliers(
+        self, bid: float, ask: float, symbol: str, tick: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
         """
         Check for outliers using z-score or IQR method
 
@@ -450,6 +452,7 @@ class QualityGate:
         :param bid: Bid price
         :param ask: Ask price
         :param symbol: Currency pair symbol
+        :param tick: Optional tick dictionary (may contain _digits field for accurate pip calculation)
         :return: Rejection reason if outlier, None otherwise
         """
         # Check spread - always reject invalid spreads
@@ -457,18 +460,9 @@ class QualityGate:
         if spread <= 0:
             return "Invalid spread: ask <= bid"
 
-        # Infer pip value from price (more maintainable than hardcoding currencies)
-        mid_price = (bid + ask) / 2
-        pip_value = infer_pip_value_from_price(mid_price)
-
-        # Check for unrealistic spread - more lenient in capture-all mode
-        # Maximum spread: 100 pips in capture-all mode, 10 pips otherwise
-        max_spread_pips = 100 if self.capture_all_mode else 10
-        max_spread_value = pip_value * max_spread_pips
-
-        if spread > max_spread_value:
-            spread_pips = spread / pip_value
-            return f"Unrealistic spread: {spread:.6f} ({spread_pips:.1f} pips > {max_spread_pips} pips)"
+        # Removed absolute spread threshold check
+        # Market spreads vary by instrument - accept all legitimate spreads
+        # Statistical outlier detection (below) will catch extreme price errors
 
         # In capture-all mode: Only check for extreme outliers (>10% price change)
         if self.capture_all_mode:

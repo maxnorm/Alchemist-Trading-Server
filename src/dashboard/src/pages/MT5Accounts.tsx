@@ -10,7 +10,7 @@ import { formatRelativeTime, formatCurrency } from '@/utils/formatters'
 import { useModelAssignment } from '@/features/trading/hooks/useModelAssignment'
 import { PageHeader } from '@/components/common/PageHeader'
 import { HealthDot } from '@/components/common/StatusBadge'
-import { RefreshCw, Plus } from 'lucide-react'
+import { RefreshCw, Plus, Copy, X } from 'lucide-react'
 import type { AccountType } from '@/types/mt5'
 
 export default function MT5Accounts() {
@@ -68,19 +68,27 @@ export default function MT5Accounts() {
     },
   })
 
+  const [showAuthToken, setShowAuthToken] = useState<string | null>(null)
+
   const registerMutation = useMutation({
     mutationFn: async () => {
       const payload = {
         account_login: Number(registerForm.account_login),
         account_type: registerForm.account_type,
         account_name: registerForm.account_name || undefined,
-        mt5_password: registerForm.mt5_password,
-        mt5_server: registerForm.mt5_server,
+        mt5_password: registerForm.mt5_password || undefined,
+        mt5_server: registerForm.mt5_server || undefined,
       }
       return api.postMt5AccountRegister(payload)
     },
-    onSuccess: () => {
-      toast.success('MT5 account registered successfully')
+    onSuccess: (data) => {
+      // Show auth_token if available (for ZeroMQ connection)
+      if (data.auth_token) {
+        setShowAuthToken(data.auth_token)
+        toast.success('MT5 account registered! Auth token available below.', { duration: 5000 })
+      } else {
+        toast.success('MT5 account registered successfully')
+      }
       // Reset form
       setRegisterForm({
         account_login: '',
@@ -103,12 +111,14 @@ export default function MT5Accounts() {
       toast.error('Account login is required')
       return
     }
-    if (!registerForm.mt5_password) {
-      toast.error('MT5 password is required')
+    // Password and server are optional (for ZeroMQ connection)
+    // But if one is provided, both must be provided (for Python API)
+    if (registerForm.mt5_password && !registerForm.mt5_server) {
+      toast.error('MT5 server is required when password is provided (for Python API connection)')
       return
     }
-    if (!registerForm.mt5_server) {
-      toast.error('MT5 server is required')
+    if (registerForm.mt5_server && !registerForm.mt5_password) {
+      toast.error('MT5 password is required when server is provided (for Python API connection)')
       return
     }
     registerMutation.mutate()
@@ -207,27 +217,35 @@ export default function MT5Accounts() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">MT5 Password</label>
+                  <label className="block text-sm font-medium mb-1">
+                    MT5 Password <span className="text-gray-400 text-xs">(Optional - for Python API)</span>
+                  </label>
                   <Input
                     type="password"
                     value={registerForm.mt5_password}
                     onChange={(e) =>
                       setRegisterForm((f) => ({ ...f, mt5_password: e.target.value }))
                     }
-                    required
-                    placeholder="Your MT5 account password"
+                    placeholder="Leave empty for ZeroMQ connection"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Required only for Python API connection. Leave empty to use ZeroMQ (EA will need auth token).
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">MT5 Server</label>
+                  <label className="block text-sm font-medium mb-1">
+                    MT5 Server <span className="text-gray-400 text-xs">(Optional - for Python API)</span>
+                  </label>
                   <Input
                     value={registerForm.mt5_server}
                     onChange={(e) =>
                       setRegisterForm((f) => ({ ...f, mt5_server: e.target.value }))
                     }
-                    required
-                    placeholder="e.g., ICMarkets-Demo, FXCM-Demo"
+                    placeholder="e.g., ICMarkets-Demo, FXCM-Demo (leave empty for ZeroMQ)"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Required only for Python API connection. Leave empty to use ZeroMQ (EA will need auth token).
+                  </p>
                 </div>
               </div>
               <Button type="submit" disabled={registerMutation.isPending}>
@@ -237,6 +255,48 @@ export default function MT5Accounts() {
           </CardContent>
         )}
       </Card>
+
+      {/* Auth Token Modal */}
+      {showAuthToken && (
+        <Card className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <CardContent className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-6 pt-2">
+              <CardTitle className="text-gray-900">ZeroMQ Auth Token</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAuthToken(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Use this token in your MT5 EA's <code className="bg-gray-100 px-1 rounded">auth_token</code> input parameter.
+            </p>
+            <div className="bg-gray-100 p-3 rounded mb-4 font-mono text-sm break-all text-gray-900">
+              {showAuthToken}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  navigator.clipboard.writeText(showAuthToken)
+                  toast.success('Token copied to clipboard')
+                }}
+                className="flex-1"
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Token
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowAuthToken(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {accountsLoading && !accounts ? (
         <LoadingSpinner />

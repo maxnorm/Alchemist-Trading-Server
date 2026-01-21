@@ -45,8 +45,8 @@ export interface MT5AccountCreatePayload {
   account_currency?: string
   account_leverage?: number
   account_name?: string
-  mt5_password: string  // Required for Python API connection
-  mt5_server: string     // Required for Python API connection
+  mt5_password?: string  // Optional - required for Python API connection, leave empty for ZeroMQ
+  mt5_server?: string     // Optional - required for Python API connection, leave empty for ZeroMQ
 }
 
 export interface ModelAssignment {

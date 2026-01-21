@@ -3,7 +3,11 @@ FROM python:3.11
 # Make Python output unbuffered, so logs are shown immediately
 ENV PYTHONUNBUFFERED=1
 
-# Install NTP client for clock synchronization
+# Install NTP client for clock synchronization verification
+# NOTE: Docker containers inherit the host kernel clock via VDSO (Virtual Dynamic Shared Object).
+# We do NOT run NTP synchronization inside containers - the host system must be NTP-synchronized.
+# This package is kept for verification scripts only (e.g., verify_host_ntp.py).
+# Best practice: Sync the host system with NTP, containers automatically inherit correct time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ntpsec-ntpdate \
     && rm -rf /var/lib/apt/lists/*

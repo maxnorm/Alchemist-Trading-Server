@@ -9,7 +9,7 @@ from typing import Optional
 from codes.order_type import OrderType
 from models.currency_pair import CurrencyPair
 from trading.brokers.base import IBrokerAdapter
-from mt5_connection.terminal import MT5Terminal  # Keep for backward compatibility
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 from models.trade import Trade
 from risk.oms import Order
 from utils.time_utils import print_with_datetime
@@ -23,12 +23,12 @@ class TradeExecutor:
     def __init__(
         self,
         broker_adapter: Optional[IBrokerAdapter] = None,
-        terminal: Optional[MT5Terminal] = None,
+        terminal: Optional[ZeroMQTerminal] = None,
     ):
         """
         Initialize trade executor
         :param broker_adapter: IBrokerAdapter instance (preferred)
-        :param terminal: MT5Terminal instance (for backward compatibility)
+        :param terminal: ZeroMQTerminal instance
         """
         if broker_adapter:
             self.broker_adapter = broker_adapter

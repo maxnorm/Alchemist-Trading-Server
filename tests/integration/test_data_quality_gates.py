@@ -97,32 +97,37 @@ class TestDataQualityGates:
         is_valid, reason = quality_gate.validate(normal_tick, symbol, current_time)
         assert is_valid, f"Normal tick should be accepted: {reason}"
 
-    def test_outlier_detection_spread_too_wide(self, quality_gate):
-        """Test that spread > 10 pips is rejected"""
+    def test_wide_spread_accepted(self, quality_gate):
+        """Test that wide spreads (normal for some instruments) are accepted"""
         current_time = get_utc_time()
-        symbol = 'EURUSD'
+        symbol = 'XAUUSD'  # Gold typically has wide spreads
         
-        # Build history
-        for i in range(20):
-            tick = {
-                'symbol': symbol,
-                'datetime': (current_time - timedelta(seconds=20-i)).strftime('%Y-%m-%d %H:%M:%S'),
-                'ask': 1.1000 + 0.0001 * i,
-                'bid': 1.1000 + 0.0001 * i - 0.0001,
-            }
-            quality_gate.validate(tick, symbol, current_time)
-        
-        # Tick with unrealistic spread (> 0.001 / 10 pips)
+        # Tick with wide spread (42 pips - normal for gold)
         wide_spread_tick = {
             'symbol': symbol,
             'datetime': current_time.strftime('%Y-%m-%d %H:%M:%S'),
-            'ask': 1.1000,
-            'bid': 1.0990,  # 10 pips spread = 0.0010
+            'ask': 2050.42,
+            'bid': 2050.00,  # 42 pips spread = 0.42
         }
         is_valid, reason = quality_gate.validate(wide_spread_tick, symbol, current_time)
-        # Should reject due to unrealistic spread
-        assert not is_valid, "Wide spread tick should be rejected"
-        assert 'spread' in reason.lower()
+        # Should accept wide spread (normal market condition)
+        assert is_valid, f"Wide spread tick should be accepted for {symbol}: {reason}"
+    
+    def test_exotic_pair_wide_spread_accepted(self, quality_gate):
+        """Test that exotic pairs with wide spreads are accepted"""
+        current_time = get_utc_time()
+        symbol = 'NZDCHF'  # Exotic pair typically has 10-15 pip spreads
+        
+        # Tick with wide spread (15 pips - normal for exotic pairs)
+        wide_spread_tick = {
+            'symbol': symbol,
+            'datetime': current_time.strftime('%Y-%m-%d %H:%M:%S'),
+            'ask': 0.55150,
+            'bid': 0.55135,  # 15 pips spread = 0.00015
+        }
+        is_valid, reason = quality_gate.validate(wide_spread_tick, symbol, current_time)
+        # Should accept wide spread (normal market condition)
+        assert is_valid, f"Wide spread tick should be accepted for {symbol}: {reason}"
 
     def test_duplicate_detection_identical_timestamp(self, quality_gate):
         """Test duplicate detection with identical timestamp"""

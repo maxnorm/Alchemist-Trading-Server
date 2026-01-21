@@ -4,8 +4,6 @@ Class Server for connection to MetaTrader5
 
 import os
 import datetime
-import json
-import socket
 import threading
 import time
 from typing import Dict
@@ -13,11 +11,11 @@ from typing import Dict
 from database import Database
 from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 from utils.time_utils import print_with_datetime
-from codes.socket_code import Socket
-from mt5_connection.tick_streamer import MT5TickStreamer
-from mt5_connection.terminal import MT5Terminal
 from models.currency_pair import CurrencyPair
 from models.account import Account
+from infrastructure.zeromq.zeromq_connection_manager import ZeroMQConnectionManager
+from infrastructure.zeromq.zeromq_broker import ZeroMQBroker
+from infrastructure.connections.streamer_discovery_service import StreamerDiscoveryService
 
 from features.catalog import FeatureCatalog
 from environments.live_env import LiveTradingEnv
@@ -33,9 +31,6 @@ class Server:
 
     def __init__(self, verbose=False, database=None, scraper=None):
         self.__verbose = verbose
-        self.__socket = None
-
-        self.__streamers = []
         self.__accounts = []
         self.__all_currency_pairs = {}
         self._connectors = (
@@ -151,40 +146,53 @@ class Server:
                 password=os.getenv("MYFXBOOK_PASSWORD"),
                 url=os.getenv("URL_MYFXBOOK"),
             )
-        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        server_ip = os.getenv("SERVER_IP")
-        server_port = int(os.getenv("SERVER_PORT"))
-        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.__socket.bind((server_ip, server_port))
+        # Initialize ZeroMQ broker (routes EA PUSH -> PUB for subscribers)
+        broker_host = os.getenv("ZMQ_HOST", "127.0.0.1")
+        broker_port = int(os.getenv("ZMQ_BROKER_PORT", 5557))
+        tick_port = int(os.getenv("ZMQ_TICK_PORT", 5555))
+        
+        self.__zmq_broker = ZeroMQBroker(
+            host=broker_host,
+            broker_port=broker_port,
+            tick_port=tick_port,
+            verbose=self.__verbose,
+        )
+        self.__zmq_broker.start()
+        
+        # Initialize ZeroMQ connection manager (EA binds, Python connects)
+        self.__zmq_manager = ZeroMQConnectionManager(
+            host=broker_host,
+            order_port=int(os.getenv("ZMQ_ORDER_PORT", 5556)),
+            tick_port=tick_port,
+        )
+        
+        self.__streamer_discovery = StreamerDiscoveryService(
+            zmq_manager=self.__zmq_manager,
+            database=self.__db,
+            host=broker_host,
+            tick_port=tick_port,
+            verbose=self.__verbose,
+            server=self,  # Pass server reference for connector registration
+        )
+        
+        # Start discovery service
+        self.__streamer_discovery.start()
 
         # Track account IDs for connection lifecycle management
         self.__account_ids: Dict[int, int] = {}  # login -> account_id mapping
 
         if self.__verbose:
-            print_with_datetime(f"Server socket bind to {server_ip}:{server_port}")
-
-        self.start()
+            print_with_datetime("ZeroMQ broker started")
+            print_with_datetime("ZeroMQ connection manager initialized")
+            print_with_datetime("Streamer discovery service started")
 
     def start(self):
         """
         Start the server
         """
-        self.__socket.listen(5)
-
-        if self.__verbose:
-            with self.__console_lock:
-                print_with_datetime("Server now listening for incoming connections")
-
-        threading.Thread(target=self.__collect_economic_calendar, args=(17, 10)).start()
-
-        while True:
-            client_conn, client_address = self.__socket.accept()
-
-            with self.__console_lock:
-                print_with_datetime(f"Connected to {client_address}")
-
-            self.__auth_socket(client_conn)
+        raise RuntimeError(
+            "TCP listener removed. Use connect_account() with ZeroMQ EAs."
+        )
 
     def __collect_economic_calendar(self, hour, minute):
         """
@@ -209,362 +217,31 @@ class Server:
 
             time.sleep(60)
 
-    def __auth_socket(self, client):
+    def connect_account(
+        self, account_login: int, auth_token: str
+    ) -> Account:
         """
-        Receive auth code from the newly connected socket
-        and create a new instance of TickStreamer or MT5Terminal
+        Connect to MT5 EA terminal for account via ZeroMQ (REQ/REP).
+        
+        Note: Streamers are auto-discovered and registered by StreamerDiscoveryService.
+        This method only connects the trading terminal (for order execution).
+        
+        :param account_login: MT5 account login number
+        :param auth_token: Authentication token for the account
+        :return: Account instance
         """
-        # Set socket timeout to prevent indefinite blocking (15 seconds for auth)
-        # MT5 EA might need time to send authentication after connecting
-        try:
-            client.settimeout(15.0)
-        except Exception:
-            pass  # Socket might already be configured
-
-        cum_data = ""
-        max_attempts = 100  # Prevent infinite loop
-        attempt = 0
-
-        while attempt < max_attempts:
-            attempt += 1
-            try:
-                # Peek at first byte to detect SSL handshake without consuming it
-                peek_data = client.recv(1, socket.MSG_PEEK)
-                if not peek_data:
-                    if attempt <= 3:
-                        import time
-
-                        wait_time = 0.2 * attempt
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        self.__invalid_auth(
-                            client,
-                            f"Empty authentication message received after "
-                            f"{attempt} attempts. Is the MT5 EA configured correctly?",
-                        )
-                        return
-
-                # Check if this is an SSL handshake (first byte is 0x16)
-                is_ssl = len(peek_data) > 0 and peek_data[0] == 0x16
-
-                # If SSL detected, let HTTP controller handle it (it will wrap the socket)
-                if is_ssl:
-                    if self.__http_controller.handle_request(client, peek_data):
-                        return
-                    # If controller couldn't handle it (SSL not configured), reject
-                    self.__invalid_auth(
-                        client, "HTTPS connection detected but SSL is not configured"
-                    )
-                    return
-
-                # Receive data normally (not SSL)
-                data_bytes = client.recv(1024)
-            except socket.timeout:
-                self.__invalid_auth(
-                    client,
-                    "Authentication timeout: client did not send data within "
-                    "15 seconds. Check if MT5 EA is running and configured correctly.",
-                )
-                return
-            except Exception as e:
-                self.__invalid_auth(client, f"Socket error during authentication: {e}")
-                return
-
-            # Handle empty data (client disconnected or sent nothing)
-            if not data_bytes:
-                if attempt <= 3:
-                    # First few attempts with empty data - might be a timing issue, wait a bit
-                    # MT5 EA might need time to send authentication after connecting
-                    import time
-
-                    wait_time = 0.2 * attempt  # Progressive wait: 0.2s, 0.4s, 0.6s
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    # After 3 attempts with empty data, give up
-                    self.__invalid_auth(
-                        client,
-                        f"Empty authentication message received after "
-                        f"{attempt} attempts. Is the MT5 EA configured correctly?",
-                    )
-                    return
-
-            # Detect HTTP requests (Prometheus metrics scraping, health checks, etc.)
-            # Use HTTP controller to handle HTTP requests (pass raw bytes for detection)
-            if self.__http_controller.handle_request(client, data_bytes):
-                # Request was handled as HTTP, return early
-                return
-
-            # Decode bytes to string for MT5 authentication
-            try:
-                data = data_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                # If we can't decode, it's probably not valid MT5 data
-                self.__invalid_auth(
-                    client, "Invalid data encoding received. Expected UTF-8 text."
-                )
-                return
-
-            cum_data += data
-
-            if self.__stop_char in cum_data:
-                # Extract the message up to the stop character
-                infos_str = cum_data[: cum_data.index(self.__stop_char)].strip()
-
-                # Check if we have actual content to parse
-                if not infos_str:
-                    self.__invalid_auth(
-                        client, "Empty JSON message received (only whitespace)"
-                    )
-                    return
-
-                try:
-                    infos = json.loads(infos_str)
-                except json.JSONDecodeError as e:
-                    self.__invalid_auth(
-                        client,
-                        f"Invalid JSON in authentication message: {e}. Received: {repr(infos_str[:100])}",
-                    )
-                    return
-
-                if self.__verbose:
-                    with self.__console_lock:
-                        print_with_datetime(f"Received authentification infos: {infos}")
-
-                auth_code = infos["auth_code"]
-
-                if auth_code == Socket.STREAMER.value:
-                    try:
-                        self.__auth_streamer(client, infos)
-                    except Exception:
-                        raise
-                elif auth_code == Socket.TERMINAL.value:
-                    self.__auth_terminal(client, infos)
-                else:
-                    self.__invalid_auth(
-                        client, f"Invalid authentification code [{auth_code}]"
-                    )
-                break
-
-        # If we exit the loop without breaking, we've exceeded max attempts
-        if attempt >= max_attempts:
-            self.__invalid_auth(
-                client,
-                f"Authentication failed: exceeded maximum attempts ({max_attempts}) without receiving valid message",
-            )
-
-    def __auth_streamer(self, client, infos):
-        """
-        Authenticate tick streamer using environment variable token
-
-        Expected message format:
-            {
-                "auth_code": 1,
-                "symbol": Currency pair symbol,
-                "digits": Number of digits,
-                "streamer_token": Streamer authentication token
-            }
-
-        Successful authentication response:
-            {
-                "auth_status": 0
-            }
-        """
-        # Get token from environment
-        expected_token = os.getenv("STREAMER_AUTH_TOKEN")
-        if not expected_token:
-            self.__invalid_auth(client, "Streamer authentication not configured")
-            return
-
-        # Validate required fields
-        required_fields = {"symbol", "digits", "streamer_token"}
-        if not required_fields.issubset(infos.keys()):
-            self.__invalid_auth(
-                client,
-                "Invalid message format. Expected symbol, digits, and streamer_token",
-            )
-            return
-
-        # Validate token
-        provided_token = infos.get("streamer_token")
-        if provided_token != expected_token:
-            self.__invalid_auth(client, "Authentication failed")
-            return
-
-        # Authentication successful - proceed with streamer setup
-        if len(infos) >= 3:
-            data = {"auth_status": Socket.SUCCESSFUL_AUTH.value}
-            try:
-                client.send(bytes(json.dumps(data) + "\n", "utf-8"))
-            except Exception:
-                raise
-
-            pair = CurrencyPair(infos["symbol"], infos["digits"])
-            self.__all_currency_pairs[infos["symbol"]] = pair
-
-            # Create MT5PriceConnector instead of PriceDataProvider
-            from connectors.mt5_price_connector import MT5PriceConnector
-            from connectors.base import ConnectorConfig
-            from connectors.registry import ConnectorRegistry
-
-            connector_config = ConnectorConfig(
-                source="mt5",
-                symbol=infos["symbol"],
-                extra_config={"digits": infos["digits"]},
-            )
-            price_connector = MT5PriceConnector(
-                currency_pair=pair,
-                config=connector_config,
-            )
-
-            # Connect the connector
-            price_connector.connect()
-
-            # Store connector in unified connector list
-            if not hasattr(self, "_connectors"):
-                self._connectors = []
-            self._connectors.append(price_connector)
-
-            # Register connector with registry (replacing provider_registry)
-            if not hasattr(self, "_connector_registry"):
-                self._connector_registry = ConnectorRegistry()
-            connector_name = f"price_{infos['symbol']}"
-            self._connector_registry.register_connector(connector_name, price_connector)
-
-            # Sync catalog with newly registered connectors
-            try:
-                self.__feature_catalog.sync_with_connector_registry(
-                    self._connector_registry
-                )
-                if self.__verbose:
-                    with self.__console_lock:
-                        feature_count = len(
-                            self._connector_registry.discover_features()
-                        )
-                        print_with_datetime(
-                            f"Registered connector for {infos['symbol']}. "
-                            f"Total features discovered: {feature_count}"
-                        )
-            except Exception as e:
-                with self.__console_lock:
-                    print_with_datetime(f"Warning: Failed to sync feature catalog: {e}")
-
-            streamer = MT5TickStreamer(
-                client,
-                pair,
-                self.__stop_char,
-                self.__verbose,
-                self.__console_lock,
-                self.__db,
-            )
-
-            threading.Thread(target=streamer.receive_tick).start()
-            self.__streamers.append(streamer)
-        else:
-            self.__invalid_auth(client, "Invalid message format.")
-
-    def __auth_terminal(self, client, infos):
-        """
-        Manage the authentification of a mt5 trading terminal
-        Create a new MT5Terminal and attach it to an Account.
-
-        Expected message format:
-            {
-                "auth_code": 2,
-                "login": Account login,
-                "auth_token": Account auth token
-            }
-
-        Successfull authentification response:
-            {
-                "auth_status": 0,
-                "terminal_id": Current terminal id
-            }
-        """
-        from infrastructure.db_integration import (
-            get_account_auth_token,
-            get_account_from_db,
+        terminal = self.__zmq_manager.connect_terminal(
+            account_login=account_login,
+            auth_token=auth_token,
+            port_offset=(account_login % 100),
         )
 
-        if (
-            len(infos) >= 2
-        ):  # Allow for additional fields (account_type, broker_name, etc.)
-            login = infos.get("login")
-            provided_token = infos.get("auth_token")
+        # Streamer connection is handled by StreamerDiscoveryService
+        # which auto-discovers streamers when they start publishing
 
-            # Validate login and token before creating terminal
-            if login is None:
-                self.__invalid_auth(
-                    client, "Invalid message format. Missing account login"
-                )
-                return
-
-            # First check if account exists in database (must be pre-registered)
-            account_data = get_account_from_db(login)
-            if not account_data:
-                self.__invalid_auth(
-                    client,
-                    "Account not registered. Please register account via API first.",
-                )
-                return
-
-            # Then validate token
-            expected_token = get_account_auth_token(login)
-            if (
-                not expected_token
-                or not provided_token
-                or expected_token != provided_token
-            ):
-                self.__invalid_auth(client, "Authentication failed")
-                return
-
-            terminal = MT5Terminal(client)
-
-            data = {
-                "auth_status": Socket.SUCCESSFUL_AUTH.value,
-                "terminal_id": terminal.id,
-            }
-
-            client.send(bytes(json.dumps(data) + "\n", "utf-8"))
-
-            # Create broker adapter from terminal
-            from trading.brokers.mt5_adapter import MT5BrokerAdapter
-
-            broker_adapter = MT5BrokerAdapter.from_terminal(terminal)
-
-            # Check if account already exists
-            account_exists = False
-            for account in self.__accounts:
-                if account.login == infos["login"]:
-                    account.set_broker_adapter(broker_adapter)
-                    account_exists = True
-                    # Update account in database
-                    self._persist_account_to_db(account, terminal, client, infos)
-                    break
-
-            if not account_exists:
-                account = Account(infos["login"], broker_adapter=broker_adapter)
-                self.__accounts.append(account)
-                # Persist account to database
-                self._persist_account_to_db(account, terminal, client, infos)
-
-            if infos["login"] not in self.__environments:
-
-                # Create environment with all registered connectors
-                env = LiveTradingEnv(
-                    account=account, connectors=self._connectors, window_size=50
-                )
-                self.__environments[infos["login"]] = env
-
-                if self.__verbose:
-                    with self.__console_lock:
-                        print_with_datetime(
-                            f"Created trading environment for account {infos['login']}"
-                        )
-
-        else:
-            self.__invalid_auth(client, "Invalid message format. Missing account login")
+        account = Account(account_login, terminal=terminal)
+        self.__accounts.append(account)
+        return account
 
     def _setup_terminal_disconnect_tracking(self, terminal, login):
         """Set up tracking for terminal disconnection"""
@@ -687,25 +364,6 @@ class Server:
             with self.__console_lock:
                 print_with_datetime(f"Error persisting account to database: {e}")
 
-    def __invalid_auth(self, client, msg):
-        """
-        When the socket failed the authentification
-
-        Failed authentification response:
-            {
-                "auth_status": -1
-                "message": Error message provided
-            }
-        """
-        data = {"auth_status": Socket.FAILED_AUTH.value, "message": msg}
-        client.send(bytes(json.dumps(data) + "\n", "utf-8"))
-
-        with self.__console_lock:
-            print_with_datetime(
-                f"Error from {client.getpeername()}: {msg} ." f"Closing connection."
-            )
-        client.close()
-
     @property
     def provider_registry(self):
         """
@@ -735,5 +393,15 @@ class Server:
         return self.__optuna_tuner
 
     def __del__(self):
-        if hasattr(self, "_Server__socket") and self.__socket:
-            self.__socket.close()
+        """Cleanup on server destruction"""
+        try:
+            if hasattr(self, '_Server__streamer_discovery'):
+                self.__streamer_discovery.stop()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, '_Server__zmq_broker'):
+                self.__zmq_broker.stop()
+        except Exception:
+            pass
+        return

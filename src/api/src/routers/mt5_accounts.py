@@ -138,18 +138,20 @@ async def register_account(
         raise HTTPException(status_code=500, detail=f"Failed to register account: {str(e)}")
 
 
-@router.post("/register", response_model=MT5AccountResponse, status_code=201)
+@router.post("/register", response_model=MT5AccountSecretResponse, status_code=201)
 async def register_account_with_secret(
     request: MT5AccountCreateRequest,
     user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Register a new MT5 account for Python API connection.
+    Register a new MT5 account.
 
-    Requires mt5_password and mt5_server fields. The password is encrypted
-    and stored securely. No EA configuration is needed - trading is done
-    directly via Python API.
+    For Python API connection: Requires mt5_password and mt5_server fields.
+    The password is encrypted and stored securely.
+
+    For ZeroMQ connection: Leave password/server empty. Auth token will be generated
+    and returned for EA configuration.
 
     ⚠️ SECURITY: The password is encrypted at rest and never returned in responses.
     """
@@ -158,11 +160,20 @@ async def register_account_with_secret(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found in token")
 
-        # Validate required fields
-        if not hasattr(request, "mt5_password") or not request.mt5_password:
-            raise HTTPException(status_code=400, detail="mt5_password is required")
-        if not hasattr(request, "mt5_server") or not request.mt5_server:
-            raise HTTPException(status_code=400, detail="mt5_server is required")
+        # Validate: if password provided, server must be provided (and vice versa)
+        has_password = hasattr(request, "mt5_password") and request.mt5_password
+        has_server = hasattr(request, "mt5_server") and request.mt5_server
+        
+        if has_password and not has_server:
+            raise HTTPException(
+                status_code=400, 
+                detail="mt5_server is required when mt5_password is provided (for Python API connection)"
+            )
+        if has_server and not has_password:
+            raise HTTPException(
+                status_code=400, 
+                detail="mt5_password is required when mt5_server is provided (for Python API connection)"
+            )
 
         # Create or update account with user association
         account = create_account_for_user(db, request, user_id=user_id, created_by=user_id)
@@ -174,8 +185,23 @@ async def register_account_with_secret(
         if orm_account.user_id != user_id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-        # Return account info (password is never returned)
-        return account
+        # Get auth_token for ZeroMQ connection
+        auth_token = orm_account.auth_token if orm_account.auth_token else None
+        
+        # Get server host/port for EA configuration
+        server_host = settings.mt5_server_public_host
+        server_port = settings.mt5_server_public_port
+        if server_host is None or server_port is None:
+            server_host = settings.api_host
+            server_port = settings.api_port
+
+        # Return account with auth_token (for ZeroMQ) or without (for Python API)
+        return MT5AccountSecretResponse(
+            **account.model_dump(),
+            auth_token=auth_token,
+            server_host=server_host,
+            server_port=server_port,
+        )
     except HTTPException:
         raise
     except Exception as e:

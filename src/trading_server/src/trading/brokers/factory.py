@@ -6,7 +6,7 @@ Creates broker adapters from configuration
 from typing import Dict, Any, Optional
 from trading.brokers.base import IBrokerAdapter
 from trading.brokers.mt5_adapter import MT5BrokerAdapter
-from mt5_connection.terminal import MT5Terminal
+from mt5_connection.zeromq_terminal import ZeroMQTerminal
 
 
 class BrokerFactory:
@@ -16,13 +16,13 @@ class BrokerFactory:
 
     @staticmethod
     def create_from_config(
-        config: Dict[str, Any], terminal: Optional[MT5Terminal] = None
+        config: Dict[str, Any], terminal: Optional[ZeroMQTerminal] = None
     ) -> IBrokerAdapter:
         """
         Create broker adapter from configuration
 
         :param config: Configuration dictionary with 'broker_type' and broker-specific settings
-        :param terminal: Optional MT5Terminal instance (for MT5 broker)
+        :param terminal: Optional ZeroMQTerminal instance (for MT5 broker)
         :return: IBrokerAdapter instance
         :raises ValueError: If broker type is unsupported or configuration is invalid
         """
@@ -30,7 +30,7 @@ class BrokerFactory:
 
         if broker_type == "mt5":
             if terminal is None:
-                raise ValueError("MT5Terminal instance required for MT5 broker")
+                raise ValueError("ZeroMQTerminal instance required for MT5 broker")
             return MT5BrokerAdapter.from_terminal(terminal)
 
         elif broker_type == "ctrader":
@@ -47,11 +47,11 @@ class BrokerFactory:
             raise ValueError(f"Unsupported broker type: {broker_type}")
 
     @staticmethod
-    def create_mt5_adapter(terminal: MT5Terminal, oms=None) -> MT5BrokerAdapter:
+    def create_mt5_adapter(terminal: ZeroMQTerminal, oms=None) -> MT5BrokerAdapter:
         """
         Convenience method to create MT5 adapter
 
-        :param terminal: MT5Terminal instance
+        :param terminal: ZeroMQTerminal instance
         :param oms: Optional OrderManagementSystem
         :return: MT5BrokerAdapter instance
         """

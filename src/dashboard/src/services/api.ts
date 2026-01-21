@@ -4,7 +4,7 @@ import type { Experiment, CreateExperimentDto } from '@/types/experiment'
 import type { Feature, FeatureFilters } from '@/types/feature'
 import type { Model, ModelStage } from '@/types/model'
 import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
-import type { MT5Account, MT5AccountCreatePayload, ModelAssignment } from '@/types/mt5'
+import type { MT5Account, MT5AccountCreatePayload, MT5AccountSecret, ModelAssignment } from '@/types/mt5'
 import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade, ModelStatistics, ModelComparison } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
 import type { PaperSession, ValidationResult } from '@/types/model'
@@ -267,9 +267,9 @@ export class ApiClient {
     return []
   }
 
-  async postMt5AccountRegister(payload: MT5AccountCreatePayload): Promise<MT5Account> {
-    // Response no longer includes auth_token, server_host, server_port for Python API accounts
-    const response = await this.client.post<MT5Account>(
+  async postMt5AccountRegister(payload: MT5AccountCreatePayload): Promise<MT5AccountSecret> {
+    // Response includes auth_token for ZeroMQ connections
+    const response = await this.client.post<MT5AccountSecret>(
       `${API_ENDPOINTS.mt5Accounts}/register`,
       payload
     )
