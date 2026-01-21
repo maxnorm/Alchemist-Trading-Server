@@ -277,9 +277,9 @@ services:
         image: apache/airflow:2.8.0
         environment:
             - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
-            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
-            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
@@ -308,9 +308,9 @@ services:
             - "8081:8080"
         environment:
             - AIRFLOW__CORE__EXECUTOR=CeleryExecutor    
-            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
-            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
@@ -345,9 +345,9 @@ services:
         image: apache/airflow:2.8.0
         environment:
             - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
-            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
-            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
@@ -355,6 +355,7 @@ services:
             - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
             - "./airflow_logs:/opt/airflow/logs"
             - "./airflow_plugins:/opt/airflow/plugins"
+            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-scheduler-entrypoint.sh:/entrypoint.sh:ro"
         depends_on:
             postgres:
                 condition: service_healthy
@@ -362,14 +363,11 @@ services:
                 condition: service_healthy
             airflow-webserver:
                 condition: service_healthy
-        entrypoint: >
-            bash -c "
-            until airflow db check; do
-                echo 'Database not ready, waiting...'
-                sleep 5
-            done &&
-            exec airflow scheduler
-            "
+        entrypoint:
+            - /bin/bash
+            - -c
+            - |
+              sed 's/\r$//' /entrypoint.sh | bash
         command: []
         restart: unless-stopped
 
@@ -378,9 +376,9 @@ services:
         image: apache/airflow:2.8.0
         environment:
             - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
-            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
-            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST:-postgres}:${DB_PORT:-5432}/${DB_NAME}
             - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-8tuvdCw3D24CUX1GYC51g1g-bpEkB-S3K3p9zF-P0KE=}
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
@@ -388,6 +386,7 @@ services:
             - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
             - "./airflow_logs:/opt/airflow/logs"
             - "./airflow_plugins:/opt/airflow/plugins"
+            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-worker-entrypoint.sh:/entrypoint.sh:ro"
         depends_on:
             postgres:
                 condition: service_healthy
@@ -395,14 +394,11 @@ services:
                 condition: service_healthy
             airflow-webserver:
                 condition: service_healthy
-        entrypoint: >
-            bash -c "
-            until airflow db check; do
-                echo 'Database not ready, waiting...'
-                sleep 5
-            done &&
-            exec airflow celery worker
-            "
+        entrypoint:
+            - /bin/bash
+            - -c
+            - |
+              sed 's/\r$//' /entrypoint.sh | bash
         command: []
         restart: unless-stopped
 
