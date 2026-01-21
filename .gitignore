@@ -194,9 +194,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-.cursor/
-
 # Node.js
 node_modules/
-
-/venv/

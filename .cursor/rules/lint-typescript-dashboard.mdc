@@ -1,0 +1,127 @@
+---
+name: lint-typescript-dashboard
+description: Linting rules for src/dashboard/ React dashboard. Matches CI workflow configuration exactly.
+---
+
+# TypeScript/React Dashboard Linting Rules (`src/dashboard/`)
+
+## Overview
+
+The React dashboard is linted in CI with: **ESLint** and **TypeScript Compiler**.
+
+## CI Configuration
+
+See `.github/workflows/lint_dashboard.yml` for the exact CI configuration.
+
+## Linting Tools
+
+### 1. ESLint (Code Linting)
+- **Configuration**: `.eslintrc.cjs`
+- **CI command**: `npm run lint` (from `src/dashboard/` directory)
+- **Local command**: `npm run lint` or `npx eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`
+- **Auto-fix**: `npm run lint -- --fix` or `npx eslint . --ext ts,tsx --fix`
+- **Max warnings**: 0 (all warnings must be fixed)
+
+### 2. TypeScript Compiler (Type Checking)
+- **Configuration**: `tsconfig.json`
+- **CI command**: `npx tsc --noEmit` (from `src/dashboard/` directory)
+- **Local command**: `npx tsc --noEmit`
+- **Strict mode**: Enabled
+
+## Quick Commands
+
+### Run All Checks (Recommended)
+```bash
+cd src/dashboard
+npm run lint
+npx tsc --noEmit
+```
+
+These commands match exactly what CI runs.
+
+### Manual Commands
+```bash
+cd src/dashboard
+
+# Run ESLint
+npm run lint
+# or
+npx eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0
+
+# Type check
+npx tsc --noEmit
+```
+
+### Auto-Fix
+```bash
+cd src/dashboard
+npm run lint -- --fix
+# Then manually fix remaining errors and run type check
+npx tsc --noEmit
+```
+
+## ESLint Configuration
+
+The project uses `.eslintrc.cjs` with:
+- `eslint:recommended` base rules
+- `@typescript-eslint/recommended` TypeScript rules
+- `plugin:react-hooks/recommended` React hooks rules
+- Unused variables with `_` prefix are ignored
+- **Max warnings: 0** - all warnings must be fixed
+
+## TypeScript Configuration
+
+The project uses `tsconfig.json` with:
+- **Strict mode**: Enabled
+- **noUnusedLocals**: true
+- **noUnusedParameters**: true
+- **noFallthroughCasesInSwitch**: true
+- All files must compile without errors
+
+## Project-Specific Rules
+
+### React/Component Requirements
+- ✅ Use functional components with hooks
+- ✅ Props must be typed with TypeScript interfaces
+- ✅ Use `React.FC` or explicit return types
+- ✅ Extract complex logic into custom hooks
+- ✅ Components should be in PascalCase files
+
+### Code Style
+- ✅ Use arrow functions for components
+- ✅ Prefer `const` over `let`
+- ✅ Use template literals for string concatenation
+- ✅ Destructure props in function parameters
+- ✅ Use meaningful variable names
+
+### Import Organization
+- ✅ React imports first
+- ✅ Third-party imports second
+- ✅ Local imports last
+- ✅ Use path aliases (`@/*`) for local imports
+
+### Code Quality
+- ✅ No `console.log` statements in production code
+- ✅ No unused imports or variables
+- ✅ All components properly typed
+- ✅ Props interfaces defined
+
+## Before Committing
+
+Ensure all checks pass:
+```bash
+cd src/dashboard
+npm run lint
+npx tsc --noEmit
+```
+
+Both commands must pass with zero errors and zero warnings.
+
+## CI Workflow Details
+
+The CI workflow (`.github/workflows/lint_dashboard.yml`) runs these exact commands:
+1. Installs dependencies: `npm ci` (from `src/dashboard/` directory)
+2. Runs: `npm run lint` (from `src/dashboard/` directory)
+3. Runs: `npx tsc --noEmit` (from `src/dashboard/` directory)
+
+All commands are run from the `src/dashboard/` working directory.
