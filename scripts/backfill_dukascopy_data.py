@@ -89,7 +89,8 @@ DEFAULT_PAIRS = [
     'EURGBP', 'EURJPY', 'EURAUD', 'EURNZD', 'EURCHF', 'EURCAD',  # EUR crosses
     'GBPJPY', 'GBPAUD', 'GBPNZD', 'GBPCHF', 'GBPCAD',  # GBP crosses
     'AUDJPY', 'NZDJPY', 'CHFJPY', 'CADJPY',  # JPY crosses
-    'AUDNZD', 'AUDCHF', 'AUDCAD', 'NZDCHF', 'NZDCAD', 'CADCHF'  # Other crosses
+    'AUDNZD', 'AUDCHF', 'AUDCAD', 'NZDCHF', 'NZDCAD', 'CADCHF',  # Other crosses
+    'XAUUSD', 'XAUEUR'  # Gold pairs
 ]
 
 

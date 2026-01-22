@@ -35,6 +35,8 @@ ZONE="${ZONE:-us-central1-a}"
 REGION="${REGION:-us-central1}"
 BUCKET_NAME="dukascopy-data-${PROJECT_ID}"
 MACHINE_TYPE="${MACHINE_TYPE:-e2-standard-4}"
+DATA_DISK_SIZE="${DATA_DISK_SIZE:-500}"
+DATA_DISK_TYPE="${DATA_DISK_TYPE:-pd-standard}"  # pd-standard or pd-ssd
 
 echo ""
 echo "Configuration:"
@@ -42,11 +44,21 @@ echo "  VM Name: $VM_NAME"
 echo "  Zone: $ZONE"
 echo "  Machine Type: $MACHINE_TYPE"
 echo "  Bucket: $BUCKET_NAME"
+echo "  Data Disk: ${DATA_DISK_SIZE}GB ${DATA_DISK_TYPE}"
+echo ""
+echo -e "${YELLOW}Note: Using ${DATA_DISK_TYPE} to avoid quota limits.${NC}"
+echo -e "${YELLOW}      Data will be offloaded to GCS periodically.${NC}"
 echo ""
 read -p "Continue? (y/n) " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
+fi
+
+# Check quotas (informational)
+echo -e "${GREEN}Checking quotas...${NC}"
+if gcloud compute project-info describe --project=$PROJECT_ID --format="get(quotas)" &>/dev/null; then
+    echo -e "${GREEN}Quota check passed (or quotas not accessible).${NC}"
 fi
 
 # Step 1: Enable APIs
@@ -81,20 +93,21 @@ echo "Time: \$(date)"
 
 # Update system
 apt-get update
-apt-get install -y python3.11 python3-pip python3-venv nodejs npm git curl screen
+apt-get install -y python3.11 python3-pip python3-venv git curl screen
+
+# Remove old Node.js if present (to avoid conflicts)
+apt-get remove -y nodejs npm libnode-dev 2>/dev/null || true
+apt-get autoremove -y 2>/dev/null || true
 
 # Install Node.js 20
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
-# Install Python packages
-pip3 install pandas pyarrow numpy
+# Install Python packages (matching requirements.txt versions)
+pip3 install "pandas>=2.0.0" "pyarrow>=14.0.0" "numpy<2.0.0"
 
 # Install dukascopy-node globally
 npm install -g dukascopy-node
-
-# Create data directories
-mkdir -p /data/dukascopy /data/logs
 
 # Format and mount data disk (if not already mounted)
 if [ ! -d /data/.mounted ]; then
@@ -109,16 +122,14 @@ if [ ! -d /data/.mounted ]; then
         # Add to fstab
         echo '/dev/sdb /data ext4 discard,defaults,nofail 0 2' >> /etc/fstab
         
-        # Create directories
-        mkdir -p /data/dukascopy /data/logs
-        chmod 755 /data/dukascopy /data/logs
-        
         touch /data/.mounted
     fi
 fi
 
-# Set permissions
-chown -R \$(whoami):\$(whoami) /data/dukascopy /data/logs 2>/dev/null || true
+# Create data directories with correct ownership
+mkdir -p /data/dukascopy /data/logs
+chown -R \$(whoami):\$(whoami) /data/dukascopy /data/logs
+chmod -R 755 /data/dukascopy /data/logs
 
 echo "=== Setup Completed ==="
 echo "Time: \$(date)"
@@ -138,7 +149,9 @@ if gcloud compute instances describe $VM_NAME --zone=$ZONE &>/dev/null; then
     fi
 fi
 
-gcloud compute instances create $VM_NAME \
+# Create VM with configurable disk type
+echo -e "${GREEN}Creating VM with ${DATA_DISK_SIZE}GB ${DATA_DISK_TYPE} disk...${NC}"
+if ! gcloud compute instances create $VM_NAME \
     --project=$PROJECT_ID \
     --zone=$ZONE \
     --machine-type=$MACHINE_TYPE \
@@ -149,9 +162,19 @@ gcloud compute instances create $VM_NAME \
     --scopes=https://www.googleapis.com/auth/cloud-platform \
     --tags=http-server,https-server \
     --create-disk=auto-delete=yes,boot=yes,device-name=${VM_NAME},image=projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts,mode=rw,size=50,type=projects/${PROJECT_ID}/zones/${ZONE}/diskTypes/pd-standard \
-    --create-disk=auto-delete=yes,device-name=data-disk,mode=rw,size=500,type=projects/${PROJECT_ID}/zones/${ZONE}/diskTypes/pd-ssd \
+    --create-disk=auto-delete=yes,device-name=data-disk,mode=rw,size=${DATA_DISK_SIZE},type=projects/${PROJECT_ID}/zones/${ZONE}/diskTypes/${DATA_DISK_TYPE} \
     --metadata-from-file=startup-script=/tmp/vm-startup-script.sh \
-    --metadata=BUCKET_NAME=${BUCKET_NAME}
+    --metadata=BUCKET_NAME=${BUCKET_NAME}; then
+    echo -e "${RED}Failed to create VM.${NC}"
+    echo ""
+    echo -e "${YELLOW}Troubleshooting:${NC}"
+    echo "1. Check quotas: gcloud compute project-info describe --project=$PROJECT_ID"
+    echo "2. Try a different zone: export ZONE=europe-west1-a"
+    echo "3. Use smaller disk: export DATA_DISK_SIZE=250"
+    echo "4. Request quota increase: https://console.cloud.google.com/iam-admin/quotas"
+    echo ""
+    exit 1
+fi
 
 echo -e "${GREEN}VM created successfully!${NC}"
 echo ""

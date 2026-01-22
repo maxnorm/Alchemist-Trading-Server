@@ -42,8 +42,8 @@ Creates the VM, GCS bucket, and installs required software.
 
 ---
 
-### 2. `upload-files.sh` - Upload Project Files
-Uploads your collection script and config files to the VM.
+### 2. `upload-files.sh` - Upload Collection Script
+Uploads only the essential collection script to the VM.
 
 **Usage:**
 ```bash
@@ -51,12 +51,12 @@ Uploads your collection script and config files to the VM.
 ```
 
 **What it uploads:**
-- `scripts/backfill_dukascopy_data.py`
-- `params.yaml`
-- `package.json`
-- `requirements.txt` (if exists)
+- `scripts/backfill_dukascopy_data.py` (required)
+- `scripts/utils/parquet_converter.py` (if exists, utility used by script)
 
-**Time:** ~1-2 minutes
+**Note:** The script doesn't need `params.yaml` or other config files - it uses command-line arguments.
+
+**Time:** ~30 seconds
 
 ---
 
@@ -65,43 +65,97 @@ Starts the data collection process on the VM.
 
 **Usage:**
 ```bash
+# Default: Last 5 years
 ./scripts/gcp/start-collection.sh
+
+# Test with one day (recommended first!)
+./scripts/gcp/start-collection.sh --start-date 2024-01-15 --end-date 2024-01-15
+
+# Test with custom date range
+./scripts/gcp/start-collection.sh --start-date 2024-01-01 --end-date 2024-01-07
+
+# Custom date range for full collection
+./scripts/gcp/start-collection.sh --start-date 2020-01-01 --end-date 2024-12-31
+
+# Show help
+./scripts/gcp/start-collection.sh --help
 ```
 
 **What it does:**
-- Calculates date range (5 years back by default)
+- Calculates date range (5 years back by default, or uses provided dates)
 - Starts collection in a screen session (runs in background)
 - Saves logs to `/data/logs/`
 
-**Time:** Collection runs for 2-3 days
+**Time:** 
+- 1 day: ~10-30 minutes
+- 1 week: ~2-4 hours
+- 5 years: 2-3 days
 
 **Monitor progress:**
 ```bash
 gcloud compute ssh dukascopy-collector --zone=us-central1-a \
     --command="tail -f /data/logs/dukascopy_backfill.log"
+
+gcloud compute ssh dukascopy-collector --zone=us-central1-a
+screen -r dukascopy-collection
 ```
 
 ---
 
-### 4. `download-data.sh` - Download to Local
-Downloads collected data from GCS to your local machine.
+### 4. `upload-to-gcs.sh` - Upload to GCS Storage (Optional)
+Uploads collected data from VM to GCS bucket. Run this after collection or periodically during long collections.
 
 **Usage:**
 ```bash
+./scripts/gcp/upload-to-gcs.sh
+```
+
+**What it does:**
+- Uploads Parquet files from VM to GCS
+- Uploads logs and progress files
+- Uses `gsutil rsync` (only uploads new/changed files)
+
+**When to use:**
+- After collection completes
+- Periodically during long collections (backup)
+- Before downloading data
+
+**Time:** Depends on data size (~5-10 minutes for one day, ~1-2 hours for 5 years)
+
+### 5. `download-data.sh` - Download Data
+Downloads collected data from GCS storage to your local machine.
+
+**Usage:**
+```bash
+# Download all data from GCS (~130-175GB)
 ./scripts/gcp/download-data.sh
+
+# Download specific pair (for testing)
+./scripts/gcp/download-data.sh --pair EURUSD
+
+# Show help
+./scripts/gcp/download-data.sh --help
+```
+
+**Alternative: Download directly from VM (faster for small tests)**
+```bash
+gcloud compute scp --zone=us-central1-a --recurse \
+    dukascopy-collector:/data/dukascopy/ ./data/dukascopy/
 ```
 
 **What it downloads:**
-- All Parquet files from GCS bucket
+- Parquet files (all or specific pair)
 - Collection logs
 
 **Output:** `./data/dukascopy/` (or custom `LOCAL_DIR`)
 
-**Time:** Depends on your internet speed (~1-3 hours for 175GB)
+**Time:** 
+- One pair: ~5-10 minutes
+- Full download: ~1-3 hours for 175GB
 
 ---
 
-### 5. `cleanup.sh` - Clean Up Resources
+### 6. `cleanup.sh` - Clean Up Resources
 Stops/deletes VM and optionally deletes GCS bucket.
 
 **Usage:**
@@ -122,27 +176,64 @@ Stops/deletes VM and optionally deletes GCS bucket.
 
 ## Complete Workflow
 
-### Quick Start (Automated)
+### Quick Start (Recommended: Test First!)
 
 ```bash
-# 1. Setup VM and bucket
+# 1. Setup VM and bucket (~5 minutes)
 ./scripts/gcp/setup-vm.sh
 
-# 2. Wait 2-3 minutes for VM setup, then upload files
+# 2. Wait 2-3 minutes for VM setup, then upload script (~30 seconds)
 ./scripts/gcp/upload-files.sh
 
-# 3. Start collection
+# 3. TEST with one day first! (~10-30 minutes)
+./scripts/gcp/start-collection.sh --start-date 2024-01-15 --end-date 2024-01-15
+
+# 4. After test completes, verify data works, then start full collection
 ./scripts/gcp/start-collection.sh
 
-# 4. Monitor (optional, collection runs in background)
+# 5. Monitor progress (optional)
 gcloud compute ssh dukascopy-collector --zone=us-central1-a \
     --command="tail -f /data/logs/dukascopy_backfill.log"
 
-# 5. After 2-3 days, download data
-./scripts/gcp/download-data.sh
+# 6. After collection completes, upload to GCS (optional, ~1-2 hours)
+./scripts/gcp/upload-to-gcs.sh
 
-# 6. Clean up (optional)
+# 7. Download data (from GCS or directly from VM)
+./scripts/gcp/download-data.sh  # From GCS
+# OR download directly from VM:
+# gcloud compute scp --zone=us-central1-a --recurse \
+#     dukascopy-collector:/data/dukascopy/ ./data/dukascopy/
+
+# 8. Clean up resources (optional)
 ./scripts/gcp/cleanup.sh
+```
+
+**What gets uploaded?**
+- Only the collection script (`backfill_dukascopy_data.py`)
+- No config files needed - script uses command-line arguments
+
+### Testing Workflow
+
+**Before running 5 years of collection, test with a small date range:**
+
+```bash
+# Test with one day
+./scripts/gcp/start-collection.sh --start-date 2024-01-15 --end-date 2024-01-15
+
+# Or test with one week
+./scripts/gcp/start-collection.sh --start-date 2024-01-01 --end-date 2024-01-07
+
+# Wait for completion, then verify data
+# Option 1: Download from VM directly (faster for testing)
+gcloud compute scp --zone=us-central1-a --recurse \
+    dukascopy-collector:/data/dukascopy/ ./data/dukascopy/
+
+# Option 2: Upload to GCS then download (tests full pipeline)
+./scripts/gcp/upload-to-gcs.sh
+./scripts/gcp/download-data.sh --pair EURUSD
+
+# Verify data
+python3 -c "import pandas as pd; df = pd.read_parquet('data/dukascopy/EURUSD/2024.parquet'); print(f'Rows: {len(df):,}')"
 ```
 
 ### Manual Steps (If Scripts Don't Work)
@@ -162,6 +253,10 @@ You can customize behavior with environment variables:
 export VM_NAME="my-custom-vm"
 export ZONE="europe-west1-a"
 export MACHINE_TYPE="e2-standard-8"
+
+# Disk configuration (to avoid quota issues)
+export DATA_DISK_SIZE=500        # Size in GB (default: 500)
+export DATA_DISK_TYPE=pd-standard  # pd-standard or pd-ssd (default: pd-standard)
 
 # Collection configuration
 export YEARS_BACK=10  # Collect 10 years instead of 5

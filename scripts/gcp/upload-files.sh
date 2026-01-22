@@ -28,45 +28,31 @@ echo "VM: $VM_NAME"
 echo "Zone: $ZONE"
 echo ""
 
-# Create directory on VM
+# Create directory on VM with proper permissions
 echo "Creating directory on VM..."
-gcloud compute ssh $VM_NAME --zone=$ZONE --command="mkdir -p /opt/trading-system && sudo chown -R \$USER:\$USER /opt/trading-system" || true
+gcloud compute ssh $VM_NAME --zone=$ZONE --command="sudo mkdir -p /opt/trading-system/scripts && sudo chown -R \$USER:\$USER /opt/trading-system && sudo chmod -R 755 /opt/trading-system" || true
 
 # Upload files
 echo "Uploading files..."
 
-# Upload collection script
+# Upload collection script (only file needed)
 if [ -f "$PROJECT_ROOT/scripts/backfill_dukascopy_data.py" ]; then
     echo "  - Uploading backfill script..."
     gcloud compute scp --zone=$ZONE \
         "$PROJECT_ROOT/scripts/backfill_dukascopy_data.py" \
         $VM_NAME:/opt/trading-system/scripts/backfill_dukascopy_data.py
 else
-    echo -e "${YELLOW}Warning: backfill_dukascopy_data.py not found${NC}"
+    echo -e "${YELLOW}Error: backfill_dukascopy_data.py not found${NC}"
+    exit 1
 fi
 
-# Upload params.yaml
-if [ -f "$PROJECT_ROOT/params.yaml" ]; then
-    echo "  - Uploading params.yaml..."
+# Upload parquet converter utility if it exists (used by the script)
+if [ -f "$PROJECT_ROOT/scripts/utils/parquet_converter.py" ]; then
+    echo "  - Uploading parquet converter utility..."
+    gcloud compute ssh $VM_NAME --zone=$ZONE --command="mkdir -p /opt/trading-system/scripts/utils" || true
     gcloud compute scp --zone=$ZONE \
-        "$PROJECT_ROOT/params.yaml" \
-        $VM_NAME:/opt/trading-system/params.yaml
-fi
-
-# Upload package.json (for reference)
-if [ -f "$PROJECT_ROOT/package.json" ]; then
-    echo "  - Uploading package.json..."
-    gcloud compute scp --zone=$ZONE \
-        "$PROJECT_ROOT/package.json" \
-        $VM_NAME:/opt/trading-system/package.json
-fi
-
-# Upload requirements.txt if it exists
-if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
-    echo "  - Uploading requirements.txt..."
-    gcloud compute scp --zone=$ZONE \
-        "$PROJECT_ROOT/requirements.txt" \
-        $VM_NAME:/opt/trading-system/requirements.txt
+        "$PROJECT_ROOT/scripts/utils/parquet_converter.py" \
+        $VM_NAME:/opt/trading-system/scripts/utils/parquet_converter.py
 fi
 
 echo -e "${GREEN}Upload complete!${NC}"
