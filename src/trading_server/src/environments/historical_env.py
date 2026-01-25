@@ -20,6 +20,8 @@ from datetime import datetime
 
 from environments.base_trading_env import BaseTradingEnv
 from environments.slippage_models import SlippageModel, FixedSlippage
+from utils.performance_metrics import PerformanceMetrics
+from utils.transaction_costs import TransactionCostModel
 
 
 @dataclass
@@ -165,6 +167,16 @@ class HistoricalTradingEnv(BaseTradingEnv):
         self.trade_history: List[Trade] = []
         self.current_step = window_size
 
+        # Performance metrics for risk-adjusted reward calculation
+        self.performance_metrics = PerformanceMetrics(window_size=252)
+        self.previous_equity: Optional[float] = None
+
+        # Transaction cost model for detailed cost calculation
+        self.transaction_cost_model = TransactionCostModel(
+            spread_pct=transaction_cost,
+            commission_pct=transaction_cost,
+        )
+
     def reset(
         self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
@@ -186,6 +198,10 @@ class HistoricalTradingEnv(BaseTradingEnv):
         self.equity_history = [self.initial_balance]
         self.position = None
         self.trade_history = []
+        self.previous_equity = None
+
+        # Reset performance metrics
+        self.performance_metrics.reset()
 
         # Set start position
         if options and "start_step" in options:
@@ -214,10 +230,61 @@ class HistoricalTradingEnv(BaseTradingEnv):
         current_bar = self.data.iloc[self.current_step]
 
         # Calculate equity before action
-        old_equity = self._calculate_equity(current_bar)
+        previous_equity = self._calculate_equity(current_bar)
+        if self.previous_equity is None:
+            self.previous_equity = previous_equity
+
+        # Track if we had a position before action
+        had_position_before = self.position is not None
+
+        # Calculate volatility from equity history
+        volatility = None
+        if len(self.equity_history) > 1:
+            equity_array = np.array(self.equity_history)
+            returns = np.diff(equity_array) / equity_array[:-1]
+            if len(returns) > 1:
+                # Annualized volatility
+                volatility = np.std(returns) * np.sqrt(252)
 
         # Execute action
         self._execute_action(action, current_bar)
+
+        # Extract trade information after action execution (to get actual fill prices)
+        has_position = self.position is not None
+        entry_price = None
+        exit_price = None
+        lot_size = None
+        is_long = None
+
+        # If we have a position now, extract position information
+        if has_position:
+            entry_price = self.position.entry_price
+            # Convert quantity to lots (standard lot size is 100000 units)
+            contract_size = 100000
+            lot_size = self.position.quantity / contract_size
+            is_long = self.position.side == "long"
+
+        # If we just closed a position, get exit price from the most recent trade
+        if action == 3 and had_position_before and not has_position and self.trade_history:
+            last_trade = self.trade_history[-1]
+            exit_price = last_trade.exit_price
+            # Also set entry_price, lot_size, is_long from the closed position info
+            if entry_price is None:
+                entry_price = last_trade.entry_price
+            if lot_size is None:
+                contract_size = 100000
+                lot_size = last_trade.quantity / contract_size
+            if is_long is None:
+                is_long = last_trade.side == "long"
+
+        # If we just opened a position, entry_price is already set from position above
+        # But we need to ensure lot_size and is_long are set
+        if action in [1, 2] and has_position and not had_position_before:
+            if lot_size is None:
+                contract_size = 100000
+                lot_size = self.position.quantity / contract_size
+            if is_long is None:
+                is_long = self.position.side == "long"
 
         # Move to next step
         self.current_step += 1
@@ -229,28 +296,174 @@ class HistoricalTradingEnv(BaseTradingEnv):
         # Get new bar for reward calculation
         if not terminated:
             new_bar = self.data.iloc[self.current_step]
-            new_equity = self._calculate_equity(new_bar)
+            current_equity = self._calculate_equity(new_bar)
         else:
-            new_equity = self._calculate_equity(current_bar)
+            current_equity = self._calculate_equity(current_bar)
 
         # Record equity
-        self.equity_history.append(new_equity)
+        self.equity_history.append(current_equity)
 
-        # Calculate reward as equity change (percentage)
-        if old_equity > 0:
-            reward = (new_equity - old_equity) / old_equity
-        else:
-            reward = 0.0
+        # Calculate reward using risk-adjusted metrics
+        # Use had_position_before for action-based adjustments (reflects state when action was taken)
+        # Use previous_equity from start of this step (not self.previous_equity which might be from previous step)
+        reward = self.calculate_reward(
+            previous_equity=previous_equity,
+            current_equity=current_equity,
+            action=action,
+            has_position=had_position_before if action == 3 else has_position,
+            transaction_cost=None,  # Use detailed model instead
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            is_long=is_long,
+            pair=None,  # Historical env doesn't use pair objects
+            volatility=volatility,
+        )
+
+        # Update previous equity for next step
+        self.previous_equity = current_equity
 
         info = {
             "balance": self.balance,
-            "equity": new_equity,
+            "equity": current_equity,
             "position": self._position_to_dict(),
             "step": self.current_step,
             "total_trades": len(self.trade_history),
         }
 
         return self.get_state(), reward, terminated, truncated, info
+
+    def calculate_reward(
+        self,
+        previous_equity: float,
+        current_equity: float,
+        action: int,
+        has_position: bool,
+        transaction_cost: Optional[float] = None,
+        entry_price: Optional[float] = None,
+        exit_price: Optional[float] = None,
+        lot_size: Optional[float] = None,
+        is_long: Optional[bool] = None,
+        pair=None,
+        volatility: Optional[float] = None,
+    ) -> float:
+        """
+        Enhanced reward function with risk-adjusted metrics (matching Live/Paper environments)
+
+        Components:
+        1. Sharpe ratio reward (risk-adjusted returns)
+        2. Drawdown penalty (large losses)
+        3. Volatility penalty (high volatility)
+        4. Transaction cost penalty (trading costs)
+        5. Action-based adjustments (behavior fine-tuning)
+
+        :param previous_equity: Previous account equity
+        :param current_equity: Current account equity
+        :param action: Action taken (0=Hold, 1=Buy, 2=Sell, 3=Close)
+        :param has_position: Whether agent has open position
+        :param transaction_cost: Optional fixed transaction cost (for backward compatibility)
+        :param entry_price: Entry price for the trade (for detailed cost calculation)
+        :param exit_price: Exit price for the trade (for detailed cost calculation)
+        :param lot_size: Position size in lots (for detailed cost calculation)
+        :param is_long: True for long position, False for short (for detailed cost calculation)
+        :param pair: Currency pair object (for actual spread calculation) - not used in historical
+        :param volatility: Current volatility (for slippage calculation)
+        :return: Reward value
+        """
+        # Update performance metrics with new equity
+        if previous_equity is not None and previous_equity > 0:
+            self.performance_metrics.update(current_equity, previous_equity)
+
+        # Get current performance metrics
+        metrics = self.performance_metrics.get_all_metrics()
+
+        # Component 1: Sharpe Ratio Reward
+        # Why: Reward risk-adjusted returns, not just returns
+        # This is the primary learning signal for risk-adjusted performance
+        # Normalize to [-1, 1] range (Sharpe typically ranges from -3 to +3)
+        sharpe_ratio = metrics["sharpe_ratio"]
+        sharpe_reward = np.clip(sharpe_ratio / 3.0, -1.0, 1.0)
+
+        # Component 2: Drawdown Penalty
+        # Why: Strongly penalize large losses to protect capital
+        # Normalize drawdown penalty to [-1, 0] range
+        # Max drawdown of 20% = -1.0 penalty
+        current_drawdown = metrics["current_drawdown"]
+        if current_drawdown > 0.05:  # More than 5% drawdown
+            drawdown_penalty = np.clip(-abs(current_drawdown) / 0.20, -1.0, 0.0)
+        else:
+            drawdown_penalty = 0.0
+
+        # Component 3: Volatility Penalty
+        # Why: Penalize high volatility strategies (harder to execute, higher risk)
+        # Encourages consistent, stable strategies
+        # Normalize volatility penalty to [-1, 0] range
+        # Max volatility of 10% = -1.0 penalty
+        # Note: volatility is annualized, so 0.02 = ~0.126% daily (2% / sqrt(252))
+        volatility_metric = metrics["volatility"]
+        if volatility_metric > 0.02:  # More than 2% annualized volatility
+            volatility_penalty = np.clip(-volatility_metric / 0.10, -1.0, 0.0)
+        else:
+            volatility_penalty = 0.0
+
+        # Component 4: Transaction Cost Penalty
+        # Why: Account for real trading costs (spread, commission, slippage)
+        # Prevents overtrading and ensures realistic performance expectations
+        if action in [1, 2, 3]:  # Buy, Sell, or Close (actions that involve trading)
+            # Use detailed cost model if we have the necessary information
+            if (
+                transaction_cost is None
+                and entry_price is not None
+                and lot_size is not None
+                and is_long is not None
+            ):
+                # Calculate detailed transaction cost
+                cost_value = self.transaction_cost_model.calculate_cost_for_action(
+                    action=action,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    lot_size=lot_size,
+                    is_long=is_long,
+                    pair=pair,
+                    volatility=volatility,
+                )
+                # Convert absolute cost to percentage of account equity for penalty
+                if previous_equity > 0:
+                    transaction_cost_pct = cost_value / previous_equity
+                else:
+                    transaction_cost_pct = 0.0
+                transaction_penalty = -transaction_cost_pct
+            else:
+                # Fallback to fixed transaction cost (backward compatibility)
+                if transaction_cost is None:
+                    transaction_cost = self.transaction_cost
+                transaction_penalty = -transaction_cost
+        else:
+            transaction_penalty = 0.0
+
+        # Component 5: Action-based adjustments
+        # Why: Fine-tune agent behavior with small adjustments
+
+        # Small penalty for holding without position (encourage action)
+        action_penalty = 0.0
+        if action == 0 and not has_position:
+            action_penalty = -0.01
+
+        # Bonus for closing profitable position (encourage profit-taking)
+        profit = current_equity - previous_equity
+        if action == 3 and has_position and profit > 0:  # Close with profit
+            action_penalty += 0.1
+
+        # Combine all components
+        reward = (
+            sharpe_reward
+            + drawdown_penalty
+            + volatility_penalty
+            + transaction_penalty
+            + action_penalty
+        )
+
+        return reward
 
     def get_state(self) -> np.ndarray:
         """
