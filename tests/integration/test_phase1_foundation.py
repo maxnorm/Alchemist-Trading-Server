@@ -72,15 +72,21 @@ def test_great_expectations_validation():
 
 def test_airflow_dag_structure():
     """Test that Airflow DAG structure is correct"""
-    dag_path = "src/trading_server/src/infrastructure/data_pipeline/airflow/dags/data_collection_pipeline.py"
-    assert os.path.exists(dag_path), f"DAG file not found: {dag_path}"
+    # Check that key DAGs exist (data_collection_pipeline was removed - tick collection now via ZeroMQ)
+    dag_paths = [
+        "src/trading_server/src/infrastructure/data_pipeline/airflow/dags/alternative_data_collection_dag.py",
+        "src/trading_server/src/infrastructure/data_pipeline/airflow/dags/historical_backfill_dag.py",
+    ]
     
-    # Try to import the DAG (this will validate syntax)
+    for dag_path in dag_paths:
+        assert os.path.exists(dag_path), f"DAG file not found: {dag_path}"
+    
+    # Try to import a DAG (this will validate syntax)
     try:
         import sys
         sys.path.insert(0, "src/trading_server/src/infrastructure/data_pipeline/airflow/dags")
         # Note: Full import would require Airflow to be installed
-        # For now, just check file exists
+        # For now, just check files exist
         print("✓ Airflow DAG structure test passed")
     except Exception as e:
         pytest.skip(f"Airflow DAG import test skipped: {e}")

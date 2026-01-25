@@ -95,6 +95,62 @@ quarantine_ticks_total = Counter(
     ["symbol", "rejection_category"],
 )
 
+# Quality Gate Metrics
+quality_gate_ticks_processed_total = Counter(
+    "quality_gate_ticks_processed_total",
+    "Total ticks processed by quality gate",
+    ["symbol"],  # Empty string for aggregate
+)
+
+quality_gate_ticks_accepted_total = Counter(
+    "quality_gate_ticks_accepted_total",
+    "Total ticks accepted by quality gate",
+    ["symbol"],
+)
+
+quality_gate_outliers_rejected_total = Counter(
+    "quality_gate_outliers_rejected_total",
+    "Total ticks rejected as outliers",
+    ["symbol"],
+)
+
+quality_gate_duplicates_rejected_total = Counter(
+    "quality_gate_duplicates_rejected_total",
+    "Total ticks rejected as duplicates",
+    ["symbol"],
+)
+
+quality_gate_stale_rejected_total = Counter(
+    "quality_gate_stale_rejected_total",
+    "Total ticks rejected as stale",
+    ["symbol"],
+)
+
+quality_gate_missing_data_rejected_total = Counter(
+    "quality_gate_missing_data_rejected_total",
+    "Total ticks rejected due to missing data",
+    ["symbol"],
+)
+
+quality_gate_stale_accepted_price_change_total = Counter(
+    "quality_gate_stale_accepted_price_change_total",
+    "Total stale ticks accepted due to price change",
+    ["symbol"],
+)
+
+# Rate metrics (calculated from counters, updated periodically)
+quality_gate_acceptance_rate = Gauge(
+    "quality_gate_acceptance_rate",
+    "Quality gate acceptance rate (0-1)",
+    ["symbol"],
+)
+
+quality_gate_rejection_rate = Gauge(
+    "quality_gate_rejection_rate",
+    "Quality gate rejection rate (0-1)",
+    ["symbol"],
+)
+
 # Drift Detection Metrics
 data_drift_psi_score = Gauge(
     "data_drift_psi_score",

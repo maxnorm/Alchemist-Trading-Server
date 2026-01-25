@@ -4,6 +4,7 @@ Systematic quality pipeline for tick validation
 
 import os
 import logging
+import threading
 from typing import Dict, Any, Optional, Tuple, List, Union
 from datetime import datetime
 from collections import defaultdict
@@ -22,6 +23,27 @@ class QualityGate:
     Systematic quality pipeline for tick validation
     Implements checks for outliers, duplicates, staleness, and missing data
     """
+
+    # Class-level aggregate metrics for system-wide tracking
+    _aggregate_metrics = {
+        "total_processed": 0,
+        "total_accepted": 0,
+        "outliers_rejected": 0,
+        "duplicates_rejected": 0,
+        "stale_rejected": 0,
+        "missing_data_rejected": 0,
+        "stale_accepted_price_change": 0,
+    }
+    _aggregate_lock = threading.Lock()
+    _aggregate_last_synced = {
+        "total_processed": 0,
+        "total_accepted": 0,
+        "outliers_rejected": 0,
+        "duplicates_rejected": 0,
+        "stale_rejected": 0,
+        "missing_data_rejected": 0,
+        "stale_accepted_price_change": 0,
+    }
 
     def __init__(self, config: Optional[Dict] = None):
         """
@@ -78,6 +100,17 @@ class QualityGate:
             "missing_data_rejected": 0,
             "stale_accepted_price_change": 0,  # Stale ticks accepted due to price change
             "timestamp_overrides": 0,  # Timestamps overridden due to staleness + price change
+        }
+
+        # Track last synced values for delta calculation
+        self._last_synced_metrics = {
+            "total_processed": 0,
+            "total_accepted": 0,
+            "outliers_rejected": 0,
+            "duplicates_rejected": 0,
+            "stale_rejected": 0,
+            "missing_data_rejected": 0,
+            "stale_accepted_price_change": 0,
         }
 
         # Track recent ticks for duplicate detection and outlier calculation
@@ -755,3 +788,205 @@ class QualityGate:
             "stale_accepted_price_change": 0,
             "timestamp_overrides": 0,
         }
+        self._last_synced_metrics = {
+            "total_processed": 0,
+            "total_accepted": 0,
+            "outliers_rejected": 0,
+            "duplicates_rejected": 0,
+            "stale_rejected": 0,
+            "missing_data_rejected": 0,
+            "stale_accepted_price_change": 0,
+        }
+
+    def sync_metrics_to_prometheus(self, symbol: str = "") -> None:
+        """
+        Sync quality gate metrics to Prometheus
+
+        :param symbol: Symbol label (empty string for aggregate)
+        """
+        try:
+            from monitoring.metrics import (
+                quality_gate_ticks_processed_total,
+                quality_gate_ticks_accepted_total,
+                quality_gate_outliers_rejected_total,
+                quality_gate_duplicates_rejected_total,
+                quality_gate_stale_rejected_total,
+                quality_gate_missing_data_rejected_total,
+                quality_gate_stale_accepted_price_change_total,
+                quality_gate_acceptance_rate,
+                quality_gate_rejection_rate,
+            )
+
+            # Calculate deltas since last sync
+            delta_processed = (
+                self.metrics["total_processed"]
+                - self._last_synced_metrics["total_processed"]
+            )
+            delta_accepted = (
+                self.metrics["total_accepted"]
+                - self._last_synced_metrics["total_accepted"]
+            )
+            delta_outliers = (
+                self.metrics["outliers_rejected"]
+                - self._last_synced_metrics["outliers_rejected"]
+            )
+            delta_duplicates = (
+                self.metrics["duplicates_rejected"]
+                - self._last_synced_metrics["duplicates_rejected"]
+            )
+            delta_stale = (
+                self.metrics["stale_rejected"]
+                - self._last_synced_metrics["stale_rejected"]
+            )
+            delta_missing = (
+                self.metrics["missing_data_rejected"]
+                - self._last_synced_metrics["missing_data_rejected"]
+            )
+            delta_stale_accepted = (
+                self.metrics["stale_accepted_price_change"]
+                - self._last_synced_metrics["stale_accepted_price_change"]
+            )
+
+            # Update Prometheus counters (per-symbol)
+            if delta_processed > 0:
+                quality_gate_ticks_processed_total.labels(symbol=symbol).inc(
+                    delta_processed
+                )
+            if delta_accepted > 0:
+                quality_gate_ticks_accepted_total.labels(symbol=symbol).inc(
+                    delta_accepted
+                )
+            if delta_outliers > 0:
+                quality_gate_outliers_rejected_total.labels(symbol=symbol).inc(
+                    delta_outliers
+                )
+            if delta_duplicates > 0:
+                quality_gate_duplicates_rejected_total.labels(symbol=symbol).inc(
+                    delta_duplicates
+                )
+            if delta_stale > 0:
+                quality_gate_stale_rejected_total.labels(symbol=symbol).inc(
+                    delta_stale
+                )
+            if delta_missing > 0:
+                quality_gate_missing_data_rejected_total.labels(symbol=symbol).inc(
+                    delta_missing
+                )
+            if delta_stale_accepted > 0:
+                quality_gate_stale_accepted_price_change_total.labels(
+                    symbol=symbol
+                ).inc(delta_stale_accepted)
+
+            # Update rate gauges (per-symbol)
+            total = self.metrics["total_processed"]
+            if total > 0:
+                acceptance_rate = self.metrics["total_accepted"] / total
+                rejection_rate = 1.0 - acceptance_rate
+                quality_gate_acceptance_rate.labels(symbol=symbol).set(acceptance_rate)
+                quality_gate_rejection_rate.labels(symbol=symbol).set(rejection_rate)
+
+            # Update last synced values
+            self._last_synced_metrics = self.metrics.copy()
+
+            # Update aggregate metrics if symbol is not empty
+            if symbol:
+                with QualityGate._aggregate_lock:
+                    # Add instance deltas to aggregate metrics
+                    QualityGate._aggregate_metrics["total_processed"] += delta_processed
+                    QualityGate._aggregate_metrics["total_accepted"] += delta_accepted
+                    QualityGate._aggregate_metrics["outliers_rejected"] += delta_outliers
+                    QualityGate._aggregate_metrics["duplicates_rejected"] += (
+                        delta_duplicates
+                    )
+                    QualityGate._aggregate_metrics["stale_rejected"] += delta_stale
+                    QualityGate._aggregate_metrics["missing_data_rejected"] += (
+                        delta_missing
+                    )
+                    QualityGate._aggregate_metrics["stale_accepted_price_change"] += (
+                        delta_stale_accepted
+                    )
+
+                    # Calculate aggregate deltas from accumulated aggregate metrics
+                    aggregate_delta_processed = (
+                        QualityGate._aggregate_metrics["total_processed"]
+                        - QualityGate._aggregate_last_synced["total_processed"]
+                    )
+                    aggregate_delta_accepted = (
+                        QualityGate._aggregate_metrics["total_accepted"]
+                        - QualityGate._aggregate_last_synced["total_accepted"]
+                    )
+                    aggregate_delta_outliers = (
+                        QualityGate._aggregate_metrics["outliers_rejected"]
+                        - QualityGate._aggregate_last_synced["outliers_rejected"]
+                    )
+                    aggregate_delta_duplicates = (
+                        QualityGate._aggregate_metrics["duplicates_rejected"]
+                        - QualityGate._aggregate_last_synced["duplicates_rejected"]
+                    )
+                    aggregate_delta_stale = (
+                        QualityGate._aggregate_metrics["stale_rejected"]
+                        - QualityGate._aggregate_last_synced["stale_rejected"]
+                    )
+                    aggregate_delta_missing = (
+                        QualityGate._aggregate_metrics["missing_data_rejected"]
+                        - QualityGate._aggregate_last_synced["missing_data_rejected"]
+                    )
+                    aggregate_delta_stale_accepted = (
+                        QualityGate._aggregate_metrics["stale_accepted_price_change"]
+                        - QualityGate._aggregate_last_synced[
+                            "stale_accepted_price_change"
+                        ]
+                    )
+
+                    # Update aggregate counters (only if there are deltas)
+                    if aggregate_delta_processed > 0:
+                        quality_gate_ticks_processed_total.labels(symbol="").inc(
+                            aggregate_delta_processed
+                        )
+                    if aggregate_delta_accepted > 0:
+                        quality_gate_ticks_accepted_total.labels(symbol="").inc(
+                            aggregate_delta_accepted
+                        )
+                    if aggregate_delta_outliers > 0:
+                        quality_gate_outliers_rejected_total.labels(symbol="").inc(
+                            aggregate_delta_outliers
+                        )
+                    if aggregate_delta_duplicates > 0:
+                        quality_gate_duplicates_rejected_total.labels(symbol="").inc(
+                            aggregate_delta_duplicates
+                        )
+                    if aggregate_delta_stale > 0:
+                        quality_gate_stale_rejected_total.labels(symbol="").inc(
+                            aggregate_delta_stale
+                        )
+                    if aggregate_delta_missing > 0:
+                        quality_gate_missing_data_rejected_total.labels(symbol="").inc(
+                            aggregate_delta_missing
+                        )
+                    if aggregate_delta_stale_accepted > 0:
+                        quality_gate_stale_accepted_price_change_total.labels(
+                            symbol=""
+                        ).inc(aggregate_delta_stale_accepted)
+
+                    # Update aggregate rate gauges
+                    aggregate_total = QualityGate._aggregate_metrics["total_processed"]
+                    if aggregate_total > 0:
+                        aggregate_acceptance_rate = (
+                            QualityGate._aggregate_metrics["total_accepted"]
+                            / aggregate_total
+                        )
+                        aggregate_rejection_rate = 1.0 - aggregate_acceptance_rate
+                        quality_gate_acceptance_rate.labels(symbol="").set(
+                            aggregate_acceptance_rate
+                        )
+                        quality_gate_rejection_rate.labels(symbol="").set(
+                            aggregate_rejection_rate
+                        )
+
+                    # Update last synced aggregate values
+                    QualityGate._aggregate_last_synced = QualityGate._aggregate_metrics.copy()
+
+        except ImportError:
+            logger.debug("Prometheus metrics not available, skipping sync")
+        except Exception as e:
+            logger.warning(f"Failed to sync metrics to Prometheus: {e}")

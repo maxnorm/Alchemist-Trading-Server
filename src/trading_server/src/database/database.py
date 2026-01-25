@@ -1052,7 +1052,8 @@ class Database:
                 "latency_seconds": latency_seconds,
             }
 
-            self.execute_with_result(query, params)
+            with self.execute_query() as conn:
+                conn.execute(query, params)
             return True
 
         except SQLAlchemyError as e:
@@ -1383,7 +1384,7 @@ class Database:
                  sentiment_score, sentiment_label, entities,
                  receive_time, latency_seconds, schema_version, schema_type)
                 VALUES (:timestamp, :source, :title, :content, :url, :symbol, :forex_pairs_id,
-                        :sentiment_score, :sentiment_label, :entities::jsonb,
+                        :sentiment_score, :sentiment_label, CAST(:entities AS jsonb),
                         :receive_time, :latency_seconds, '1.0.0', 'news')
             """
             )
@@ -1403,7 +1404,8 @@ class Database:
                 "latency_seconds": latency_seconds,
             }
 
-            result = self.execute_with_result(query, params)
+            with self.execute_query() as conn:
+                conn.execute(query, params)
             return True
 
         except SQLAlchemyError as e:

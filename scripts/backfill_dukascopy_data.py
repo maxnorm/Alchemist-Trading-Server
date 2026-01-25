@@ -25,6 +25,13 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+# Streaming JSON parser for large files
+try:
+    import ijson
+    IJSON_AVAILABLE = True
+except ImportError:
+    IJSON_AVAILABLE = False
+
 # Setup logging with file handler
 log_file_path = Path('logs/dukascopy_backfill.log')
 log_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,27 +196,64 @@ class ParquetConverter:
         self.compression = compression
         self.validate = validate
     
-    def load_dukascopy_json(self, json_path: Path) -> List[Dict]:
-        """Load Dukascopy JSON file"""
-        logger.info(f"Loading JSON file: {json_path}")
+    def stream_dukascopy_json(self, json_path: Path):
+        """
+        Stream parse Dukascopy JSON file to avoid loading entire file into memory.
+        Yields records one at a time.
+        
+        Handles both formats:
+        - Array: [{...}, {...}] 
+        - Object with data key: {"data": [{...}, {...}]}
+        """
+        if not IJSON_AVAILABLE:
+            raise ImportError(
+                "ijson is required for processing large JSON files. "
+                "Install with: pip install ijson>=3.2.0"
+            )
+        
+        logger.info(f"Streaming JSON file: {json_path}")
         
         try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            file_size_mb = json_path.stat().st_size / (1024 * 1024)
+            logger.info(f"File size: {file_size_mb:.2f} MB - using streaming parser")
             
-            # Handle both array and object formats
-            if isinstance(data, list):
-                records = data
-            elif isinstance(data, dict) and 'data' in data:
-                records = data['data']
-            else:
-                raise ValueError(f"Unexpected JSON format in {json_path}")
-            
-            logger.info(f"Loaded {len(records)} records from {json_path}")
-            return records
+            with open(json_path, 'rb') as f:
+                # Peek at first few bytes to determine format
+                first_bytes = f.read(100)
+                f.seek(0)
+                
+                # Check if it starts with array '[' or object '{'
+                if first_bytes.strip().startswith(b'['):
+                    # It's an array - use 'item' path
+                    logger.debug("Detected JSON array format")
+                    parser = ijson.items(f, 'item')
+                    record_count = 0
+                    for record in parser:
+                        record_count += 1
+                        if record_count % 100000 == 0:
+                            logger.debug(f"Streamed {record_count:,} records so far...")
+                        yield record
+                    logger.info(f"Streamed {record_count:,} total records")
+                elif first_bytes.strip().startswith(b'{'):
+                    # It's an object - try 'data.item' path
+                    logger.debug("Detected JSON object format, looking for 'data' array")
+                    try:
+                        parser = ijson.items(f, 'data.item')
+                        record_count = 0
+                        for record in parser:
+                            record_count += 1
+                            if record_count % 100000 == 0:
+                                logger.debug(f"Streamed {record_count:,} records so far...")
+                            yield record
+                        logger.info(f"Streamed {record_count:,} total records")
+                    except (ijson.JSONError, ValueError) as e:
+                        logger.error(f"Failed to parse object format: {e}")
+                        raise ValueError(f"Unexpected JSON object format in {json_path}. Expected 'data' array.")
+                else:
+                    raise ValueError(f"Unexpected JSON format in {json_path}. File doesn't start with '[' or '{{'")
         
         except Exception as e:
-            logger.error(f"Failed to load JSON file {json_path}: {e}")
+            logger.error(f"Failed to stream JSON file {json_path}: {e}")
             raise
     
     def parse_dukascopy_tick(self, record: Dict, symbol: str) -> Optional[Tuple]:
@@ -238,42 +282,74 @@ class ParquetConverter:
             logger.debug(f"Failed to parse tick record: {e}")
             return None
     
-    def json_to_dataframe(self, json_path: Path, symbol: str) -> pd.DataFrame:
-        """Convert JSON file to pandas DataFrame"""
-        records = self.load_dukascopy_json(json_path)
+    def json_to_dataframe(self, json_path: Path, symbol: str, batch_size: int = 100000) -> pd.DataFrame:
+        """
+        Convert JSON file to pandas DataFrame using streaming parser.
+        Processes records in batches to avoid memory issues with large files.
+        """
+        logger.info(f"Converting JSON to DataFrame (symbol: {symbol}, batch_size: {batch_size})")
         
         parsed_ticks = []
         skipped = 0
+        total_processed = 0
+        batch_dfs = []
         
-        for record in records:
+        # Stream parse and process in batches
+        for record in self.stream_dukascopy_json(json_path):
             tick = self.parse_dukascopy_tick(record, symbol)
             if tick:
                 parsed_ticks.append(tick)
             else:
                 skipped += 1
+            
+            total_processed += 1
+            
+            # Process batch when we reach batch_size
+            if len(parsed_ticks) >= batch_size:
+                # Create DataFrame for this batch
+                batch_df = pd.DataFrame(
+                    parsed_ticks,
+                    columns=['timestamp', 'bid', 'ask', 'symbol']
+                )
+                
+                # Optimize dtypes
+                batch_df['timestamp'] = pd.to_datetime(batch_df['timestamp'], utc=True)
+                batch_df['bid'] = batch_df['bid'].astype('float64')
+                batch_df['ask'] = batch_df['ask'].astype('float64')
+                batch_df['symbol'] = batch_df['symbol'].astype('category')
+                
+                batch_dfs.append(batch_df)
+                parsed_ticks = []  # Clear for next batch
+                
+                logger.info(f"Processed {total_processed:,} records, created {len(batch_dfs)} batches")
+        
+        # Process remaining records
+        if parsed_ticks:
+            batch_df = pd.DataFrame(
+                parsed_ticks,
+                columns=['timestamp', 'bid', 'ask', 'symbol']
+            )
+            batch_df['timestamp'] = pd.to_datetime(batch_df['timestamp'], utc=True)
+            batch_df['bid'] = batch_df['bid'].astype('float64')
+            batch_df['ask'] = batch_df['ask'].astype('float64')
+            batch_df['symbol'] = batch_df['symbol'].astype('category')
+            batch_dfs.append(batch_df)
         
         if skipped > 0:
             logger.warning(f"Skipped {skipped} invalid records")
         
-        if not parsed_ticks:
+        if not batch_dfs:
             raise ValueError(f"No valid ticks found in {json_path}")
         
-        # Create DataFrame
-        df = pd.DataFrame(
-            parsed_ticks,
-            columns=['timestamp', 'bid', 'ask', 'symbol']
-        )
+        # Concatenate all batches
+        logger.info(f"Concatenating {len(batch_dfs)} batches into final DataFrame...")
+        df = pd.concat(batch_dfs, ignore_index=True)
         
-        # Optimize dtypes
-        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
-        df['bid'] = df['bid'].astype('float64')
-        df['ask'] = df['ask'].astype('float64')
-        df['symbol'] = df['symbol'].astype('category')
-        
-        # Sort by timestamp
+        # Sort by timestamp (required for validation)
+        logger.info("Sorting by timestamp...")
         df = df.sort_values('timestamp').reset_index(drop=True)
         
-        logger.info(f"Created DataFrame with {len(df)} ticks")
+        logger.info(f"Created DataFrame with {len(df):,} ticks (processed {total_processed:,} total records)")
         return df
     
     def validate_dataframe(self, df: pd.DataFrame, symbol: str) -> Dict:

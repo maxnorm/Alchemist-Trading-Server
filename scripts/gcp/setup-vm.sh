@@ -104,7 +104,7 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
 # Install Python packages (matching requirements.txt versions)
-pip3 install "pandas>=2.0.0" "pyarrow>=14.0.0" "numpy<2.0.0"
+pip3 install "pandas>=2.0.0" "pyarrow>=14.0.0" "numpy<2.0.0" "ijson>=3.2.0"
 
 # Install dukascopy-node globally
 npm install -g dukascopy-node

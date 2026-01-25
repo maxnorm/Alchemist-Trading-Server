@@ -53,6 +53,7 @@ great-expectations>=0.18.0
 # ============================================================================
 pyarrow>=14.0.0
 pyyaml>=6.0.0
+ijson>=3.2.0  # Streaming JSON parser for large files
 
 # ============================================================================
 # Web Scraping (optional - typically used in containers, comment out if not needed)

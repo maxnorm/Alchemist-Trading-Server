@@ -71,42 +71,9 @@ sequenceDiagram
 
 ## Scheduled Data Collection (Airflow)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Scheduler as Airflow Scheduler
-    participant Worker as Airflow Worker
-    participant Celery as Celery Broker
-    participant Task as Data Collection Task
-    participant Connector as Data Connector
-    participant API as External API
-    participant QG as Quality Gates
-    participant DB as TimescaleDB
+**Note**: MT5 tick data collection is no longer scheduled via Airflow. Real-time tick collection is handled exclusively through ZeroMQ streaming (see "Real-Time Tick Ingestion" section above). The scheduled `data_collection_pipeline` DAG has been removed.
 
-    %% Hourly DAG trigger
-    Scheduler->>Scheduler: Check data_collection_pipeline DAG
-    Note over Scheduler: @hourly schedule
-    
-    Scheduler->>Worker: Trigger DAG run
-    
-    %% Parallel task execution
-    par MT5 Data Collection
-        Worker->>Celery: Enqueue collect_mt5_data
-        Celery->>Task: Execute task
-        Task->>Connector: MT5PriceConnector.backfill()
-        Connector->>DB: Query gaps in data
-        Connector->>Connector: Fill gaps from source
-        Task-->>Worker: Success
-    and Economic Calendar
-        Worker->>Worker: collect_economic_calendar()
-        Worker->>API: Scrape Myfxbook
-        API-->>Worker: Calendar events
-        Worker->>QG: Validate events
-        Worker->>DB: INSERT INTO economic_calendar
-    end
-    
-    Worker-->>Scheduler: DAG run complete
-```
+Historical backfill and gap filling for MT5 data can still be performed manually using the `historical_backfill_dag` DAG, which uses the `collect_mt5_data` Celery task on-demand.
 
 ## Alternative Data Collection
 
@@ -216,9 +183,10 @@ class IDataSourceConnector(ABC):
 
 | DAG | Schedule | Tasks |
 |-----|----------|-------|
-| `data_collection_pipeline` | @hourly | MT5 data, economic calendar |
 | `alternative_data_collection_dag` | @daily | FRED, ECB, NewsAPI, RSS |
-| `historical_backfill_dag` | Manual | Historical data gaps |
+| `historical_backfill_dag` | Manual | Historical data gaps, MT5 gap filling |
+
+**Note**: The `data_collection_pipeline` DAG has been removed. MT5 tick collection is now exclusively handled via ZeroMQ real-time streaming. The `collect_mt5_data` Celery task remains available for manual gap filling and historical backfill operations.
 
 ## Assumptions
 - **None** - All ingestion flows verified in codebase

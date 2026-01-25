@@ -86,7 +86,8 @@ fi
 # Start collection on VM
 echo "Starting collection on VM..."
 gcloud compute ssh $VM_NAME --zone=$ZONE <<EOF
-set -e
+# Don't exit on error - we'll handle errors explicitly
+set +e
 
 # Check and mount /data if needed
 if [ ! -d /data ]; then
@@ -128,16 +129,27 @@ cd /opt/trading-system
 echo "Starting collection: $START_DATE to $END_DATE"
 echo "Started at: \$(date)"
 
+# Verify screen is installed
+if ! command -v screen &> /dev/null; then
+    echo "Error: screen is not installed. Installing..."
+    sudo apt-get update && sudo apt-get install -y screen
+fi
+
 # Check if screen session already exists
-if screen -list | grep -q "dukascopy-collection"; then
+if screen -list 2>/dev/null | grep -q "dukascopy-collection"; then
     echo "Warning: Screen session 'dukascopy-collection' already exists"
     echo "Killing existing session..."
-    screen -S dukascopy-collection -X quit || true
+    screen -S dukascopy-collection -X quit 2>/dev/null || true
     sleep 1
 fi
 
+# Prepare log file path
+LOG_FILE="/data/logs/collection_\$(date +%Y%m%d_%H%M%S).log"
+mkdir -p /data/logs
+
 # Run collection in screen session (runs in background)
 # Use exec to ensure screen session persists
+echo "Creating screen session..."
 screen -dmS dukascopy-collection bash -c "
 cd /opt/trading-system && \
 LOG_FILE=\"/data/logs/collection_\$(date +%Y%m%d_%H%M%S).log\" && \
@@ -151,17 +163,51 @@ exec python3 scripts/backfill_dukascopy_data.py \
     --verbose \
     2>&1 | tee \"\$LOG_FILE\"
 "
+SCREEN_EXIT_CODE=\$?
+
+if [ \$SCREEN_EXIT_CODE -eq 0 ]; then
+    echo "Screen command executed successfully"
+else
+    echo "Error: screen command failed with exit code \$SCREEN_EXIT_CODE"
+fi
 
 # Wait a moment and verify screen session was created
-sleep 1
-if screen -list | grep -q "dukascopy-collection"; then
-    echo "Collection started in screen session 'dukascopy-collection'"
+sleep 3
+if screen -list 2>/dev/null | grep -q "dukascopy-collection"; then
+    echo "✓ Collection started in screen session 'dukascopy-collection'"
     echo "To view: screen -r dukascopy-collection"
     echo "To detach: Ctrl+A, then D"
     echo "Log files: /data/logs/collection_*.log"
+    exit 0
 else
-    echo "Error: Failed to create screen session"
-    exit 1
+    echo "Warning: Screen session not found after creation"
+    echo "Checking if screen is working..."
+    screen -list 2>&1
+    echo ""
+    echo "Attempting fallback: running directly in background..."
+    # Fallback: run directly and background it
+    LOG_FILE="/data/logs/collection_\$(date +%Y%m%d_%H%M%S).log"
+    nohup python3 scripts/backfill_dukascopy_data.py \
+        --start-date $START_DATE \
+        --end-date $END_DATE \
+        --output-dir /data/dukascopy \
+        --batch-size 3 \
+        --pause-ms 5000 \
+        --compression snappy \
+        --verbose \
+        > "\$LOG_FILE" 2>&1 &
+    COLLECTION_PID=\$!
+    sleep 1
+    if ps -p \$COLLECTION_PID > /dev/null 2>&1; then
+        echo "✓ Collection started in background (PID: \$COLLECTION_PID)"
+        echo "Log file: \$LOG_FILE"
+        echo "To check status: ps aux | grep \$COLLECTION_PID"
+        echo "To view logs: tail -f \$LOG_FILE"
+        exit 0
+    else
+        echo "Error: Failed to start collection process"
+        exit 1
+    fi
 fi
 EOF
 

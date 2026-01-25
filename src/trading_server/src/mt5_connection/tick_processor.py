@@ -91,6 +91,12 @@ class TickProcessor:
         self.quality_gate = QualityGate()
         self.event_normalizer = EventNormalizer()
 
+        # Quality gate metrics sync configuration
+        self._quality_metrics_sync_interval = int(
+            os.getenv("QUALITY_METRICS_SYNC_INTERVAL_TICKS", "100")
+        )  # Sync every N ticks
+        self._quality_metrics_sync_counter = 0
+
         self._db_write_queue = queue.Queue(maxsize=1000)
         self._db_writer_thread = threading.Thread(
             target=self._db_writer_worker, daemon=True
@@ -604,6 +610,13 @@ class TickProcessor:
         is_valid, rejection_reason, timestamp_metadata = self.quality_gate.validate(
             tick_info_dict, symbol, current_time
         )
+
+        # Sync quality gate metrics to Prometheus periodically
+        self._quality_metrics_sync_counter += 1
+        if self._quality_metrics_sync_counter >= self._quality_metrics_sync_interval:
+            self.quality_gate.sync_metrics_to_prometheus(symbol=symbol)
+            self._quality_metrics_sync_counter = 0
+
         if not is_valid:
             if self._db:
                 try:
