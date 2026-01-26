@@ -82,6 +82,7 @@ class PaperTradingEnv(BaseTradingEnv):
         use_reward_monitoring: bool = True,
         risk_manager: Optional[RiskManager] = None,
         seed: Optional[int] = None,
+        selected_features: Optional[List[str]] = None,
     ):
         """
         Initialize paper trading environment.
@@ -97,6 +98,7 @@ class PaperTradingEnv(BaseTradingEnv):
             use_reward_monitoring: Whether to monitor rewards (default: True)
             risk_manager: Optional risk manager instance
             seed: Random seed for reproducibility
+            selected_features: Optional list of feature names to filter by (if None, uses all features)
         """
         # Calculate number of pairs and features per pair (like LiveTradingEnv)
         n_pairs = len(connectors) if connectors else 1
@@ -180,12 +182,20 @@ class PaperTradingEnv(BaseTradingEnv):
             database=db,
             feature_registry=feature_registry,
         )
+        
+        # Filter features if specified
+        if selected_features:
+            self.feature_engine.filter_features(selected_features)
+        
         self.state_builder = StateBuilder(
             price_history_manager=self.price_history_manager,
             feature_engine=self.feature_engine,
             window_size=window_size,
             connectors=connectors,
         )
+        
+        # Store selected features for reference
+        self.selected_features = selected_features
 
         # Initialize performance metrics tracker
         self.performance_metrics = PerformanceMetrics(window_size=252)

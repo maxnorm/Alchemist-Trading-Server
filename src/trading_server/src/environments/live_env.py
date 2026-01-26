@@ -28,6 +28,7 @@ class LiveTradingEnv(BaseTradingEnv):
         reward_monitor: Optional[RewardMonitor] = None,
         use_reward_monitoring: bool = True,
         seed: Optional[int] = None,
+        selected_features: Optional[List[str]] = None,
     ):
         """
         Initialize the live trading environment
@@ -40,6 +41,7 @@ class LiveTradingEnv(BaseTradingEnv):
         :param reward_monitor: Optional reward monitor instance
         :param use_reward_monitoring: Whether to monitor rewards (default: True)
         :param seed: Random seed for reproducibility
+        :param selected_features: Optional list of feature names to filter by (if None, uses all features)
         """
         # Calculate number of pairs and features per pair
         n_pairs = len(connectors) if connectors else 1
@@ -129,12 +131,20 @@ class LiveTradingEnv(BaseTradingEnv):
             database=db,
             feature_registry=feature_registry,
         )
+        
+        # Filter features if specified
+        if selected_features:
+            self.feature_engine.filter_features(selected_features)
+        
         self.state_builder = StateBuilder(
             price_history_manager=self.price_history_manager,
             feature_engine=self.feature_engine,
             window_size=window_size,
             connectors=connectors,
         )
+        
+        # Store selected features for reference
+        self.selected_features = selected_features
 
         # Initialize performance metrics tracker
         # Window size of 252 = 1 year of trading days (for annualized metrics)

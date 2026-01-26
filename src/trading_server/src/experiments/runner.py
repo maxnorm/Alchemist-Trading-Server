@@ -8,10 +8,12 @@ import logging
 import threading
 from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
+from sqlalchemy import text
 
 from .models import ExperimentStatus, ExperimentRepository
 from domain.config.agent_config import AgentConfig
 from domain.config.training_config import TrainingConfig
+from domain.environment_type import EnvironmentType
 from infrastructure.factories.agent_factory import AgentFactory
 from infrastructure.factories.environment_factory import EnvironmentFactory
 from training.live_trainer import LiveTrainer
@@ -44,6 +46,7 @@ class ExperimentRunner:
         get_account_func: Callable[[], Account],
         get_risk_manager_func: Callable[[], RiskManager],
         training_loop_factory: Optional[Callable] = None,
+        feature_catalog=None,
     ):
         """
         Initialize experiment runner
@@ -55,6 +58,7 @@ class ExperimentRunner:
         :param get_account_func: Function to get Account instance
         :param get_risk_manager_func: Function to get RiskManager instance
         :param training_loop_factory: Optional factory for creating training loops
+        :param feature_catalog: Optional FeatureCatalog instance for feature validation
         """
         self.db = database
         self.experiment_tracker = experiment_tracker
@@ -63,6 +67,7 @@ class ExperimentRunner:
         self.get_account = get_account_func
         self.get_risk_manager = get_risk_manager_func
         self.training_loop_factory = training_loop_factory
+        self.feature_catalog = feature_catalog
 
         self.repository = ExperimentRepository(database)
 
@@ -111,25 +116,75 @@ class ExperimentRunner:
                 # Create agent config from experiment hyperparameters
                 agent_config = self._create_agent_config(experiment.hyperparameters)
 
-                # Get account and risk manager
-                account = self.get_account()
+                # Get risk manager
                 risk_manager = self.get_risk_manager()
 
-                # Create environment with experiment features
-                # Note: This assumes environment factory can filter by features
-                # For now, we'll use all available connectors and filter in the environment
-                # TODO: Enhance environment factory to support feature selection
+                # Map training_mode to EnvironmentType
+                env_type_map = {
+                    "live": EnvironmentType.LIVE,
+                    "paper": EnvironmentType.PAPER,
+                    "historical": EnvironmentType.HISTORICAL,
+                }
+                env_type = env_type_map.get(experiment.training_mode)
+                if env_type is None:
+                    raise ValueError(
+                        f"Invalid training_mode: {experiment.training_mode}. Must be one of: {list(env_type_map.keys())}"
+                    )
+
+                # Validate features exist in catalog if feature_catalog is available
+                if experiment.features and self.feature_catalog:
+                    self._validate_features_exist(experiment.features)
+
                 connectors = self._get_connectors_for_pairs(experiment.currency_pairs)
                 window_size = experiment.hyperparameters.get("window_size", 50)
                 # Extract seed from hyperparameters (default: 42 for reproducibility)
                 seed = experiment.hyperparameters.get("seed", 42)
 
-                environment = self.environment_factory.create_environment(
-                    account=account,
-                    connectors=connectors,
-                    window_size=window_size,
-                    seed=seed,
-                )
+                # Create environment based on type
+                if env_type == EnvironmentType.HISTORICAL:
+                    # Historical data must be provided in hyperparameters
+                    # Data loading is NOT implemented per requirements
+                    data = experiment.hyperparameters.get("historical_data")
+                    if data is None:
+                        raise ValueError(
+                            "Historical data must be provided in hyperparameters. "
+                            "Set 'historical_data' key with a pandas DataFrame."
+                        )
+                    environment = self.environment_factory.create_environment(
+                        environment_type=env_type,
+                        data=data,
+                        window_size=window_size,
+                        seed=seed,
+                        initial_balance=experiment.hyperparameters.get(
+                            "initial_balance", 10000.0
+                        ),
+                        transaction_cost=experiment.hyperparameters.get(
+                            "transaction_cost", 0.0001
+                        ),
+                    )
+                    # For historical, we don't have an account, use None
+                    account = None
+                elif env_type == EnvironmentType.PAPER:
+                    demo_account = self._get_demo_account()
+                    environment = self.environment_factory.create_environment(
+                        environment_type=env_type,
+                        account=demo_account,
+                        connectors=connectors,
+                        window_size=window_size,
+                        seed=seed,
+                        features=experiment.features,
+                    )
+                    account = demo_account
+                else:  # LIVE
+                    account = self.get_account()
+                    environment = self.environment_factory.create_environment(
+                        environment_type=env_type,
+                        account=account,
+                        connectors=connectors,
+                        window_size=window_size,
+                        seed=seed,
+                        features=experiment.features,
+                    )
 
                 # Create agent
                 agent = self.agent_factory.create_agent(
@@ -558,6 +613,34 @@ class ExperimentRunner:
             trading_enabled=False,  # Start with trading disabled for safety
         )
 
+    def _validate_features_exist(self, feature_names: List[str]) -> None:
+        """
+        Validate that all specified features exist in the feature catalog.
+        
+        :param feature_names: List of feature names to validate
+        :raises ValueError: If any feature doesn't exist
+        """
+        if not self.feature_catalog:
+            logger.warning(
+                "Feature catalog not available, skipping feature validation"
+            )
+            return
+        
+        try:
+            available_features = self.feature_catalog.get_all_features()
+            available_feature_names = {f.name for f in available_features}
+            
+            missing = [f for f in feature_names if f not in available_feature_names]
+            if missing:
+                available_sample = list(available_feature_names)[:10]
+                raise ValueError(
+                    f"Features not found in catalog: {missing}. "
+                    f"Available features (sample): {available_sample}..."
+                )
+        except Exception as e:
+            logger.warning(f"Error validating features: {e}")
+            # Don't fail if validation has issues, just log warning
+
     def _get_connectors_for_pairs(self, currency_pairs: list):
         """
         Get data connectors for specified currency pairs
@@ -591,6 +674,69 @@ class ExperimentRunner:
             connectors.append(connector)
 
         return connectors
+
+    def _get_demo_account(self) -> Account:
+        """
+        Get or retrieve demo account for paper trading
+
+        :return: Account instance for demo account
+        :raises ValueError: If no demo account is found or not connected
+        """
+        try:
+            # Query database for demo account
+            with self.db.execute_query() as conn:
+                result = conn.execute(
+                    text(
+                        "SELECT account_login, auth_token FROM mt5_accounts "
+                        "WHERE account_type = 'demo' AND is_active = TRUE "
+                        "ORDER BY created_at DESC LIMIT 1"
+                    )
+                )
+                row = result.fetchone()
+
+                if not row:
+                    raise ValueError(
+                        "No active demo account found in database. "
+                        "Please create and connect a demo account first."
+                    )
+
+                account_login = row[0]
+                auth_token = row[1] if len(row) > 1 else None
+
+                # Try to get account from server's account list
+                # The get_account_func returns an account, but it might only return live accounts
+                # For paper trading, we need the demo account to be connected to the server
+                # If it's not connected, we'll raise a clear error
+                try:
+                    account = self.get_account()
+                    if account and account.login == account_login:
+                        return account
+                    else:
+                        # Account returned but it's not the demo account we queried
+                        raise ValueError(
+                            f"Demo account {account_login} found in database but not connected to server. "
+                            "Please ensure the demo account is connected via Server.connect_account() "
+                            "before starting a paper trading experiment."
+                        )
+                except Exception as e:
+                    # If get_account() fails or returns wrong account, raise error with helpful message
+                    if auth_token:
+                        raise ValueError(
+                            f"Demo account {account_login} found in database but not connected. "
+                            f"Please connect it using: server.connect_account({account_login}, '{auth_token}')"
+                        )
+                    else:
+                        raise ValueError(
+                            f"Demo account {account_login} found in database but has no auth_token. "
+                            "Please ensure the demo account is properly configured and connected."
+                        )
+
+        except ValueError:
+            # Re-raise ValueError as-is
+            raise
+        except Exception as e:
+            logger.error(f"Error querying for demo account: {e}", exc_info=True)
+            raise ValueError(f"Failed to query for demo account: {e}")
 
     def _calculate_and_store_pbo(
         self, experiment_id: int, mlflow_run_id: Optional[str]

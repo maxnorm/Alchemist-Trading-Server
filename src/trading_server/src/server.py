@@ -111,6 +111,7 @@ class Server:
                 environment_factory=self.__environment_factory,
                 get_account_func=get_account,
                 get_risk_manager_func=get_risk_manager,
+                feature_catalog=self.__feature_catalog,
             )
 
             self.__optuna_tuner = OptunaHyperparameterTuner(

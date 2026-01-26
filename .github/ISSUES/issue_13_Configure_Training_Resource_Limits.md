@@ -18,6 +18,14 @@ Projects:
 
 Training jobs can consume unlimited resources, leading to system instability and resource contention. We need to enforce resource limits per training job.
 
+**Validated Finding from Training Readiness Report:**
+- **Status:** ✅ VALIDATED - Confirmed missing in codebase
+- **Priority:** P1 - Important for production, not blocking for first training
+- **Evidence:**
+  - **File:** `docker-compose.yml`
+  - **Line 58-93:** `server` service has no `deploy.resources.limits`
+  - **Impact:** Training jobs can exhaust system resources, risk of OOM errors, system instability during training
+
 ## Proposed Solution
 
 1. **Add Resource Limits to Training Container:**

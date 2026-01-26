@@ -14,7 +14,7 @@ class ExperimentCreate(BaseModel):
     description: Optional[str] = None
     features: List[str] = Field(..., min_length=1)
     currency_pairs: List[str] = Field(..., min_length=1)
-    training_mode: str = Field(..., pattern="^(live|historical)$")
+    training_mode: str = Field(..., pattern="^(live|paper|historical)$")
     hyperparameters: Dict[str, Any] = Field(default_factory=dict)
 
 

@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, Tuple, Union, cast
 
 from agents.dqn_agent import DQNAgent
 from agents.attention_dqn_agent import AttentionDQNAgent
-from environments.live_env import LiveTradingEnv
+from environments.base_trading_env import BaseTradingEnv
 from domain.config.agent_config import AgentConfig
 
 
@@ -18,7 +18,7 @@ class AgentFactory:
 
     @staticmethod
     def create_agent(
-        env: LiveTradingEnv,
+        env: BaseTradingEnv,
         config: Optional[AgentConfig] = None,
         model_path: Optional[str] = None,
         use_attention: bool = False,

@@ -56,6 +56,10 @@ class FeatureEngine:
         self.pipeline_version: Optional[str] = None
         self.feature_list: List[str] = []
         self._feature_definitions: Optional[Dict[str, Any]] = None
+        
+        # Feature filtering
+        self.selected_features: Optional[List[str]] = None
+        self._filtered_indicators: Optional[set] = None
 
         # Initialize version tracking
         self._initialize_versioning()
@@ -122,7 +126,20 @@ class FeatureEngine:
             self.indicator_cache[symbol] = {k: v.copy() for k, v in indicators.items()}
             self.last_calculated_length[symbol] = current_length
 
+        # Filter indicators if feature filtering is enabled
+        if self._filtered_indicators is not None:
+            # Only keep indicators that are in the filtered set
+            indicators = {
+                k: v for k, v in indicators.items()
+                if k in self._filtered_indicators
+            }
+            # Note: "price" is not in indicators dict (it comes from TechnicalIndicators),
+            # but we always include it in pair_features below since it's needed for feature engineering
+
         # Combine features
+        # Always include price - it's the base data for all indicators
+        # If filtering is enabled and price is not selected, it will be filtered out later
+        # by the feature engineer transform step
         pair_features = {"price": prices, **indicators}
 
         # Fit feature engineer if not fitted
@@ -789,3 +806,93 @@ class FeatureEngine:
             return combined_features.astype(np.float32)
 
         return None
+
+    def filter_features(self, feature_names: List[str]) -> None:
+        """
+        Filter feature engine to only use specified features.
+        
+        This method filters which technical indicators are computed and which features
+        are included in the feature list. Features are expected to be named with
+        symbol suffix (e.g., "rsi_14_EURUSD", "price_bid_EURUSD").
+        
+        :param feature_names: List of feature names to keep (e.g., ["rsi_14_EURUSD", "sma_20_GBPUSD"])
+        """
+        if not feature_names:
+            return
+        
+        self.selected_features = feature_names
+        feature_set = set(feature_names)
+        
+        # Extract base indicator names from selected features
+        # Features are named as {indicator}_{symbol} or {field}_{symbol}
+        # For technical indicators, we need to map back to base names
+        # e.g., "rsi_14_EURUSD" -> "rsi", "sma_20_EURUSD" -> "sma_20"
+        base_indicator_map = {
+            "rsi": "rsi",
+            "rsi_14": "rsi",
+            "sma_20": "sma_20",
+            "sma_50": "sma_50",
+            "ema_12": "ema_12",
+            "ema_26": "ema_26",
+            "macd": "macd",
+            "macd_signal": "macd_signal",
+            "macd_histogram": "macd_histogram",
+            "bb_upper": "bb_upper",
+            "bb_middle": "bb_middle",
+            "bb_lower": "bb_lower",
+            "bb_width": "bb_width",
+            "price_change": "price_change",
+            "price_change_pct": "price_change_pct",
+            "price": "price",
+        }
+        
+        # Determine which indicators to compute
+        selected_indicators = set()
+        for feature_name in feature_names:
+            # Try to match base indicator name
+            # Feature names might be: "rsi_14_EURUSD", "rsi_EURUSD", or just "rsi"
+            parts = feature_name.split("_")
+            
+            # Check if it starts with a known indicator
+            for base_name, indicator_key in base_indicator_map.items():
+                if feature_name.startswith(base_name + "_") or feature_name == base_name:
+                    selected_indicators.add(indicator_key)
+                    break
+                # Also check for patterns like "rsi_14" -> "rsi"
+                if len(parts) >= 2:
+                    potential_base = "_".join(parts[:2])  # e.g., "rsi_14"
+                    if potential_base in base_indicator_map:
+                        selected_indicators.add(base_indicator_map[potential_base])
+                        break
+                    potential_base = parts[0]  # e.g., "rsi"
+                    if potential_base in base_indicator_map:
+                        selected_indicators.add(base_indicator_map[potential_base])
+                        break
+            
+            # Always include price if any price-related feature is selected
+            if "price" in feature_name.lower():
+                selected_indicators.add("price")
+        
+        # If no indicators matched, keep all (backward compatibility)
+        if not selected_indicators:
+            logger.warning(
+                f"Could not match any indicators from selected features: {feature_names}. "
+                "Using all indicators."
+            )
+            self._filtered_indicators = None
+        else:
+            self._filtered_indicators = selected_indicators
+            logger.info(
+                f"Filtered to compute only indicators: {sorted(selected_indicators)}"
+            )
+        
+        # Filter feature_list to only include selected base features
+        # This is used for metadata/versioning
+        if self.feature_list:
+            # Keep features that match selected indicators
+            # Use self._filtered_indicators which was just set above
+            filtered_list = []
+            for base_feature in self.feature_list:
+                if self._filtered_indicators is None or base_feature in self._filtered_indicators:
+                    filtered_list.append(base_feature)
+            self.feature_list = filtered_list
