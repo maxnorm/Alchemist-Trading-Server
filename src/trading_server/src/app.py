@@ -11,8 +11,6 @@ from datetime import datetime
 from dotenv import load_dotenv
 import logging
 from server import Server
-from database import Database
-from web_scraper.web_scraper_myfxbook import WebScraperMyfxbook
 from monitoring.mt5_clock_monitor import MT5ClockMonitor, set_global_mt5_monitor
 from monitoring.clock_sync_monitor import ClockSyncMonitor, set_global_monitor
 from monitoring.gap_detector import GapDetector, set_global_gap_detector
@@ -54,21 +52,12 @@ def parse_arguments():
     return args
 
 
-def create_composition_root(verbose: bool = False):
+def create_clock_monitoring_components(verbose: bool = False):
     """
-    Create composition root - wire all dependencies
+    Create clock monitoring components
     :param verbose: Enable verbose logging
-    :return: Tuple of (Server instance, ClockSyncMonitor, GapDetector)
+    :return: ClockSyncMonitor, GapDetector, MT5ClockMonitor
     """
-    # Create shared dependencies
-    database = Database()
-    scraper = WebScraperMyfxbook(
-        email=os.getenv("MYFXBOOK_EMAIL"),
-        password=os.getenv("MYFXBOOK_PASSWORD"),
-        url=os.getenv("URL_MYFXBOOK"),
-    )
-
-    server = Server(verbose=verbose, database=database, scraper=scraper)
 
     clock_monitor = None
     gap_detector = None
@@ -137,7 +126,7 @@ def create_composition_root(verbose: bool = False):
         if verbose:
             print(f"Warning: Could not initialize MT5 clock monitor: {e}")
 
-    return server, clock_monitor, gap_detector, mt5_monitor
+    return clock_monitor, gap_detector, mt5_monitor
 
 
 def signal_handler(signum, frame):
@@ -148,28 +137,8 @@ def signal_handler(signum, frame):
     print(f"\nReceived signal {signum}, shutting down gracefully...")
     sys.exit(0)
 
-
-def start():
-    """Start the program"""
-    global _shutdown_event
-
-    args = parse_arguments()
-    load_dotenv()
-
-    # Create shutdown event for coordination
-    _shutdown_event = threading.Event()
-
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    # Initialize server and monitoring components
-    server, clock_monitor, gap_detector, mt5_monitor = create_composition_root(verbose=args.verbose)
-
-    if args.verbose:
-        print("Trading server initialized and running. Press Ctrl+C to stop.")
-
-    # Keep the main thread alive
+def keep_main_thread_alive(server, clock_monitor, gap_detector, verbose: bool = False):
+    """Keep the main thread alive"""
     try:
         while not _shutdown_event.is_set():
             _shutdown_event.wait(timeout=1.0)
@@ -193,9 +162,30 @@ def start():
                 server._Server__experiment_consumer.stop()
             except Exception:
                 pass
-        if args.verbose:
+        if verbose:
             print("Trading server stopped.")
 
+def start():
+    """Start the program"""
+    global _shutdown_event
+
+    args = parse_arguments()
+    load_dotenv()
+
+    # Create shutdown event for coordination
+    _shutdown_event = threading.Event()
+
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    server = Server(verbose=args.verbose)
+    clock_monitor, gap_detector, mt5_monitor = create_clock_monitoring_components(verbose=args.verbose)
+
+    if args.verbose:
+        print("Trading server initialized and running. Press Ctrl+C to stop.")
+
+    keep_main_thread_alive(server, clock_monitor, gap_detector)
 
 if __name__ == "__main__":
     start()

@@ -43,7 +43,7 @@ class ExperimentRunner:
         experiment_tracker,
         agent_factory: AgentFactory,
         environment_factory: EnvironmentFactory,
-        get_account_func: Callable[[], Account],
+        get_account_func: Callable[[Optional[int]], Optional[Account]],
         get_risk_manager_func: Callable[[], RiskManager],
         training_loop_factory: Optional[Callable] = None,
         feature_catalog=None,
@@ -55,7 +55,8 @@ class ExperimentRunner:
         :param experiment_tracker: ExperimentTracker (MLflow) instance
         :param agent_factory: AgentFactory instance
         :param environment_factory: EnvironmentFactory instance
-        :param get_account_func: Function to get Account instance
+        :param get_account_func: Function to get Account instance. Accepts optional
+                                 account_login parameter. If None, returns first account.
         :param get_risk_manager_func: Function to get RiskManager instance
         :param training_loop_factory: Optional factory for creating training loops
         :param feature_catalog: Optional FeatureCatalog instance for feature validation
@@ -703,23 +704,24 @@ class ExperimentRunner:
                 account_login = row[0]
                 auth_token = row[1] if len(row) > 1 else None
 
-                # Try to get account from server's account list
-                # The get_account_func returns an account, but it might only return live accounts
+                # Try to get account from server's account list by login
                 # For paper trading, we need the demo account to be connected to the server
                 # If it's not connected, we'll raise a clear error
                 try:
-                    account = self.get_account()
-                    if account and account.login == account_login:
+                    account = self.get_account(account_login)
+                    if account:
                         return account
                     else:
-                        # Account returned but it's not the demo account we queried
+                        # Account not found in connected accounts
                         raise ValueError(
                             f"Demo account {account_login} found in database but not connected to server. "
                             "Please ensure the demo account is connected via Server.connect_account() "
                             "before starting a paper trading experiment."
                         )
                 except Exception as e:
-                    # If get_account() fails or returns wrong account, raise error with helpful message
+                    # If get_account() fails, raise error with helpful message
+                    if isinstance(e, ValueError):
+                        raise  # Re-raise ValueError as-is
                     if auth_token:
                         raise ValueError(
                             f"Demo account {account_login} found in database but not connected. "

@@ -1,8 +1,7 @@
 """
-HTTP Controller for handling HTTP requests in the MT5 server
+HTTP Controller for handling HTTP requests
 
-This controller handles HTTP and HTTPS requests (like Prometheus metrics scraping)
-that come through the same socket as MT5 connections.
+This controller handles HTTP and HTTPS requests.
 """
 
 import os
