@@ -3,9 +3,6 @@ name: Lint API
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/backend/api/**'
-      - '.github/workflows/lint_api.yml'
 
 jobs:
   lint:

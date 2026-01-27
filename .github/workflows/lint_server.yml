@@ -3,9 +3,6 @@ name: Lint Server
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/backend/trading_server/**'
-      - '.github/workflows/lint_server.yml'
 
 jobs:
   lint:

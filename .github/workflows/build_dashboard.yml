@@ -3,9 +3,6 @@ name: Build Dashboard
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/dashboard/**'
-      - '.github/workflows/build_dashboard.yml'
 
 jobs:
   build:

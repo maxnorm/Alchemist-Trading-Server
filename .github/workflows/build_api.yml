@@ -3,9 +3,6 @@ name: Build API
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/backend/api/**'
-      - '.github/workflows/build_api.yml'
 
 jobs:
   build:

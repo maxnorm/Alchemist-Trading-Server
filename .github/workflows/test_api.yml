@@ -3,10 +3,6 @@ name: Test API
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/backend/api/**'
-      - 'tests/api/**'
-      - '.github/workflows/test_api.yml'
 
 jobs:
   test:

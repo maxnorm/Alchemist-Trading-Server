@@ -3,16 +3,6 @@ name: Test Server
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/backend/trading_server/**'
-      - 'tests/unit/**'
-      - 'tests/integration/**'
-      - 'tests/e2e/**'
-      - 'tests/performance/**'
-      - 'tests/stress/**'
-      - 'tests/__init__.py'
-      - 'pytest.ini'
-      - '.github/workflows/test_server.yml'
 
 jobs:
   test:
