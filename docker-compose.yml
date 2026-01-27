@@ -58,8 +58,8 @@ services:
     server:
         container_name: "server"
         build:
-            context: .
-            dockerfile: ./src/backend/trading_server/Dockerfile
+            context: ./src/backend/trading_server
+            dockerfile: Dockerfile
         depends_on:
             postgres:
                 condition: service_healthy

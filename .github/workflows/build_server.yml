@@ -12,8 +12,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Free disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          # Remove unnecessary packages and files
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          echo "Disk space after cleanup:"
+          df -h
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      
+      - name: Clean Docker system
+        run: |
+          docker system prune -f || true
+          docker builder prune -f || true
+          echo "Docker disk usage:"
+          docker system df || true
       
       - name: Create .env file for build
         run: |
@@ -34,3 +54,7 @@ jobs:
       - name: Verify image
         run: |
           docker images | grep alchemist-server
+          echo "Final disk space:"
+          df -h
+          echo "Docker disk usage:"
+          docker system df
