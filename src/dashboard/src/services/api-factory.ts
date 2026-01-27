@@ -6,6 +6,10 @@
 
 import { ApiClient } from './api';
 import { MockApiClient } from './api-mock';
+import type { OrderBook, PriceTick, OHLC, TimeAndSale, MarketStatus } from '../types/market';
+import type { Order, OrderRequest, OrderConfirmation, OrderModification } from '../types/orders';
+import type { TrainingLog } from '../types/training';
+import type { ResourceUsage } from '../types/resources';
 
 /**
  * Determine if mock API should be used
@@ -17,25 +21,25 @@ const useMockApi = import.meta.env.VITE_USE_MOCK_API === 'true';
  */
 export interface ExtendedApiClient {
   // Market Data
-  getOrderBook?: (symbol: string) => Promise<any>;
-  getPriceTick?: (symbol: string) => Promise<any>;
-  getOHLC?: (symbol: string, timeframe?: string, limit?: number) => Promise<any>;
-  getTimeAndSales?: (symbol: string, limit?: number) => Promise<any>;
-  getCurrencyPairs?: () => Promise<any>;
-  getMarketStatus?: (symbol: string) => Promise<any>;
+  getOrderBook?: (symbol: string) => Promise<OrderBook>;
+  getPriceTick?: (symbol: string) => Promise<PriceTick>;
+  getOHLC?: (symbol: string, timeframe?: string, limit?: number) => Promise<OHLC[]>;
+  getTimeAndSales?: (symbol: string, limit?: number) => Promise<TimeAndSale[]>;
+  getCurrencyPairs?: () => Promise<string[]>;
+  getMarketStatus?: (symbol: string) => Promise<MarketStatus>;
   
   // Order Management
-  getOrders?: (status?: string) => Promise<any>;
-  getOrder?: (orderId: string) => Promise<any>;
-  createOrder?: (request: any) => Promise<any>;
-  modifyOrder?: (modification: any) => Promise<any>;
+  getOrders?: (status?: string) => Promise<Order[]>;
+  getOrder?: (orderId: string) => Promise<Order>;
+  createOrder?: (request: OrderRequest) => Promise<OrderConfirmation>;
+  modifyOrder?: (modification: OrderModification) => Promise<OrderConfirmation>;
   cancelOrder?: (orderId: string) => Promise<void>;
   
   // Training
-  getTrainingLogs?: (experimentId: string, level?: string, limit?: number) => Promise<any>;
+  getTrainingLogs?: (experimentId: string, level?: string, limit?: number) => Promise<TrainingLog>;
   
   // Resources
-  getResourceUsage?: () => Promise<any>;
+  getResourceUsage?: () => Promise<ResourceUsage>;
 }
 
 /**

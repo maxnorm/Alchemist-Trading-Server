@@ -8,7 +8,7 @@ export interface ChartPoint {
   x: number | string | Date;
   y: number;
   label?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface MultiSeriesChartPoint {
@@ -22,7 +22,7 @@ export interface ScatterPoint {
   label?: string;
   color?: string;
   size?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface HistogramBin {

@@ -40,7 +40,7 @@ export interface LogEntry {
   level: LogLevel;
   message: string;
   source?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TrainingLog {
@@ -53,7 +53,7 @@ export interface TrainingLog {
 export interface TrainingConfig {
   experimentId: string;
   modelType: string;
-  hyperparameters: Record<string, any>;
+  hyperparameters: Record<string, unknown>;
   datasetPath: string;
   outputPath: string;
   checkpointInterval?: number;

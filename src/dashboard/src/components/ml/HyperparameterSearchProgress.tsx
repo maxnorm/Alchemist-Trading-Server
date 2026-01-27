@@ -44,7 +44,11 @@ export function HyperparameterSearchProgress({
   }, [initialStudy]);
 
   useEffect(() => {
-    const handleUpdate = (data: any) => {
+    const handleUpdate = (data: {
+      trialNumber?: number;
+      bestValue?: number;
+      params?: Record<string, unknown>;
+    }) => {
       // Update study data with new trial information
       setStudyData(prev => {
         if (!prev) return prev;

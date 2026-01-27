@@ -16,7 +16,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: Create .env file for build
-        run: touch .env
+        run: |
+          touch .env
+          cp .env ./src/backend/trading_server/.env || true
       
       - name: Build Server Docker image
         uses: docker/build-push-action@v5

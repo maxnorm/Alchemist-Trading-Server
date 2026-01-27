@@ -83,7 +83,23 @@ export function DrawdownChart({
   };
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  interface TooltipProps {
+    active?: boolean;
+    payload?: Array<{
+      name?: string;
+      value?: number | string;
+      dataKey?: string;
+      color?: string;
+      payload?: {
+        timestamp: string;
+        drawdown: number;
+        equity: number;
+        peak: number;
+      };
+    }>;
+  }
+
+  const CustomTooltip = ({ active, payload }: TooltipProps) => {
     if (!active || !payload || payload.length === 0) return null;
 
     const data = payload[0].payload;

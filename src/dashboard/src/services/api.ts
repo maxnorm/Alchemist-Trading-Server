@@ -3,7 +3,7 @@ import { API_BASE_URL, API_ENDPOINTS } from '@/utils/constants'
 import type { Experiment, CreateExperimentDto } from '@/types/experiment'
 import type { Feature, FeatureFilters } from '@/types/feature'
 import type { Model, ModelStage } from '@/types/model'
-import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
+import type { TradingStatus, CircuitBreakerStatus, Position } from '@/types/trading'
 import type { MT5Account, MT5AccountCreatePayload, MT5AccountSecret, ModelAssignment } from '@/types/mt5'
 import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade, ModelStatistics, ModelComparison } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
@@ -76,14 +76,14 @@ export class ApiClient {
       // Map is_available from API to available for frontend
       return response.data.features.map(f => ({
         ...f,
-        available: (f as any).is_available ?? true
+        available: (f as Feature & { is_available?: boolean }).is_available ?? true
       }))
     }
     // Fallback: if response.data is already an array (backward compatibility)
     if (Array.isArray(response.data)) {
       return response.data.map(f => ({
         ...f,
-        available: (f as any).is_available ?? f.available ?? true
+        available: (f as Feature & { is_available?: boolean; available?: boolean }).is_available ?? (f as Feature & { available?: boolean }).available ?? true
       }))
     }
     return []
@@ -410,8 +410,8 @@ export class ApiClient {
   }
 
   // Positions
-  async getPositions(): Promise<any[]> {
-    const response = await this.client.get<any[]>(`${API_ENDPOINTS.trading}/positions`)
+  async getPositions(): Promise<Position[]> {
+    const response = await this.client.get<Position[]>(`${API_ENDPOINTS.trading}/positions`)
     return Array.isArray(response.data) ? response.data : []
   }
 
@@ -432,8 +432,8 @@ export class ApiClient {
   }
 
   // Parameter Importance (Optuna)
-  async getParameterImportance(experimentId: number): Promise<any> {
-    const response = await this.client.get(
+  async getParameterImportance(experimentId: number): Promise<{ importance: Record<string, number> }> {
+    const response = await this.client.get<{ importance: Record<string, number> }>(
       `${API_ENDPOINTS.experiments}/${experimentId}/optuna/importance`
     )
     return response.data

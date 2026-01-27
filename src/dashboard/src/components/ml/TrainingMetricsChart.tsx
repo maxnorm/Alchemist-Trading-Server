@@ -118,18 +118,31 @@ export function TrainingMetricsChart({
   };
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  interface TooltipEntry {
+    name?: string;
+    value?: number | string;
+    dataKey?: string;
+    color?: string;
+    payload?: TrainingMetrics;
+  }
+
+  interface TooltipProps {
+    active?: boolean;
+    payload?: TooltipEntry[];
+  }
+
+  const CustomTooltip = ({ active, payload }: TooltipProps) => {
     if (!active || !payload || payload.length === 0) return null;
 
     const data = payload[0].payload;
     return (
       <div className="bg-mono-300 border border-mono-400 p-3 rounded shadow-lg">
         <p className="font-mono-data text-xs text-mono-600 mb-2">
-          Step: {data.step}
+          Step: {data?.step}
         </p>
-        {payload.map((entry: any) => (
+        {payload.map((entry) => (
           <p key={entry.dataKey} className="font-mono-data text-sm" style={{ color: entry.color }}>
-            {entry.name}: {entry.value?.toFixed(4)}
+            {entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(4) : entry.value}
           </p>
         ))}
       </div>

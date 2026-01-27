@@ -17,16 +17,17 @@ RUN pip install --upgrade pip
 WORKDIR /app
 
 # Copy requirements first for better layer caching
-COPY ./src/backend/trading_server/requirements.txt .
+COPY requirements.txt .
 
 # Install dependencies with BuildKit cache mount (faster rebuilds, not in final image)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
 # Copy application code
-COPY ./src/backend/trading_server .
+COPY . .
 
-COPY .env .env
+# Copy .env if it exists (optional, may be provided via environment variables)
+COPY .env* ./
 
 EXPOSE 8080
 

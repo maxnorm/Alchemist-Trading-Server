@@ -50,13 +50,13 @@ export function ModelRegistryTable({
 
   // Sort models
   const sortedModels = [...filteredModels].sort((a, b) => {
-    let aVal: any = a[sortKey as keyof Model];
-    let bVal: any = b[sortKey as keyof Model];
+    let aVal: string | number | undefined = a[sortKey as keyof Model] as string | number | undefined;
+    let bVal: string | number | undefined = b[sortKey as keyof Model] as string | number | undefined;
 
     // Handle date strings
     if (sortKey === 'created_at' || sortKey === 'updated_at') {
-      aVal = new Date(aVal).getTime();
-      bVal = new Date(bVal).getTime();
+      aVal = new Date(aVal as string).getTime();
+      bVal = new Date(bVal as string).getTime();
     }
 
     if (sortDirection === 'asc') {

@@ -8,7 +8,7 @@ import type { PriceTick } from '../types/market';
 import type { TrainingMetrics } from '../types/training';
 import type { ResourceUsage } from '../types/resources';
 
-type MessageHandler = (data: any) => void;
+type MessageHandler = (data: unknown) => void;
 type ConnectionHandler = () => void;
 
 interface Subscription {
@@ -159,7 +159,7 @@ export class MockWebSocketClient {
   /**
    * Broadcast data to all subscribers of a channel
    */
-  private broadcast(channel: string, data: any): void {
+  private broadcast(channel: string, data: unknown): void {
     const subs = this.subscriptions.get(channel);
     if (subs) {
       subs.forEach(sub => sub.handler(data));

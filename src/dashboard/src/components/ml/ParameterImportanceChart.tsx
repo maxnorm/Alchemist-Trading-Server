@@ -64,7 +64,21 @@ export function ParameterImportanceChart({
     : 1;
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  interface TooltipProps {
+    active?: boolean;
+    payload?: Array<{
+      name?: string;
+      value?: number | string;
+      dataKey?: string;
+      color?: string;
+      payload?: {
+        parameter: string;
+        importance: number;
+      };
+    }>;
+  }
+
+  const CustomTooltip = ({ active, payload }: TooltipProps) => {
     if (!active || !payload || payload.length === 0) return null;
 
     const data = payload[0].payload;
