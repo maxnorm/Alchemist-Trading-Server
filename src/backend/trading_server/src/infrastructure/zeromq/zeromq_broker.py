@@ -72,7 +72,7 @@ class ZeroMQBroker:
                 pull_endpoint = f"tcp://*:{self.broker_port}"
                 try:
                     self._pull_socket.bind(pull_endpoint)
-                    self._logger.info(
+                    self._logger.debug(
                         f"✓ PULL socket successfully bound to {pull_endpoint}"
                     )
                 except Exception as e:
@@ -87,7 +87,7 @@ class ZeroMQBroker:
                 pub_endpoint = f"tcp://*:{self.tick_port}"
                 try:
                     self._pub_socket.bind(pub_endpoint)
-                    self._logger.info(
+                    self._logger.debug(
                         f"✓ PUB socket successfully bound to {pub_endpoint}"
                     )
                 except Exception as e:
@@ -114,8 +114,8 @@ class ZeroMQBroker:
                         if hasattr(zmq, "LAST_ENDPOINT")
                         else pub_endpoint
                     )
-                    self._logger.info(f"PULL socket bound address: {pull_bound}")
-                    self._logger.info(f"PUB socket bound address: {pub_bound}")
+                    self._logger.debug(f"PULL socket bound address: {pull_bound}")
+                    self._logger.debug(f"PUB socket bound address: {pub_bound}")
                 except Exception as e:
                     self._logger.warning(f"Could not get bound addresses: {e}")
 
@@ -127,13 +127,9 @@ class ZeroMQBroker:
                 self._thread.start()
 
                 self._logger.info(
-                    f"ZeroMQ broker started: PULL={pull_endpoint}, PUB={pub_endpoint}"
-                )
-                self._logger.info(
-                    f"EAs should connect PUSH sockets to: tcp://{self.host}:{self.broker_port}"
-                )
-                self._logger.info(
-                    f"Subscribers should connect SUB sockets to: tcp://{self.host}:{self.tick_port}"
+                    f"ZeroMQ broker started: PULL={pull_endpoint}, PUB={pub_endpoint}. "
+                    f"EAs connect to: tcp://{self.host}:{self.broker_port}, "
+                    f"Subscribers connect to: tcp://{self.host}:{self.tick_port}"
                 )
                 if self.verbose:
                     print(
@@ -201,18 +197,18 @@ class ZeroMQBroker:
         poller = zmq.Poller()
         poller.register(self._pull_socket, zmq.POLLIN)
 
-        self._logger.info("Broker forwarding loop started")
-        self._logger.info(
+        self._logger.debug("Broker forwarding loop started")
+        self._logger.debug(
             f"PULL socket bound to tcp://*:{self.broker_port}, waiting for EA connections..."
         )
 
         # Periodic stats logging
         last_stats_log = time.time()
-        stats_interval = 30.0  # Log stats every 30 seconds
+        stats_interval = 300.0  # Log stats every 5 minutes (only when meaningful)
 
         # Diagnostic: Log when poller detects activity
         last_poll_log = time.time()
-        poll_log_interval = 60.0  # Log poll status every 60 seconds if no messages
+        poll_log_interval = 300.0  # Log poll status every 5 minutes if no messages
 
         while self._running:
             try:
@@ -243,7 +239,7 @@ class ZeroMQBroker:
 
                         # Log that we received a message (first few only)
                         if self._messages_forwarded < 5:
-                            self._logger.info(
+                            self._logger.debug(
                                 f"✓ Received message from EA ({len(parts)} parts)"
                             )
                             # Log raw message preview for debugging
@@ -291,7 +287,7 @@ class ZeroMQBroker:
                                 self._messages_forwarded <= 10
                                 or self._messages_forwarded % 100 == 0
                             ):
-                                self._logger.info(
+                                self._logger.debug(
                                     f"Forwarded message for symbol: {symbol} "
                                     f"(total: {self._messages_forwarded})"
                                 )
@@ -324,16 +320,25 @@ class ZeroMQBroker:
                 # Small delay before retrying
                 time.sleep(0.01)
 
-            # Periodic stats logging
+            # Periodic stats logging (only when meaningful: activity, errors, or diagnostics)
             now = time.time()
             if now - last_stats_log >= stats_interval:
                 with self._lock:
                     stats = self.get_stats()
-                    self._logger.info(
-                        f"Broker stats: {stats['messages_forwarded']} messages forwarded, "
-                        f"{stats['errors']} errors, "
-                        f"{stats['messages_per_second']:.2f} msg/s"
-                    )
+                    # Only log stats if there's activity, errors, or diagnostic conditions
+                    if (
+                        stats["messages_forwarded"] > 0
+                        or stats["errors"] > 0
+                        or (
+                            stats["messages_forwarded"] == 0
+                            and stats["runtime_seconds"] > 120
+                        )
+                    ):
+                        self._logger.info(
+                            f"Broker stats: {stats['messages_forwarded']} messages forwarded, "
+                            f"{stats['errors']} errors, "
+                            f"{stats['messages_per_second']:.2f} msg/s"
+                        )
                     # Diagnostic: If no messages after 2 minutes, provide troubleshooting info
                     if (
                         stats["messages_forwarded"] == 0

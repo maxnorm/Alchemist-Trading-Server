@@ -498,7 +498,9 @@ class HTTPController:
                 server_status = server_monitor.get_status()
                 server_healthy = server_monitor.is_healthy()
                 server_ntp_status = {
-                    "last_drift_seconds": str(server_status.get("last_drift_seconds") or ""),
+                    "last_drift_seconds": str(
+                        server_status.get("last_drift_seconds") or ""
+                    ),
                     "last_status": str(server_status.get("last_status") or ""),
                     "check_count": str(server_status.get("check_count") or ""),
                 }

@@ -20,6 +20,7 @@ try:
     from great_expectations.core.expectation_configuration import (
         ExpectationConfiguration as _EC,
     )
+
     _ExpectationConfiguration = _EC
 except (ImportError, ModuleNotFoundError, AttributeError):
     # Fallback: try alternative import paths for compatibility
@@ -27,12 +28,14 @@ except (ImportError, ModuleNotFoundError, AttributeError):
         from great_expectations.expectations.expectation_configuration import (
             ExpectationConfiguration as _EC,
         )
+
         _ExpectationConfiguration = _EC
     except (ImportError, ModuleNotFoundError, AttributeError):
         try:
             from great_expectations.core import (
                 ExpectationConfiguration as _EC,
             )
+
             _ExpectationConfiguration = _EC
         except (ImportError, ModuleNotFoundError, AttributeError):
             _EC = None
