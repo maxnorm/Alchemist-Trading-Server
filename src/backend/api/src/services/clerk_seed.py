@@ -150,11 +150,9 @@ def seed_clerk_user(
                     try:
                         # Use create_email_address_verification or verify_email_address
                         if hasattr(clerk.users, "create_email_address_verification"):
-                            _ = (
-                                clerk.users.create_email_address_verification(
-                                    user_id=user.id,
-                                    email_address_id=email_address.id,
-                                )
+                            _ = clerk.users.create_email_address_verification(
+                                user_id=user.id,
+                                email_address_id=email_address.id,
                             )
                             logger.info(
                                 f"Email verification initiated for user: {seed_email}"

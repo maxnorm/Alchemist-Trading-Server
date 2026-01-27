@@ -3,7 +3,15 @@ MT5 Account Management endpoints
 Allows users to connect, manage, and monitor their MT5 accounts
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    Request,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, Dict
@@ -54,7 +62,9 @@ router = APIRouter(prefix="/accounts/mt5", tags=["MT5 Accounts"])
 async def list_accounts(
     request: Request,
     connected_only: bool = Query(False, description="Show only connected accounts"),
-    account_type: Optional[str] = Query(None, description="Filter by account type (demo/live)"),
+    account_type: Optional[str] = Query(
+        None, description="Filter by account type (demo/live)"
+    ),
     user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -67,7 +77,10 @@ async def list_accounts(
         filter_user_id = None if "admin" in user_roles else user_id
 
         accounts = get_all_accounts(
-            db, connected_only=connected_only, account_type=account_type, user_id=filter_user_id
+            db,
+            connected_only=connected_only,
+            account_type=account_type,
+            user_id=filter_user_id,
         )
         return MT5AccountListResponse(accounts=accounts, total=len(accounts))
     except HTTPException:
@@ -75,12 +88,11 @@ async def list_accounts(
         raise
     except SQLAlchemyError as e:
         # Database errors should return 503
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list accounts: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list accounts: {str(e)}"
+        )
 
 
 @router.get("/connected", response_model=MT5AccountListResponse)
@@ -93,7 +105,9 @@ async def list_connected_accounts(
         accounts = get_connected_accounts(db)
         return MT5AccountListResponse(accounts=accounts, total=len(accounts))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get connected accounts: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get connected accounts: {str(e)}"
+        )
 
 
 @router.get("/{account_id}", response_model=MT5AccountResponse)
@@ -117,7 +131,10 @@ async def get_account(
             # Regular users must own the account
             orm_account = get_account_by_login(db, account.account_login)
             if not orm_account or orm_account.user_id != user_id:
-                raise HTTPException(status_code=403, detail="Access denied. You do not own this account.")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied. You do not own this account.",
+                )
 
         return account
     except HTTPException:
@@ -137,7 +154,9 @@ async def register_account(
         account = create_account(db, request)
         return account
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to register account: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to register account: {str(e)}"
+        )
 
 
 @router.post("/register", response_model=MT5AccountSecretResponse, status_code=201)
@@ -178,7 +197,9 @@ async def register_account_with_secret(
             )
 
         # Create or update account with user association
-        account = create_account_for_user(db, request, user_id=user_id, created_by=user_id)
+        account = create_account_for_user(
+            db, request, user_id=user_id, created_by=user_id
+        )
 
         # Verify user owns this account (security check)
         orm_account = get_account_by_login(db, account.account_login)
@@ -207,7 +228,9 @@ async def register_account_with_secret(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to register account: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to register account: {str(e)}"
+        )
 
 
 @router.get("/{account_id}/secret", response_model=MT5AccountSecretResponse)
@@ -227,11 +250,17 @@ async def get_account_secret(
             raise HTTPException(status_code=404, detail="Account not found")
 
         # Load ORM account to access auth_token
-        orm_account = db.query(mt5_accounts_service.MT5Account).filter(  # type: ignore[attr-defined]
-            mt5_accounts_service.MT5Account.id == account_id  # type: ignore[attr-defined]
-        ).first()
+        orm_account = (
+            db.query(mt5_accounts_service.MT5Account)
+            .filter(  # type: ignore[attr-defined]
+                mt5_accounts_service.MT5Account.id == account_id  # type: ignore[attr-defined]
+            )
+            .first()
+        )
         if not orm_account or not orm_account.auth_token:
-            raise HTTPException(status_code=500, detail="Failed to load account auth token")
+            raise HTTPException(
+                status_code=500, detail="Failed to load account auth token"
+            )
 
         server_host = settings.mt5_server_public_host
         server_port = settings.mt5_server_public_port
@@ -249,7 +278,9 @@ async def get_account_secret(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get account secret: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get account secret: {str(e)}"
+        )
 
 
 @router.put("/{account_id}", response_model=MT5AccountResponse)
@@ -268,7 +299,10 @@ async def update_account_settings(
         # Verify ownership (admins can update any account)
         if "admin" not in user_roles:
             if not verify_account_ownership(db, account_id, user_id):
-                raise HTTPException(status_code=403, detail="Access denied. You do not own this account.")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied. You do not own this account.",
+                )
 
         account = update_account(db, account_id, update_request)
         if not account:
@@ -277,7 +311,9 @@ async def update_account_settings(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update account: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update account: {str(e)}"
+        )
 
 
 @router.delete("/{account_id}", status_code=204)
@@ -302,7 +338,10 @@ async def remove_account(
         # Verify ownership (admins can delete any account)
         if "admin" not in user_roles:
             if not verify_account_ownership(db, account_id, user_id):
-                raise HTTPException(status_code=403, detail="Access denied. You do not own this account.")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied. You do not own this account.",
+                )
 
         success = delete_account(db, account_id)
         if not success:
@@ -310,7 +349,9 @@ async def remove_account(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete account: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete account: {str(e)}"
+        )
 
 
 @router.get("/{account_id}/status", response_model=MT5ConnectionStatusResponse)
@@ -334,7 +375,9 @@ async def get_account_status(
 @router.get("/{account_id}/connections", response_model=MT5ConnectionHistoryResponse)
 async def get_connection_history_route(
     account_id: int,
-    limit: int = Query(50, ge=1, le=500, description="Maximum number of connections to return"),
+    limit: int = Query(
+        50, ge=1, le=500, description="Maximum number of connections to return"
+    ),
     user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -343,7 +386,9 @@ async def get_connection_history_route(
         history = get_connection_history(db, account_id, limit=limit)
         return MT5ConnectionHistoryResponse(connections=history, total=len(history))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get connection history: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get connection history: {str(e)}"
+        )
 
 
 @router.post("/{account_id}/assign-model", response_model=ModelAssignmentResponse)
@@ -363,11 +408,16 @@ async def assign_model(
         if "admin" not in user_roles:
             if not verify_account_ownership(db, account_id, user_id):
                 raise HTTPException(
-                    status_code=403, detail="Access denied. You do not own this account."
+                    status_code=403,
+                    detail="Access denied. You do not own this account.",
                 )
 
         assignment = assign_model_to_account(
-            db, account_id, assignment_request.model_id, assignment_request.trading_mode, assignment_request.notes
+            db,
+            account_id,
+            assignment_request.model_id,
+            assignment_request.trading_mode,
+            assignment_request.notes,
         )
         if not assignment:
             raise HTTPException(status_code=404, detail="Account or model not found")
@@ -401,16 +451,21 @@ async def unassign_model(
         if "admin" not in user_roles:
             if not verify_account_ownership(db, account_id, user_id):
                 raise HTTPException(
-                    status_code=403, detail="Access denied. You do not own this account."
+                    status_code=403,
+                    detail="Access denied. You do not own this account.",
                 )
 
         success = unassign_model_from_account(db, account_id)
         if not success:
-            raise HTTPException(status_code=404, detail="Account not found or no assignment")
+            raise HTTPException(
+                status_code=404, detail="Account not found or no assignment"
+            )
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to unassign model: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to unassign model: {str(e)}"
+        )
 
 
 @router.get("/{account_id}/assignment", response_model=ModelAssignmentResponse)
@@ -429,7 +484,8 @@ async def get_current_assignment_route(
         if "admin" not in user_roles:
             if not verify_account_ownership(db, account_id, user_id):
                 raise HTTPException(
-                    status_code=403, detail="Access denied. You do not own this account."
+                    status_code=403,
+                    detail="Access denied. You do not own this account.",
                 )
 
         assignment = get_current_assignment(db, account_id)
@@ -439,7 +495,9 @@ async def get_current_assignment_route(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get assignment: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get assignment: {str(e)}"
+        )
 
 
 @router.post("/{account_id}/pause", response_model=MT5ConnectionStatusResponse)
@@ -457,7 +515,9 @@ async def pause_account_trading(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to pause trading: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to pause trading: {str(e)}"
+        )
 
 
 @router.post("/{account_id}/resume", response_model=MT5ConnectionStatusResponse)
@@ -482,14 +542,18 @@ async def resume_account_trading(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to resume trading: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to resume trading: {str(e)}"
+        )
 
 
 @router.post("/{account_id}/regenerate-token", response_model=MT5AccountSecretResponse)
 async def regenerate_account_token_endpoint(
     request: Request,
     account_id: int,
-    confirm: bool = Query(False, description="Confirmation required to regenerate token"),
+    confirm: bool = Query(
+        False, description="Confirmation required to regenerate token"
+    ),
     user: Dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -502,7 +566,7 @@ async def regenerate_account_token_endpoint(
     if not confirm:
         raise HTTPException(
             status_code=400,
-            detail="Confirmation required. Set 'confirm=true' to regenerate token."
+            detail="Confirmation required. Set 'confirm=true' to regenerate token.",
         )
 
     try:
@@ -510,7 +574,9 @@ async def regenerate_account_token_endpoint(
 
         # Verify ownership
         if not verify_account_ownership(db, account_id, user_id):
-            raise HTTPException(status_code=403, detail="Access denied. You do not own this account.")
+            raise HTTPException(
+                status_code=403, detail="Access denied. You do not own this account."
+            )
 
         # Regenerate token
         new_token = regenerate_account_token(db, account_id, user_id)
@@ -538,7 +604,9 @@ async def regenerate_account_token_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to regenerate token: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to regenerate token: {str(e)}"
+        )
 
 
 # WebSocket endpoint for real-time account status updates
@@ -564,11 +632,15 @@ async def websocket_account_status(websocket: WebSocket, account_id: int):
         websocket.state.user_id = user_id
         websocket.state.roles = roles
 
-        logger.info(f"MT5 Account WebSocket authenticated: user_id={user_id}, account_id={account_id}")
+        logger.info(
+            f"MT5 Account WebSocket authenticated: user_id={user_id}, account_id={account_id}"
+        )
 
         # Accept connection and connect to channel
         await websocket.accept()
-        await websocket_manager.connect(websocket, f"mt5_account_{account_id}", accept=False)
+        await websocket_manager.connect(
+            websocket, f"mt5_account_{account_id}", accept=False
+        )
 
     except ValueError as e:
         logger.warning(f"MT5 Account WebSocket authentication failed: {e}")
@@ -581,8 +653,7 @@ async def websocket_account_status(websocket: WebSocket, account_id: int):
             _ = await websocket.receive_text()  # Receive to keep connection alive
             # Echo or handle client messages if needed
             await websocket_manager.send_personal_message(
-                {"type": "pong", "timestamp": datetime.utcnow().isoformat()},
-                websocket
+                {"type": "pong", "timestamp": datetime.utcnow().isoformat()}, websocket
             )
     except WebSocketDisconnect:
         await websocket_manager.disconnect(websocket, f"mt5_account_{account_id}")
