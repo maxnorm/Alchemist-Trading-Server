@@ -104,8 +104,10 @@ class AlertConsumer:
         :return: True if connected successfully, False otherwise
         """
         try:
+            # Ensure redis_host is not None
+            redis_host = self.redis_host or "redis"
             self._redis_client = aioredis.Redis(
-                host=self.redis_host,
+                host=redis_host,
                 port=self.redis_port,
                 db=self.redis_db,
                 socket_connect_timeout=5,
@@ -113,10 +115,12 @@ class AlertConsumer:
                 decode_responses=True,
             )
 
-            # Test connection
-            await self._redis_client.ping()
+            # Test connection - ping() returns bool or Awaitable[bool]
+            ping_result = self._redis_client.ping()
+            if hasattr(ping_result, "__await__"):
+                await ping_result  # type: ignore[misc]
             logger.debug(
-                f"Connected to Redis at {self.redis_host}:{self.redis_port}/{self.redis_db}"
+                f"Connected to Redis at {redis_host}:{self.redis_port}/{self.redis_db}"
             )
             return True
 

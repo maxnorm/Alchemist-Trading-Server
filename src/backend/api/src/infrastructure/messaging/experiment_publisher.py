@@ -81,8 +81,10 @@ class ExperimentPublisher:
         with self._connection_lock:
             if self._redis_client is None or not self._connected:
                 try:
+                    # Ensure redis_host is not None
+                    redis_host = self.redis_host or "redis"
                     self._redis_client = redis.Redis(
-                        host=self.redis_host,
+                        host=redis_host,
                         port=self.redis_port,
                         db=self.redis_db,
                         socket_connect_timeout=2,

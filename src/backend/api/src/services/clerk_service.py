@@ -33,6 +33,7 @@ class ClerkService:
     def clerk(self) -> Clerk:
         """Get Clerk instance, initializing if necessary"""
         self._ensure_initialized()
+        assert self._clerk is not None, "Clerk should be initialized after _ensure_initialized()"
         return self._clerk
 
     def verify_request(self, request: httpx.Request) -> Dict[str, Any]:

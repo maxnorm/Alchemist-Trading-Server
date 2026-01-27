@@ -85,4 +85,4 @@ class Settings(BaseSettings):
         return f"http://{self.trading_server_host}:{self.trading_server_port}"
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

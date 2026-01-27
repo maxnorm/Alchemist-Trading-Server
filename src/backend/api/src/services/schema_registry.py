@@ -164,6 +164,8 @@ class SchemaRegistryService:
             result = db.execute(query, params)
             db.commit()
             row = result.fetchone()
+            if row is None:
+                raise ValueError("Failed to retrieve inserted schema")
             return {
                 "id": row[0],
                 "data_type": row[1],
