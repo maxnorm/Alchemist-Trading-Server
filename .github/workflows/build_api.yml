@@ -21,7 +21,7 @@ jobs:
           context: ./src/backend/api
           file: ./src/backend/api/Dockerfile
           push: false
-          load: true
+          load: false
           tags: alchemist-api:test
           cache-from: type=gha
           cache-to: type=gha,mode=max

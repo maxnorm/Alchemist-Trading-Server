@@ -46,10 +46,10 @@ jobs:
           context: ./src/backend/trading_server
           file: ./src/backend/trading_server/Dockerfile
           push: false
-          load: true
+          load: false
           tags: alchemist-server:test
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
       
       - name: Verify image
         run: |
