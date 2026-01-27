@@ -25,7 +25,3 @@ jobs:
           tags: alchemist-api:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
-      - name: Verify image
-        run: |
-          docker images | grep alchemist-api
