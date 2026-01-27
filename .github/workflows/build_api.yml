@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, dev]
     paths:
-      - 'src/api/**'
+      - 'src/backend/api/**'
       - '.github/workflows/build_api.yml'
 
 jobs:
