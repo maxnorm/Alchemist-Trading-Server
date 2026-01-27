@@ -56,13 +56,13 @@ class WorldBankConnector(IDataSourceConnector):
         self.normalizer = EventNormalizer()
         self.logger = get_logger("world_bank_connector", "world_bank_connector.log")
 
+        # Initialize availability based on wbdata library presence
+        self._available: bool = wbdata is not None
         if wbdata is None:
             self.logger.error(
                 "wbdata library not installed. Install with: pip install wbdata"
             )
-            self._available: bool = False
         else:
-            self._available: bool = True
             self.logger.info("World Bank connector initialized successfully")
 
         self._is_connected = False
