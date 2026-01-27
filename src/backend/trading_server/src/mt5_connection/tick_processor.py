@@ -7,7 +7,7 @@ import os
 import queue
 import threading
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Callable, Optional, Dict, List, Tuple
 
 from database import Database
 from data.quality_gates import QualityGate
@@ -23,12 +23,21 @@ class TickProcessor:
     Handles validation, normalization, buffering, and DB writes.
     """
 
-    def __init__(self, asset, verbose: bool = False, console_lock=None, db=None, on_tick_callback=None):
+    def __init__(
+        self,
+        asset,
+        verbose: bool = False,
+        console_lock=None,
+        db=None,
+        on_tick_callback=None,
+    ):
         self._asset = asset
         self._verbose = verbose
         self._console_lock = console_lock
         self._db = db if db is not None else Database()
-        self._on_tick_callback = on_tick_callback  # Real-time callback before DB storage
+        self._on_tick_callback = (
+            on_tick_callback  # Real-time callback before DB storage
+        )
 
         try:
             self._logger = get_logger("tick_streamer", "tick_streamer.log")
@@ -57,19 +66,21 @@ class TickProcessor:
             os.getenv("FEED_STALE_THRESHOLD_SECONDS", "180")
         )
 
-        self._tick_buffer = []
+        self._tick_buffer: List[
+            Tuple[str, datetime, float, float, datetime, float, bool, float]
+        ] = []
         self._buffer_lock = threading.Lock()
-        self._flush_timer = None
+        self._flush_timer: Optional[threading.Timer] = None
         self._shutdown_flag = threading.Event()
 
         # MT5 timezone detection
-        self._mt5_timezone_offset = None
+        self._mt5_timezone_offset: Optional[float] = None
         self._timezone_detected = False
 
         # Tick monitoring for market closure detection
-        self._last_tick_time = None
+        self._last_tick_time: Optional[datetime] = None
         self._no_tick_warning_logged = False
-        self._last_feed_live_state = None
+        self._last_feed_live_state: Optional[bool] = None
 
         # Connection health tracking
         self._last_heartbeat_time = get_utc_time()
@@ -86,7 +97,7 @@ class TickProcessor:
         self._buffer_overflow_count = 0
 
         # Tick ordering validation
-        self._last_tick_timestamp = {}
+        self._last_tick_timestamp: Dict[str, datetime] = {}
 
         self.quality_gate = QualityGate()
         self.event_normalizer = EventNormalizer()
@@ -97,7 +108,10 @@ class TickProcessor:
         )  # Sync every N ticks
         self._quality_metrics_sync_counter = 0
 
-        self._db_write_queue = queue.Queue(maxsize=1000)
+        # Queue of tick batches to flush to the database
+        self._db_write_queue: queue.Queue[
+            List[Tuple[str, datetime, float, float, datetime, float, bool, float]]
+        ] = queue.Queue(maxsize=1000)
         self._db_writer_thread = threading.Thread(
             target=self._db_writer_worker, daemon=True
         )
@@ -134,7 +148,7 @@ class TickProcessor:
             return
 
         try:
-            import pytz
+            import pytz  # type: ignore[import-untyped]
             from datetime import datetime as dt
 
             if len(mt5_timestamp_str) == 23 and mt5_timestamp_str[19] == ".":
@@ -216,7 +230,9 @@ class TickProcessor:
 
         return self._normalize_mt5_timestamp(str(date_time))
 
-    def _validate_tick(self, symbol: str, date_time: str, ask: float, bid: float) -> bool:
+    def _validate_tick(
+        self, symbol: str, date_time: str, ask: float, bid: float
+    ) -> bool:
         if bid <= 0 or ask <= 0:
             self._logger.log_error(
                 event_type="invalid_tick_price",
@@ -353,7 +369,6 @@ class TickProcessor:
                     stale_age_seconds,
                 )
             )
-            new_size = len(self._tick_buffer)
 
             if len(self._tick_buffer) >= self._buffer_max_size:
                 self._flush_buffer_internal()
@@ -361,7 +376,11 @@ class TickProcessor:
                 self._flush_buffer_internal()
 
     def is_feed_live(self, max_age_seconds: Optional[float] = None) -> bool:
-        threshold = max_age_seconds if max_age_seconds is not None else self._feed_stale_threshold
+        threshold = (
+            max_age_seconds
+            if max_age_seconds is not None
+            else self._feed_stale_threshold
+        )
         if self._last_tick_time is None:
             return False
         age = (get_utc_time() - self._last_tick_time).total_seconds()
@@ -522,9 +541,7 @@ class TickProcessor:
     def _check_connection_health(self, current_time: datetime):
         if self._last_tick_time is None:
             return
-        seconds_since_last_tick = (
-            current_time - self._last_tick_time
-        ).total_seconds()
+        seconds_since_last_tick = (current_time - self._last_tick_time).total_seconds()
         if seconds_since_last_tick >= self._connection_stale_threshold:
             self._connection_health_warnings += 1
             self._logger.log_event(
@@ -677,9 +694,11 @@ class TickProcessor:
                     metrics={
                         "latency_seconds": latency_seconds,
                         "event_time": date_time,
-                        "receive_time": receive_time.isoformat()
-                        if isinstance(receive_time, datetime)
-                        else str(receive_time),
+                        "receive_time": (
+                            receive_time.isoformat()
+                            if isinstance(receive_time, datetime)
+                            else str(receive_time)
+                        ),
                         "time_diff_seconds": (
                             (
                                 receive_time - self._normalize_mt5_timestamp(date_time)
@@ -743,9 +762,11 @@ class TickProcessor:
                 "bid": bid,
                 "ask": ask,
                 "receive_time": normalized_receive_time or receive_time,
-                "latency_seconds": normalized_metadata.get("latency_seconds") or latency_seconds,
+                "latency_seconds": normalized_metadata.get("latency_seconds")
+                or latency_seconds,
                 "is_stale": normalized_metadata.get("is_stale", False) or is_stale,
-                "stale_age_seconds": normalized_metadata.get("stale_age_seconds") or stale_age_seconds,
+                "stale_age_seconds": normalized_metadata.get("stale_age_seconds")
+                or stale_age_seconds,
             }
         else:
             normalized_date_time = date_time
@@ -826,7 +847,11 @@ class TickProcessor:
                     "bid": bid,
                     "ask": ask,
                     "datetime": date_time,
-                    "receive_time": receive_time.isoformat() if isinstance(receive_time, datetime) else str(receive_time),
+                    "receive_time": (
+                        receive_time.isoformat()
+                        if isinstance(receive_time, datetime)
+                        else str(receive_time)
+                    ),
                 },
                 level="DEBUG",
             )
@@ -861,9 +886,7 @@ class TickProcessor:
                     self._last_health_check_time = current_time
                     self._check_connection_health(current_time)
 
-                if (
-                    current_time - self._last_market_check
-                ).total_seconds() >= 300:
+                if (current_time - self._last_market_check).total_seconds() >= 300:
                     self._last_market_check = current_time
                     market_open = check_if_market_open()
                     feed_live = self.is_feed_live()
@@ -924,7 +947,7 @@ class TickProcessor:
                     tick_info = message_reader()
                     # Log first few messages received to confirm reception is working
                     is_heartbeat = tick_info.get("heartbeat", False)
-                    
+
                     # ALWAYS log first 20 messages, then every 100th
                     if self._tick_count < 20 or self._tick_count % 100 == 0:
                         if is_heartbeat:
@@ -935,7 +958,8 @@ class TickProcessor:
                         else:
                             self._logger.info(
                                 f"✓ TickProcessor received message #{self._tick_count + 1} for {symbol}: "
-                                f"{tick_info.get('symbol', 'N/A')} (bid={tick_info.get('bid', 'N/A')}, ask={tick_info.get('ask', 'N/A')})"
+                                f"{tick_info.get('symbol', 'N/A')} "
+                                f"(bid={tick_info.get('bid', 'N/A')}, ask={tick_info.get('ask', 'N/A')})"
                             )
                 except TimeoutError:
                     # Timeout is normal - no message available yet
@@ -944,13 +968,15 @@ class TickProcessor:
                     if self._tick_count == 0:
                         # Log every 10 seconds when no ticks received yet
                         import time
-                        if not hasattr(self, '_last_timeout_log'):
+
+                        if not hasattr(self, "_last_timeout_log"):
                             self._last_timeout_log = time.time()
                         now = time.time()
                         if now - self._last_timeout_log >= 10.0:
                             self._logger.warning(
-                                f"⚠️ TickProcessor waiting for messages for {symbol} (tick_count: {self._tick_count}) "
-                                f"- No messages received in 10s. Check if discovery service is forwarding ticks to queue."
+                                f"⚠️ TickProcessor waiting for messages for {symbol} "
+                                f"(tick_count: {self._tick_count}) - No messages received in 10s. "
+                                f"Check if discovery service is forwarding ticks to queue."
                             )
                             self._last_timeout_log = now
                     elif self._tick_count > 0 and self._tick_count % 1000 == 0:
@@ -1018,7 +1044,16 @@ class TickProcessor:
                 message="Waiting for database write queue to drain...",
             )
             try:
-                self._db_write_queue.join(timeout=5.0)
+                # Wait for queue to drain (no timeout parameter in queue.Queue.join)
+                # Use a simple check instead
+                import time
+
+                start_time = time.time()
+                while (
+                    not self._db_write_queue.empty()
+                    and (time.time() - start_time) < 5.0
+                ):
+                    time.sleep(0.1)
             except Exception:
                 pass
 

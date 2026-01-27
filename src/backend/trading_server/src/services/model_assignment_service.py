@@ -8,25 +8,24 @@ for live trading with trained models.
 import os
 import threading
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, TYPE_CHECKING
 from models.account import Account
 from trading_controller import TradingController
-from environments.live_env import LiveTradingEnv
 from infrastructure.factories.agent_factory import AgentFactory
-from infrastructure.factories.environment_factory import EnvironmentFactory
 from infrastructure.factories.risk_manager_factory import RiskManagerFactory
+
+if TYPE_CHECKING:
+    from environments.live_env import LiveTradingEnv  # noqa: F401
 from mlops.model_registry import ModelRegistry
 from domain.config.agent_config import AgentConfig
 from domain.config.risk_config import RiskConfig
 from domain.environment_type import EnvironmentType
-from utils.risk_management import RiskManager
 from risk.kill_switch import KillSwitch
 from risk.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
 from risk.oms import OrderManagementSystem
 from performance.session_manager import SessionManager
 from performance.trade_logger import TradeLogger
 from performance.equity_tracker import EquityTracker
-from infrastructure.db_integration import get_account_from_db
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +33,23 @@ logger = logging.getLogger(__name__)
 class ModelAssignmentService:
     """
     Service for handling model assignments to accounts.
-    
+
     Creates TradingController instances when models are assigned to live accounts.
     """
 
     def __init__(self, server_instance):
         """
         Initialize model assignment service
-        
+
         :param server_instance: Server instance to integrate with
         """
         self.server = server_instance
-        self.controllers: Dict[int, TradingController] = {}  # account_login -> controller
-        self.controller_threads: Dict[int, threading.Thread] = {}  # account_login -> thread
+        self.controllers: Dict[int, TradingController] = (
+            {}
+        )  # account_login -> controller
+        self.controller_threads: Dict[int, threading.Thread] = (
+            {}
+        )  # account_login -> thread
         self._lock = threading.Lock()
 
     def handle_model_assignment(
@@ -54,7 +57,7 @@ class ModelAssignmentService:
     ) -> bool:
         """
         Handle model assignment event - create TradingController for live trading
-        
+
         :param account_id: Account ID from database
         :param account_login: Account login number
         :param model_id: Model ID to assign
@@ -137,7 +140,11 @@ class ModelAssignmentService:
                 agent.epsilon_min = 0.0
 
                 # Create risk manager
-                risk_config = RiskConfig.from_env() if os.getenv("RISK_CONFIG_FROM_ENV") else RiskConfig.default()
+                risk_config = (
+                    RiskConfig.from_env()
+                    if os.getenv("RISK_CONFIG_FROM_ENV")
+                    else RiskConfig.default()
+                )
                 risk_manager = RiskManagerFactory.create_risk_manager(risk_config)
 
                 # Create safety components
@@ -190,9 +197,7 @@ class ModelAssignmentService:
                 self.controllers[account_login] = controller
 
                 # Start TradingController in background thread
-                trading_thread = threading.Thread(
-                    target=controller.start, daemon=True
-                )
+                trading_thread = threading.Thread(target=controller.start, daemon=True)
                 trading_thread.start()
                 self.controller_threads[account_login] = trading_thread
 
@@ -213,7 +218,7 @@ class ModelAssignmentService:
     def handle_model_unassignment(self, account_login: int) -> bool:
         """
         Handle model unassignment - stop TradingController
-        
+
         :param account_login: Account login number
         :return: True if successful, False otherwise
         """
@@ -263,14 +268,16 @@ class ModelAssignmentService:
     ) -> Optional[LiveTradingEnv]:
         """
         Get or create environment for account using model's features
-        
+
         :param account: Account instance
         :param model: Model instance from registry
         :return: LiveTradingEnv instance or None
         """
         try:
             # Check if environment already exists
-            env = self.server._Server__environment_factory.get_environment(account.login)
+            env = self.server._Server__environment_factory.get_environment(
+                account.login
+            )
             if env:
                 return env
 
@@ -298,18 +305,25 @@ class ModelAssignmentService:
 
             # Get connectors from server's connector registry
             connectors = []
-            all_connectors = self.server._Server__connector_registry.get_all_connectors()
-            
+            all_connectors = (
+                self.server._Server__connector_registry.get_all_connectors()
+            )
+
             for symbol in currency_pairs:
                 connector = None
-                
+
                 # First try to get by name (symbol might be the name)
-                connector = self.server._Server__connector_registry.get_connector(symbol)
-                
+                connector = self.server._Server__connector_registry.get_connector(
+                    symbol
+                )
+
                 # If not found, search all connectors by symbol
                 if not connector:
                     for conn_name, conn in all_connectors.items():
-                        if hasattr(conn, "currency_pair") and conn.currency_pair.symbol == symbol:
+                        if (
+                            hasattr(conn, "currency_pair")
+                            and conn.currency_pair.symbol == symbol
+                        ):
                             connector = conn
                             break
                         # Also check config.symbol
@@ -317,7 +331,7 @@ class ModelAssignmentService:
                             if conn.config.symbol == symbol:
                                 connector = conn
                                 break
-                
+
                 if connector:
                     connectors.append(connector)
                 else:
@@ -366,7 +380,7 @@ class ModelAssignmentService:
     def get_controller(self, account_login: int) -> Optional[TradingController]:
         """
         Get TradingController for account
-        
+
         :param account_login: Account login number
         :return: TradingController instance or None
         """

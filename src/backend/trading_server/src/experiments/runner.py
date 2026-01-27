@@ -106,9 +106,13 @@ class ExperimentRunner:
 
             # Validate status - accept both CREATED and TRAINING
             # (API may update status to TRAINING before Redis message arrives)
-            if experiment.status not in (ExperimentStatus.CREATED, ExperimentStatus.TRAINING):
+            if experiment.status not in (
+                ExperimentStatus.CREATED,
+                ExperimentStatus.TRAINING,
+            ):
                 logger.error(
-                    f"Experiment {experiment_id} is not in 'created' or 'training' status (current: {experiment.status.value})"
+                    f"Experiment {experiment_id} is not in 'created' or 'training' status "
+                    f"(current: {experiment.status.value})"
                 )
                 return False
 
@@ -135,7 +139,8 @@ class ExperimentRunner:
                 env_type = env_type_map.get(experiment.training_mode)
                 if env_type is None:
                     raise ValueError(
-                        f"Invalid training_mode: {experiment.training_mode}. Must be one of: {list(env_type_map.keys())}"
+                        f"Invalid training_mode: {experiment.training_mode}. "
+                        f"Must be one of: {list(env_type_map.keys())}"
                     )
 
                 # Validate features exist in catalog if feature_catalog is available
@@ -620,20 +625,18 @@ class ExperimentRunner:
     def _validate_features_exist(self, feature_names: List[str]) -> None:
         """
         Validate that all specified features exist in the feature catalog.
-        
+
         :param feature_names: List of feature names to validate
         :raises ValueError: If any feature doesn't exist
         """
         if not self.feature_catalog:
-            logger.warning(
-                "Feature catalog not available, skipping feature validation"
-            )
+            logger.warning("Feature catalog not available, skipping feature validation")
             return
-        
+
         try:
             available_features = self.feature_catalog.get_all_features()
             available_feature_names = {f.name for f in available_features}
-            
+
             missing = [f for f in feature_names if f not in available_feature_names]
             if missing:
                 available_sample = list(available_feature_names)[:10]

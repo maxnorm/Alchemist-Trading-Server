@@ -601,8 +601,7 @@ class Database:
                 normalized_receive_time = ensure_utc_timezone(datetime.now())
                 latency_seconds = None
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO bars_forex
                 (datetime, open, high, low, close, volume, timeframe, forex_pairs_id,
                  receive_time, latency_seconds, schema_version, schema_type)
@@ -614,8 +613,7 @@ class Database:
                 WHERE c1.iso_code = :base_currency AND c2.iso_code = :quoted_currency
                 LIMIT 1
                 ON CONFLICT (forex_pairs_id, timeframe, datetime) DO NOTHING
-            """
-            )
+            """)
 
             params = {
                 "datetime": normalized_datetime,
@@ -654,8 +652,7 @@ class Database:
             insert_count = 0
             failed_symbols = set()
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO bars_forex
                 (datetime, open, high, low, close, volume, timeframe, forex_pairs_id,
                  receive_time, latency_seconds, schema_version, schema_type)
@@ -667,8 +664,7 @@ class Database:
                 WHERE c1.iso_code = :base_currency AND c2.iso_code = :quoted_currency
                 LIMIT 1
                 ON CONFLICT (forex_pairs_id, timeframe, datetime) DO NOTHING
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 for bar in bars:
@@ -715,15 +711,13 @@ class Database:
                             insert_count += 1
                         else:
                             # Check if it's a conflict (duplicate) or missing pair
-                            check_query = text(
-                                """
+                            check_query = text("""
                                 SELECT COUNT(*) FROM forex_pairs fp
                                 JOIN currency c1 ON fp.base_currency_id = c1.id
                                 JOIN currency c2 ON fp.quote_currency_id = c2.id
                                 WHERE c1.iso_code = :base_currency
                                   AND c2.iso_code = :quoted_currency
-                            """
-                            )
+                            """)
                             check_result = conn.execute(
                                 check_query,
                                 {
@@ -862,8 +856,7 @@ class Database:
             base_currency = symbol_upper[:3]
             quoted_currency = symbol_upper[3:]
 
-            query = text(
-                """
+            query = text("""
                 SELECT
                     tf.datetime,
                     tf.open,
@@ -882,8 +875,7 @@ class Database:
                   AND tf.timeframe = :timeframe
                 ORDER BY tf.datetime DESC
                 LIMIT 1
-            """
-            )
+            """)
 
             params = {
                 "base_currency": base_currency,
@@ -1030,16 +1022,14 @@ class Database:
                 normalized_receive_time = ensure_utc_timezone(datetime.now())
                 latency_seconds = None
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO economic_indicators
                 (timestamp, series_id, value, source, country, frequency,
                  receive_time, latency_seconds, schema_version, schema_type)
                 VALUES (:timestamp, :series_id, :value, :source, :country, :frequency,
                         :receive_time, :latency_seconds, '1.0.0', 'economic')
                 ON CONFLICT (series_id, timestamp) DO NOTHING
-            """
-            )
+            """)
 
             params = {
                 "timestamp": normalized_timestamp,
@@ -1075,16 +1065,14 @@ class Database:
             insert_count = 0
             failed_series = set()
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO economic_indicators
                 (timestamp, series_id, value, source, country, frequency,
                  receive_time, latency_seconds, schema_version, schema_type)
                 VALUES (:timestamp, :series_id, :value, :source, :country, :frequency,
                         :receive_time, :latency_seconds, '1.0.0', 'economic')
                 ON CONFLICT (series_id, timestamp) DO NOTHING
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 for indicator in indicators:
@@ -1199,15 +1187,13 @@ class Database:
 
             where_clause = " AND ".join(conditions) if conditions else "1=1"
 
-            query = text(
-                f"""
+            query = text(f"""
                 SELECT timestamp, series_id, value, source, country, frequency,
                        receive_time, latency_seconds
                 FROM economic_indicators
                 WHERE {where_clause}
                 ORDER BY timestamp ASC
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 result = conn.execute(query, params)
@@ -1242,16 +1228,14 @@ class Database:
         :return: Latest indicator dictionary or None if not found
         """
         try:
-            query = text(
-                """
+            query = text("""
                 SELECT timestamp, series_id, value, source, country, frequency,
                        receive_time, latency_seconds
                 FROM economic_indicators
                 WHERE series_id = :series_id
                 ORDER BY timestamp DESC
                 LIMIT 1
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 result = conn.execute(query, {"series_id": series_id})
@@ -1283,11 +1267,9 @@ class Database:
         :return: True if article exists, False otherwise
         """
         try:
-            query = text(
-                """
+            query = text("""
                 SELECT COUNT(*) FROM news_articles WHERE url = :url
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 result = conn.execute(query, {"url": url})
@@ -1353,15 +1335,13 @@ class Database:
                 if len(symbol_upper) == 6:
                     base_currency = symbol_upper[:3]
                     quoted_currency = symbol_upper[3:]
-                    query_pair = text(
-                        """
+                    query_pair = text("""
                         SELECT fp.id FROM forex_pairs fp
                         JOIN currency c1 ON fp.base_currency_id = c1.id
                         JOIN currency c2 ON fp.quote_currency_id = c2.id
                         WHERE c1.iso_code = :base_currency AND c2.iso_code = :quoted_currency
                         LIMIT 1
-                    """
-                    )
+                    """)
                     with self.execute_query() as conn:
                         result = conn.execute(
                             query_pair,
@@ -1377,8 +1357,7 @@ class Database:
             # Convert entities dict to JSONB string
             entities_json = json.dumps(entities) if entities else None
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO news_articles
                 (timestamp, source, title, content, url, symbol, forex_pairs_id,
                  sentiment_score, sentiment_label, entities,
@@ -1386,8 +1365,7 @@ class Database:
                 VALUES (:timestamp, :source, :title, :content, :url, :symbol, :forex_pairs_id,
                         :sentiment_score, :sentiment_label, CAST(:entities AS jsonb),
                         :receive_time, :latency_seconds, '1.0.0', 'news')
-            """
-            )
+            """)
 
             params = {
                 "timestamp": normalized_timestamp,
@@ -1428,8 +1406,7 @@ class Database:
             insert_count = 0
             duplicate_count = 0
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO news_articles
                 (timestamp, source, title, content, url, symbol, forex_pairs_id,
                  sentiment_score, sentiment_label, entities,
@@ -1437,8 +1414,7 @@ class Database:
                 VALUES (:timestamp, :source, :title, :content, :url, :symbol, :forex_pairs_id,
                         :sentiment_score, :sentiment_label, :entities::jsonb,
                         :receive_time, :latency_seconds, '1.0.0', 'news')
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 # First, get all forex_pairs_id mappings for symbols
@@ -1450,15 +1426,13 @@ class Database:
                         if len(symbol_upper) == 6:
                             base_currency = symbol_upper[:3]
                             quoted_currency = symbol_upper[3:]
-                            query_pair = text(
-                                """
+                            query_pair = text("""
                                 SELECT fp.id FROM forex_pairs fp
                                 JOIN currency c1 ON fp.base_currency_id = c1.id
                                 JOIN currency c2 ON fp.quote_currency_id = c2.id
                                 WHERE c1.iso_code = :base_currency AND c2.iso_code = :quoted_currency
                                 LIMIT 1
-                            """
-                            )
+                            """)
                             result = conn.execute(
                                 query_pair,
                                 {
@@ -1571,8 +1545,7 @@ class Database:
 
             where_clause = " AND ".join(conditions)
 
-            query = text(
-                f"""
+            query = text(f"""
                 SELECT timestamp, source, title, content, url, symbol,
                        sentiment_score, sentiment_label, entities,
                        receive_time, latency_seconds
@@ -1580,8 +1553,7 @@ class Database:
                 WHERE {where_clause}
                 ORDER BY timestamp DESC
                 LIMIT :limit
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 result = conn.execute(query, params)
@@ -1645,16 +1617,14 @@ class Database:
 
             where_clause = " AND ".join(conditions)
 
-            query = text(
-                f"""
+            query = text(f"""
                 SELECT timestamp, source, title, content, url, symbol,
                        sentiment_score, sentiment_label, entities,
                        receive_time, latency_seconds
                 FROM news_articles
                 WHERE {where_clause}
                 ORDER BY timestamp ASC
-            """
-            )
+            """)
 
             with self.execute_query() as conn:
                 result = conn.execute(query, params)
@@ -1761,16 +1731,14 @@ class Database:
         try:
             normalized_timestamp = self._normalize_timestamp(timestamp)
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO feature_distributions
                 (feature_name, symbol, timestamp, mean, std, min_value, max_value,
                  percentile_25, percentile_50, percentile_75, percentile_95, percentile_99, sample_size)
                 VALUES (:feature_name, :symbol, :timestamp, :mean, :std, :min_value, :max_value,
                         :percentile_25, :percentile_50, :percentile_75, :percentile_95, :percentile_99, :sample_size)
                 ON CONFLICT DO NOTHING
-            """
-            )
+            """)
 
             params = {
                 "feature_name": feature_name,
@@ -1816,8 +1784,7 @@ class Database:
             normalized_start = self._normalize_timestamp(start_time)
             normalized_end = self._normalize_timestamp(end_time)
 
-            query = text(
-                """
+            query = text("""
                 SELECT feature_name, symbol, timestamp, mean, std, min_value, max_value,
                        percentile_25, percentile_50, percentile_75, percentile_95, percentile_99, sample_size
                 FROM feature_distributions
@@ -1826,8 +1793,7 @@ class Database:
                   AND timestamp >= :start_time
                   AND timestamp <= :end_time
                 ORDER BY timestamp ASC
-            """
-            )
+            """)
 
             params = {
                 "feature_name": feature_name,
@@ -1935,8 +1901,7 @@ class Database:
 
             metadata_json = json.dumps(metadata) if metadata else None
 
-            query = text(
-                """
+            query = text("""
                 INSERT INTO drift_detections
                 (feature_name, symbol, detection_time, psi_score, ks_statistic, ks_pvalue,
                  drift_severity, drift_detected, baseline_window_start, baseline_window_end,
@@ -1948,8 +1913,7 @@ class Database:
                         :current_window_start, :current_window_end, :baseline_size, :current_size,
                         :baseline_mean, :baseline_std, :current_mean, :current_std,
                         :mean_change_pct, :std_change_pct, :metadata::jsonb)
-            """
-            )
+            """)
 
             params = {
                 "feature_name": feature_name,

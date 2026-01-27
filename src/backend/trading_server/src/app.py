@@ -6,7 +6,6 @@ import argparse
 import signal
 import sys
 import threading
-import time
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
@@ -14,7 +13,6 @@ from server import Server
 from monitoring.mt5_clock_monitor import MT5ClockMonitor, set_global_mt5_monitor
 from monitoring.clock_sync_monitor import ClockSyncMonitor, set_global_monitor
 from monitoring.gap_detector import GapDetector, set_global_gap_detector
-
 
 # Suppress TensorFlow informational warnings about CUDA/GPU
 os.environ.setdefault(
@@ -131,15 +129,17 @@ def create_clock_monitoring_components(verbose: bool = False):
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
-    global _shutdown_event
     if _shutdown_event:
         _shutdown_event.set()
     print(f"\nReceived signal {signum}, shutting down gracefully...")
     sys.exit(0)
 
+
 def keep_main_thread_alive(server, clock_monitor, gap_detector, verbose: bool = False):
     """Keep the main thread alive"""
     try:
+        if _shutdown_event is None:
+            return
         while not _shutdown_event.is_set():
             _shutdown_event.wait(timeout=1.0)
     except KeyboardInterrupt:
@@ -157,13 +157,17 @@ def keep_main_thread_alive(server, clock_monitor, gap_detector, verbose: bool = 
             except Exception:
                 pass
         # Stop experiment consumer if available
-        if hasattr(server, '_Server__experiment_consumer') and server._Server__experiment_consumer:
+        if (
+            hasattr(server, "_Server__experiment_consumer")
+            and server._Server__experiment_consumer
+        ):
             try:
                 server._Server__experiment_consumer.stop()
             except Exception:
                 pass
         if verbose:
             print("Trading server stopped.")
+
 
 def start():
     """Start the program"""
@@ -180,12 +184,15 @@ def start():
     signal.signal(signal.SIGTERM, signal_handler)
 
     server = Server(verbose=args.verbose)
-    clock_monitor, gap_detector, mt5_monitor = create_clock_monitoring_components(verbose=args.verbose)
+    clock_monitor, gap_detector, mt5_monitor = create_clock_monitoring_components(
+        verbose=args.verbose
+    )
 
     if args.verbose:
         print("Trading server initialized and running. Press Ctrl+C to stop.")
 
     keep_main_thread_alive(server, clock_monitor, gap_detector)
+
 
 if __name__ == "__main__":
     start()

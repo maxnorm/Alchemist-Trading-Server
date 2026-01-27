@@ -115,7 +115,9 @@ class EnvironmentFactory:
 
         # Filter connectors by features if specified
         if features:
-            filtered_connectors = self._filter_connectors_by_features(connectors, features)
+            filtered_connectors = self._filter_connectors_by_features(
+                connectors, features
+            )
             if not filtered_connectors:
                 raise ValueError(
                     f"No connectors provide the selected features: {features}"
@@ -157,7 +159,9 @@ class EnvironmentFactory:
 
         # Filter connectors by features if specified
         if features:
-            filtered_connectors = self._filter_connectors_by_features(connectors, features)
+            filtered_connectors = self._filter_connectors_by_features(
+                connectors, features
+            )
             if not filtered_connectors:
                 raise ValueError(
                     f"No connectors provide the selected features: {features}"
@@ -277,9 +281,7 @@ class EnvironmentFactory:
         for connector in connectors:
             # Get connector symbol
             config = getattr(connector, "config", None)
-            connector_symbol = (
-                getattr(config, "symbol", None) if config else None
-            )
+            connector_symbol = getattr(config, "symbol", None) if config else None
 
             # Check if connector provides any selected features
             provides_feature = False
@@ -300,7 +302,9 @@ class EnvironmentFactory:
                                     continue
                                 # Feature name format: {field_name}_{symbol}
                                 if connector_symbol:
-                                    connector_feature_name = f"{field_name}_{connector_symbol}"
+                                    connector_feature_name = (
+                                        f"{field_name}_{connector_symbol}"
+                                    )
                                     if connector_feature_name in feature_set:
                                         provides_feature = True
                                         break

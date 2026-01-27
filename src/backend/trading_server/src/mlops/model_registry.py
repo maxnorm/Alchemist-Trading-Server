@@ -19,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 # Try to import MLflow for model downloading
 try:
     import mlflow
+
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
@@ -557,13 +558,15 @@ class ModelRegistry:
             logger.error(f"Error listing models: {e}", exc_info=True)
             return []
 
-    def get_model_path(self, model_id: int, download_dir: Optional[str] = None) -> Optional[str]:
+    def get_model_path(
+        self, model_id: int, download_dir: Optional[str] = None
+    ) -> Optional[str]:
         """
         Get model path for loading a trained model.
-        
+
         If model has MLflow URI, downloads it to a local directory and returns the path.
         Otherwise returns None if no model URI is available.
-        
+
         :param model_id: Model ID
         :param download_dir: Optional directory to download model to (creates temp dir if None)
         :return: Local directory path containing the model files, or None if model not found
@@ -573,47 +576,52 @@ class ModelRegistry:
             if not model:
                 logger.warning(f"Model {model_id} not found")
                 return None
-            
+
             if not model.mlflow_model_uri:
                 logger.warning(
                     f"Model {model_id} has no MLflow model URI. "
                     "Cannot determine model path for loading."
                 )
                 return None
-            
+
             # If it's already a local path, return it
-            if os.path.exists(model.mlflow_model_uri) and os.path.isdir(model.mlflow_model_uri):
+            if os.path.exists(model.mlflow_model_uri) and os.path.isdir(
+                model.mlflow_model_uri
+            ):
                 return model.mlflow_model_uri
-            
+
             # If it's an MLflow URI, download it
-            if MLFLOW_AVAILABLE and model.mlflow_model_uri.startswith(("runs:/", "models:/", "file:/")):
+            if MLFLOW_AVAILABLE and model.mlflow_model_uri.startswith(
+                ("runs:/", "models:/", "file:/")
+            ):
                 try:
                     # Create download directory if not provided
                     if download_dir is None:
                         download_dir = tempfile.mkdtemp(prefix=f"model_{model_id}_")
                     else:
                         os.makedirs(download_dir, exist_ok=True)
-                    
+
                     # Download model from MLflow
-                    logger.info(f"Downloading model {model_id} from MLflow URI: {model.mlflow_model_uri}")
-                    mlflow.artifacts.download_artifacts(
-                        artifact_uri=model.mlflow_model_uri,
-                        dst_path=download_dir
+                    logger.info(
+                        f"Downloading model {model_id} from MLflow URI: {model.mlflow_model_uri}"
                     )
-                    
+                    mlflow.artifacts.download_artifacts(
+                        artifact_uri=model.mlflow_model_uri, dst_path=download_dir
+                    )
+
                     # MLflow downloads to a subdirectory, find the actual model directory
                     # The structure is usually: download_dir/model/...
                     model_dir = download_dir
                     if os.path.exists(os.path.join(download_dir, "model")):
                         model_dir = os.path.join(download_dir, "model")
-                    
+
                     logger.info(f"Model {model_id} downloaded to: {model_dir}")
                     return model_dir
-                    
+
                 except Exception as e:
                     logger.error(
                         f"Failed to download model {model_id} from MLflow: {e}",
-                        exc_info=True
+                        exc_info=True,
                     )
                     return None
             else:
@@ -622,7 +630,9 @@ class ModelRegistry:
                     f"Model {model_id} has unsupported URI format: {model.mlflow_model_uri}"
                 )
                 return None
-            
+
         except Exception as e:
-            logger.error(f"Error getting model path for model {model_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error getting model path for model {model_id}: {e}", exc_info=True
+            )
             return None

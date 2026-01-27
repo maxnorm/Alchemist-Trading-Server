@@ -182,18 +182,18 @@ class PaperTradingEnv(BaseTradingEnv):
             database=db,
             feature_registry=feature_registry,
         )
-        
+
         # Filter features if specified
         if selected_features:
             self.feature_engine.filter_features(selected_features)
-        
+
         self.state_builder = StateBuilder(
             price_history_manager=self.price_history_manager,
             feature_engine=self.feature_engine,
             window_size=window_size,
             connectors=connectors,
         )
-        
+
         # Store selected features for reference
         self.selected_features = selected_features
 

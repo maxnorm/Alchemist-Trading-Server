@@ -8,7 +8,6 @@ instances for live trading with trained models.
 import os
 import json
 import threading
-import time
 from typing import Optional
 import logging
 
@@ -16,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -25,7 +25,7 @@ except ImportError:
 class ModelAssignmentConsumer:
     """
     Synchronous Redis Pub/Sub consumer for model assignment events.
-    
+
     Subscribes to Redis channel and triggers ModelAssignmentService.handle_model_assignment().
     Runs in background thread with retry logic.
     Handles connection failures with exponential backoff.
@@ -62,7 +62,9 @@ class ModelAssignmentConsumer:
     def start(self):
         """Start consuming model assignment events from Redis."""
         if not REDIS_AVAILABLE:
-            logger.warning("Redis not available - model assignment consumer will not start")
+            logger.warning(
+                "Redis not available - model assignment consumer will not start"
+            )
             return
 
         if self._running:
@@ -73,7 +75,9 @@ class ModelAssignmentConsumer:
         self._shutdown_event.clear()
         self._thread = threading.Thread(target=self._consume_loop, daemon=True)
         self._thread.start()
-        logger.info(f"Model assignment consumer started, subscribing to channel '{self.channel}'")
+        logger.info(
+            f"Model assignment consumer started, subscribing to channel '{self.channel}'"
+        )
 
     def stop(self):
         """Stop consuming model assignment events and close connections."""
@@ -101,7 +105,9 @@ class ModelAssignmentConsumer:
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=5.0)
             if self._thread.is_alive():
-                logger.warning("Model assignment consumer thread did not stop within timeout")
+                logger.warning(
+                    "Model assignment consumer thread did not stop within timeout"
+                )
 
         logger.info("Model assignment consumer stopped")
 
@@ -174,13 +180,18 @@ class ModelAssignmentConsumer:
                         try:
                             self._handle_model_assignment(message["data"])
                         except Exception as e:
-                            logger.error(f"Error handling model assignment event: {e}", exc_info=True)
+                            logger.error(
+                                f"Error handling model assignment event: {e}",
+                                exc_info=True,
+                            )
 
                 except redis.TimeoutError:
                     # Timeout is expected, continue loop
                     continue
                 except Exception as e:
-                    logger.error(f"Error receiving message from Redis: {e}", exc_info=True)
+                    logger.error(
+                        f"Error receiving message from Redis: {e}", exc_info=True
+                    )
                     # Reset connections on error
                     if self._pubsub is not None:
                         try:
@@ -202,7 +213,9 @@ class ModelAssignmentConsumer:
                     retry_delay = min(retry_delay * 2, max_retry_delay)
 
             except Exception as e:
-                logger.error(f"Error in model assignment consumer loop: {e}", exc_info=True)
+                logger.error(
+                    f"Error in model assignment consumer loop: {e}", exc_info=True
+                )
                 # Reset connections on error
                 if self._pubsub is not None:
                     try:
@@ -261,7 +274,9 @@ class ModelAssignmentConsumer:
 
             # Trigger model assignment handling
             if self.model_assignment_service is None:
-                logger.error("ModelAssignmentService not available - cannot handle assignment")
+                logger.error(
+                    "ModelAssignmentService not available - cannot handle assignment"
+                )
                 return
 
             success = self.model_assignment_service.handle_model_assignment(
@@ -280,6 +295,8 @@ class ModelAssignmentConsumer:
                 )
 
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse model assignment event JSON: {e}, data: {data}")
+            logger.warning(
+                f"Failed to parse model assignment event JSON: {e}, data: {data}"
+            )
         except Exception as e:
             logger.error(f"Error handling model assignment event: {e}", exc_info=True)

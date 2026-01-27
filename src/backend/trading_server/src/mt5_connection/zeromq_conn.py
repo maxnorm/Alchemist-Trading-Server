@@ -97,12 +97,12 @@ class ZeroMQConnection:
     async def _receive_sub_message(self) -> dict:
         """
         Receive message from SUB socket with subscription filter.
-        
+
         Uses blocking receive (respects RCVTIMEO socket option).
         When subscribing to a specific topic, ZeroMQ filters messages at the
         socket level. recv_multipart() returns complete multipart messages
         atomically when the subscription filter matches.
-        
+
         Important: Use blocking receive (no NOBLOCK) to ensure complete
         multipart messages are received. The RCVTIMEO socket option handles
         timeouts automatically.
@@ -115,52 +115,57 @@ class ZeroMQConnection:
                 # No event loop in current thread, create one
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-            
+
             # Use blocking receive - RCVTIMEO socket option handles timeout
             # This ensures we receive complete multipart messages atomically
-            parts = await loop.run_in_executor(
-                None, self._socket.recv_multipart
-            )
-            
+            parts = await loop.run_in_executor(None, self._socket.recv_multipart)
+
             # Handle multipart messages: [topic, message]
             if len(parts) == 2:
                 topic_bytes, message_bytes = parts
-                topic = topic_bytes.decode('utf-8', errors='ignore')
-                
+                topic = topic_bytes.decode("utf-8", errors="ignore")
+
                 # Log topic for debugging (first few messages only)
                 # This helps verify subscription filter is working
                 import logging
+
                 logger = logging.getLogger("zeromq_conn")
-                if not hasattr(self, '_message_count'):
+                if not hasattr(self, "_message_count"):
                     self._message_count = 0
                 self._message_count += 1
                 # ALWAYS log first 20 messages to diagnose reception issues
                 if self._message_count <= 20:
-                    logger.info(f"✓ ZeroMQ SUB socket received message #{self._message_count} with topic: '{topic}'")
+                    logger.info(
+                        f"✓ ZeroMQ SUB socket received message #{self._message_count} with topic: '{topic}'"
+                    )
                 elif self._message_count <= 100:
-                    logger.debug(f"Received message #{self._message_count} with topic: '{topic}'")
+                    logger.debug(
+                        f"Received message #{self._message_count} with topic: '{topic}'"
+                    )
                 elif self._message_count % 100 == 0:
-                    logger.debug(f"Received message #{self._message_count} with topic: '{topic}'")
-                
+                    logger.debug(
+                        f"Received message #{self._message_count} with topic: '{topic}'"
+                    )
+
                 # Validate message is not empty
                 if not message_bytes or len(message_bytes) == 0:
                     raise TimeoutError("Received empty message part")
-                
-                message_str = message_bytes.decode('utf-8', errors='ignore')
-                if not message_str or message_str.strip() == '':
+
+                message_str = message_bytes.decode("utf-8", errors="ignore")
+                if not message_str or message_str.strip() == "":
                     raise TimeoutError("Received whitespace-only message")
-                
+
                 try:
                     return json.loads(message_str)
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON in message: {e}") from e
-                    
+
             elif len(parts) == 1:
                 # Single part - might be topic only (shouldn't happen with proper subscription)
-                part_str = parts[0].decode('utf-8', errors='ignore')
-                
+                part_str = parts[0].decode("utf-8", errors="ignore")
+
                 # If it looks like a topic (short string, not JSON), this is an error
-                if len(part_str) < 20 and not part_str.strip().startswith('{'):
+                if len(part_str) < 20 and not part_str.strip().startswith("{"):
                     raise TimeoutError(
                         f"Received incomplete multipart message (topic only: '{part_str}'). "
                         f"This may indicate a ZeroMQ subscription timing issue."
@@ -172,7 +177,7 @@ class ZeroMQConnection:
                     raise TimeoutError(f"Single-part message is not valid JSON: {e}")
             else:
                 raise ValueError(f"Unexpected multipart format: {len(parts)} parts")
-                
+
         except zmq.Again:
             # This should not happen with blocking receive, but handle it
             raise TimeoutError("No message available (socket timeout)")

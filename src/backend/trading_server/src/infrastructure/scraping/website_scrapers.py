@@ -3,7 +3,7 @@ Website-specific scrapers for financial websites
 Uses AI-assisted extraction for resilient scraping
 """
 
-import requests
+import requests  # type: ignore[import-untyped]
 from typing import Dict, Any, Optional
 from utils.logging_config import get_logger
 from .ai_scraper import AIScraper, LLMScraper

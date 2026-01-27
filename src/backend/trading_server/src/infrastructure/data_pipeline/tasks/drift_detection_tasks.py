@@ -273,8 +273,7 @@ def store_drift_detection(
 
         with database.execute_query() as conn:
             conn.execute(
-                text(
-                    """
+                text("""
                     INSERT INTO drift_detections
                     (feature_name, symbol, detection_time, psi_score, ks_statistic,
                      ks_pvalue, drift_severity, drift_detected,
@@ -288,8 +287,7 @@ def store_drift_detection(
                             :current_window_start, :current_window_end,
                             :baseline_size, :current_size, :baseline_mean, :baseline_std, :current_mean, :current_std,
                             :mean_change_pct, :std_change_pct)
-                """
-                ),
+                """),
                 {
                     "feature_name": feature_name,
                     "symbol": symbol,

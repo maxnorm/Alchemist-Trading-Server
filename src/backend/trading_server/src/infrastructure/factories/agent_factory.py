@@ -119,6 +119,7 @@ class AgentFactory:
                     # If it's an MLflow URI or other format, log warning
                     # The caller should use ModelRegistry.get_model_path() to download first
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.warning(
                         f"Model path {model_path} does not exist locally. "

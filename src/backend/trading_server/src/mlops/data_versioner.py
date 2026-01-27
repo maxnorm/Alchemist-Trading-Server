@@ -203,7 +203,7 @@ class DataVersioner:
             return None
 
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             with open(dvc_file, "r") as f:
                 data = yaml.safe_load(f)

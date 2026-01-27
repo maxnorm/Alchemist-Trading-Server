@@ -4,8 +4,7 @@ Utils function
 
 from datetime import datetime
 from typing import Optional, Union
-import pytz
-
+import pytz  # type: ignore[import-untyped]
 
 # UTC timezone - used consistently throughout the system (no DST issues)
 _UTC_TIMEZONE = pytz.UTC

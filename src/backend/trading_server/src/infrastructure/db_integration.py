@@ -50,8 +50,7 @@ def register_account_in_db(
                 # Preserve user_id if it exists (don't overwrite with NULL)
                 # This allows accounts to be claimed by users later
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         UPDATE mt5_accounts
                         SET account_type = :account_type,
                             broker_name = :broker_name,
@@ -63,8 +62,7 @@ def register_account_in_db(
                             last_seen_at = NOW(),
                             updated_at = NOW()
                         WHERE id = :id
-                    """
-                    ),
+                    """),
                     {
                         "id": account_id,
                         "account_type": account_type,
@@ -80,16 +78,14 @@ def register_account_in_db(
             else:
                 # Create new account
                 result = conn.execute(
-                    text(
-                        """
+                    text("""
                         INSERT INTO mt5_accounts
                         (account_login, account_type, broker_name, broker_server,
                          account_currency, account_leverage, account_name, is_active, last_seen_at)
                         VALUES (:login, :account_type, :broker_name, :broker_server,
                                 :currency, :leverage, :account_name, TRUE, NOW())
                         RETURNING id
-                    """
-                    ),
+                    """),
                     {
                         "login": login,
                         "account_type": account_type,
@@ -145,8 +141,7 @@ def update_account_in_db(
             account_id = existing[0]
             # Preserve user_id if it exists (don't overwrite with NULL)
             conn.execute(
-                text(
-                    """
+                text("""
                     UPDATE mt5_accounts
                     SET account_type = :account_type,
                         broker_name = :broker_name,
@@ -158,8 +153,7 @@ def update_account_in_db(
                         last_seen_at = NOW(),
                         updated_at = NOW()
                     WHERE id = :id
-                """
-                ),
+                """),
                 {
                     "id": account_id,
                     "account_type": account_type,
@@ -197,26 +191,22 @@ def log_connection(
         with engine.connect() as conn:
             # Close any existing active connections for this account
             conn.execute(
-                text(
-                    """
+                text("""
                     UPDATE mt5_connections
                     SET is_connected = FALSE, disconnected_at = NOW(), disconnect_reason = 'New connection'
                     WHERE account_id = :account_id AND is_connected = TRUE
-                """
-                ),
+                """),
                 {"account_id": account_id},
             )
 
             # Create new connection record
             result = conn.execute(
-                text(
-                    """
+                text("""
                     INSERT INTO mt5_connections
                     (account_id, terminal_id, ea_version, connection_ip, is_connected)
                     VALUES (:account_id, :terminal_id, :ea_version, :connection_ip, TRUE)
                     RETURNING id
-                """
-                ),
+                """),
                 {
                     "account_id": account_id,
                     "terminal_id": terminal_id,
@@ -267,13 +257,11 @@ def update_connection_status(
                 # Mark connection as disconnected
                 if terminal_id:
                     conn.execute(
-                        text(
-                            """
+                        text("""
                             UPDATE mt5_connections
                             SET is_connected = FALSE, disconnected_at = NOW(), disconnect_reason = :reason
                             WHERE account_id = :account_id AND terminal_id = :terminal_id AND is_connected = TRUE
-                        """
-                        ),
+                        """),
                         {
                             "account_id": account_id,
                             "terminal_id": terminal_id,
@@ -282,13 +270,11 @@ def update_connection_status(
                     )
                 else:
                     conn.execute(
-                        text(
-                            """
+                        text("""
                             UPDATE mt5_connections
                             SET is_connected = FALSE, disconnected_at = NOW(), disconnect_reason = :reason
                             WHERE account_id = :account_id AND is_connected = TRUE
-                        """
-                        ),
+                        """),
                         {
                             "account_id": account_id,
                             "reason": disconnect_reason or "Disconnected",

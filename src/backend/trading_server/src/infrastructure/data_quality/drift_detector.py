@@ -193,11 +193,11 @@ class DistributionDriftDetector:
         results["current_mean"] = float(np.mean(current))
         results["current_std"] = float(np.std(current))
 
-        # Calculate mean/std change
-        baseline_mean = float(results["baseline_mean"])
-        current_mean = float(results["current_mean"])
-        baseline_std = float(results["baseline_std"])
-        current_std = float(results["current_std"])
+        # Calculate mean/std change using direct statistics to satisfy type checker
+        baseline_mean = float(np.mean(baseline))
+        current_mean = float(np.mean(current))
+        baseline_std = float(np.std(baseline))
+        current_std = float(np.std(current))
         mean_change_pct = (
             abs(current_mean - baseline_mean) / max(abs(baseline_mean), 1e-10) * 100
         )

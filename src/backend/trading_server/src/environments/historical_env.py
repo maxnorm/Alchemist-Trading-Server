@@ -257,7 +257,7 @@ class HistoricalTradingEnv(BaseTradingEnv):
         is_long = None
 
         # If we have a position now, extract position information
-        if has_position:
+        if has_position and self.position is not None:
             entry_price = self.position.entry_price
             # Convert quantity to lots (standard lot size is 100000 units)
             contract_size = 100000
@@ -265,7 +265,12 @@ class HistoricalTradingEnv(BaseTradingEnv):
             is_long = self.position.side == "long"
 
         # If we just closed a position, get exit price from the most recent trade
-        if action == 3 and had_position_before and not has_position and self.trade_history:
+        if (
+            action == 3
+            and had_position_before
+            and not has_position
+            and self.trade_history
+        ):
             last_trade = self.trade_history[-1]
             exit_price = last_trade.exit_price
             # Also set entry_price, lot_size, is_long from the closed position info
@@ -279,7 +284,12 @@ class HistoricalTradingEnv(BaseTradingEnv):
 
         # If we just opened a position, entry_price is already set from position above
         # But we need to ensure lot_size and is_long are set
-        if action in [1, 2] and has_position and not had_position_before:
+        if (
+            action in [1, 2]
+            and has_position
+            and not had_position_before
+            and self.position is not None
+        ):
             if lot_size is None:
                 contract_size = 100000
                 lot_size = self.position.quantity / contract_size

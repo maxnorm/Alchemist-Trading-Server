@@ -5,8 +5,8 @@ Implements IDataSourceConnector for NewsAPI (optional - free tier limited to 100
 
 import os
 import time
-import requests
-from typing import Dict, Any, Iterator, Optional, Tuple
+import requests  # type: ignore[import-untyped]
+from typing import Dict, Any, Iterator, Optional, Tuple, cast
 from datetime import datetime, timedelta
 from utils.logging_config import get_logger
 from events.normalizer import EventNormalizer
@@ -21,8 +21,8 @@ try:
     SENTIMENT_AVAILABLE = True
 except ImportError:
     SENTIMENT_AVAILABLE = False
-    SentimentAnalyzer = None
-    EntityExtractor = None
+    SentimentAnalyzer = cast(Any, None)  # type: ignore[misc]
+    EntityExtractor = cast(Any, None)  # type: ignore[misc]
 
 
 class NewsAPIConnector(IDataSourceConnector):

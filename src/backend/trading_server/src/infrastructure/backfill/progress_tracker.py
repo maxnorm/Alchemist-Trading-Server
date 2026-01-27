@@ -49,14 +49,12 @@ class BackfillProgressTracker:
         :return: Progress record ID
         """
         try:
-            query = text(
-                """
+            query = text("""
                 INSERT INTO backfill_progress
                 (connector_type, symbol, start_time, end_time, status)
                 VALUES (:connector_type, :symbol, :start_time, :end_time, 'pending')
                 RETURNING id
-            """
-            )
+            """)
 
             params = {
                 "connector_type": connector_type,
@@ -96,13 +94,11 @@ class BackfillProgressTracker:
         """
         try:
             # Get progress record to retrieve connector_type, symbol, start_time, end_time
-            get_query = text(
-                """
+            get_query = text("""
                 SELECT connector_type, symbol, start_time, end_time, records_collected
                 FROM backfill_progress
                 WHERE id = :progress_id
-            """
-            )
+            """)
             get_result = self.db.execute_with_result(
                 get_query, {"progress_id": progress_id}
             )
@@ -132,16 +128,14 @@ class BackfillProgressTracker:
                 progress_pct = 0.0
 
             # Update database
-            query = text(
-                """
+            query = text("""
                 UPDATE backfill_progress
                 SET last_successful_time = :last_successful_time,
                     records_collected = :records_collected,
                     status = 'in_progress',
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = :progress_id
-            """
-            )
+            """)
 
             params = {
                 "progress_id": progress_id,
@@ -200,8 +194,7 @@ class BackfillProgressTracker:
         :return: Progress record dictionary or None if not found
         """
         try:
-            query = text(
-                """
+            query = text("""
                 SELECT id, connector_type, symbol, start_time, end_time,
                        last_successful_time, records_collected, status, error_message,
                        created_at, updated_at
@@ -212,8 +205,7 @@ class BackfillProgressTracker:
                   AND end_time = :end_time
                 ORDER BY created_at DESC
                 LIMIT 1
-            """
-            )
+            """)
 
             params = {
                 "connector_type": connector_type,
@@ -253,25 +245,21 @@ class BackfillProgressTracker:
         """
         try:
             # Get progress record to retrieve connector_type and symbol
-            get_query = text(
-                """
+            get_query = text("""
                 SELECT connector_type, symbol
                 FROM backfill_progress
                 WHERE id = :progress_id
-            """
-            )
+            """)
             get_result = self.db.execute_with_result(
                 get_query, {"progress_id": progress_id}
             )
 
-            query = text(
-                """
+            query = text("""
                 UPDATE backfill_progress
                 SET status = 'completed',
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = :progress_id
-            """
-            )
+            """)
 
             params = {"progress_id": progress_id}
 
@@ -308,15 +296,13 @@ class BackfillProgressTracker:
         :param error_message: Error message describing the failure
         """
         try:
-            query = text(
-                """
+            query = text("""
                 UPDATE backfill_progress
                 SET status = 'failed',
                     error_message = :error_message,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = :progress_id
-            """
-            )
+            """)
 
             params = {
                 "progress_id": progress_id,
@@ -340,13 +326,11 @@ class BackfillProgressTracker:
         :return: Timestamp to resume from, or None if cannot resume
         """
         try:
-            query = text(
-                """
+            query = text("""
                 SELECT last_successful_time, status
                 FROM backfill_progress
                 WHERE id = :progress_id
-            """
-            )
+            """)
 
             params = {"progress_id": progress_id}
 
@@ -376,27 +360,23 @@ class BackfillProgressTracker:
         """
         try:
             if connector_type:
-                query = text(
-                    """
+                query = text("""
                     SELECT id, connector_type, symbol, start_time, end_time,
                            last_successful_time, records_collected, error_message
                     FROM backfill_progress
                     WHERE status = 'failed'
                       AND connector_type = :connector_type
                     ORDER BY created_at DESC
-                """
-                )
+                """)
                 params = {"connector_type": connector_type}
             else:
-                query = text(
-                    """
+                query = text("""
                     SELECT id, connector_type, symbol, start_time, end_time,
                            last_successful_time, records_collected, error_message
                     FROM backfill_progress
                     WHERE status = 'failed'
                     ORDER BY created_at DESC
-                """
-                )
+                """)
                 params = {}
 
             result = self.db.execute_with_result(query, params)

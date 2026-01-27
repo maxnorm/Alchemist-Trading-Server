@@ -1,7 +1,7 @@
 from typing import Iterable, Optional, Any
 from datetime import timedelta
 from utils.time_utils import get_utc_time, get_est_timezone
-import pytz
+import pytz  # type: ignore[import-untyped]
 
 
 def check_if_market_open():

@@ -4,7 +4,7 @@ Implements IDataSourceConnector for AI-assisted web scraping
 """
 
 import time
-from typing import Dict, Any, Iterator, Optional, Tuple, List
+from typing import Dict, Any, Iterator, Optional, Tuple, List, cast
 from datetime import datetime, timedelta
 from utils.logging_config import get_logger
 from events.normalizer import EventNormalizer
@@ -21,8 +21,8 @@ try:
     SENTIMENT_AVAILABLE = True
 except ImportError:
     SENTIMENT_AVAILABLE = False
-    SentimentAnalyzer = None
-    EntityExtractor = None
+    SentimentAnalyzer = cast(Any, None)  # type: ignore[misc]
+    EntityExtractor = cast(Any, None)  # type: ignore[misc]
 
 
 class WebScrapingConnector(IDataSourceConnector):
@@ -281,7 +281,7 @@ class WebScrapingConnector(IDataSourceConnector):
             self.logger.warning(
                 "No URLs configured for web scraping. Configure 'urls' in extra_config."
             )
-            return iter([])
+            return  # Generator function - return without value
 
         # Scrape all websites
         for website in self.websites:
@@ -335,7 +335,7 @@ class WebScrapingConnector(IDataSourceConnector):
 
         if not urls_to_scrape:
             self.logger.warning("No URLs configured for web scraping.")
-            return iter([])
+            return  # Generator function - return without value
 
         for website in self.websites:
             try:

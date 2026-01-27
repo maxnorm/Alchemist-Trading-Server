@@ -15,23 +15,26 @@ from great_expectations.core import ExpectationSuite
 # Import ExpectationConfiguration for version 0.18.21 (pinned in requirements.txt)
 # Dictionary-based expectations are preferred and work in all versions
 _ExpectationConfiguration = None
+_EC = None
 try:
     from great_expectations.core.expectation_configuration import (
-        ExpectationConfiguration as _ExpectationConfiguration,
+        ExpectationConfiguration as _EC,
     )
 except (ImportError, ModuleNotFoundError, AttributeError):
     # Fallback: try alternative import paths for compatibility
     try:
         from great_expectations.expectations.expectation_configuration import (
-            ExpectationConfiguration as _ExpectationConfiguration,
+            ExpectationConfiguration as _EC,
         )
     except (ImportError, ModuleNotFoundError, AttributeError):
         try:
             from great_expectations.core import (
-                ExpectationConfiguration as _ExpectationConfiguration,
+                ExpectationConfiguration as _EC,
             )
         except (ImportError, ModuleNotFoundError, AttributeError):
-            _ExpectationConfiguration = None
+            _EC = None
+
+_ExpectationConfiguration = _EC
 
 logger = logging.getLogger(__name__)
 

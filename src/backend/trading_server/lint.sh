@@ -90,7 +90,13 @@ echo ""
 
 # Step 2: Flake8 linting
 echo -e "${YELLOW}📋 Step 2/3: Running Flake8 linter...${NC}"
-if $PYTHON_CMD -m flake8 src/ --max-line-length=120 --extend-ignore=E203,W503; then
+# NOTE:
+# We force Flake8 to run in a single process with --jobs=1.
+# In some restricted environments (like CI sandboxes or containerized shells),
+# Python's multiprocessing-based default can fail with PermissionError when
+# creating synchronization primitives (semaphores). Using a single process
+# avoids that issue while keeping the linting rules identical.
+if $PYTHON_CMD -m flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 --jobs=1; then
     echo -e "${GREEN}✅ Flake8: No linting issues found${NC}"
 else
     echo -e "${RED}❌ Flake8: Linting issues found${NC}"

@@ -102,16 +102,14 @@ class LineageService:
             # Insert run record
             with self.database.execute_query() as conn:
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         INSERT INTO lineage_runs (run_id, job_name, namespace, start_time, status, metadata)
                         VALUES (:run_id, :job_name, :namespace, :start_time, :status, :metadata::jsonb)
                         ON CONFLICT (run_id) DO UPDATE SET
                             start_time = EXCLUDED.start_time,
                             status = EXCLUDED.status,
                             metadata = EXCLUDED.metadata
-                    """
-                    ),
+                    """),
                     {
                         "run_id": run_id,
                         "job_name": job_name,
@@ -130,13 +128,11 @@ class LineageService:
                     input_namespace = input_dataset.get("namespace", namespace)
                     self._ensure_dataset_exists(dataset_id, input_namespace, conn)
                     conn.execute(
-                        text(
-                            """
+                        text("""
                             INSERT INTO lineage_run_datasets (run_id, dataset_id, io_type, namespace)
                             VALUES (:run_id, :dataset_id, 'input', :namespace)
                             ON CONFLICT (run_id, dataset_id, io_type) DO NOTHING
-                        """
-                        ),
+                        """),
                         {
                             "run_id": run_id,
                             "dataset_id": dataset_id,
@@ -217,15 +213,13 @@ class LineageService:
 
                 # Update run record
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         UPDATE lineage_runs
                         SET end_time = :end_time,
                             status = :status,
                             metadata = :metadata::jsonb
                         WHERE run_id = :run_id
-                    """
-                    ),
+                    """),
                     {
                         "run_id": run_id,
                         "end_time": end_time,
@@ -258,13 +252,11 @@ class LineageService:
                         schema_version=output_dataset.get("schema_version"),
                     )
                     conn.execute(
-                        text(
-                            """
+                        text("""
                             INSERT INTO lineage_run_datasets (run_id, dataset_id, io_type, namespace)
                             VALUES (:run_id, :dataset_id, 'output', :namespace)
                             ON CONFLICT (run_id, dataset_id, io_type) DO NOTHING
-                        """
-                        ),
+                        """),
                         {
                             "run_id": run_id,
                             "dataset_id": dataset_id,
@@ -342,16 +334,14 @@ class LineageService:
 
                 # Update run record
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         UPDATE lineage_runs
                         SET end_time = :end_time,
                             status = :status,
                             error_message = :error_message,
                             metadata = :metadata::jsonb
                         WHERE run_id = :run_id
-                    """
-                    ),
+                    """),
                     {
                         "run_id": run_id,
                         "end_time": end_time,
@@ -450,13 +440,11 @@ class LineageService:
         try:
             with self.database.execute_query() as conn:
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         INSERT INTO lineage_jobs (job_name, namespace, description)
                         VALUES (:job_name, :namespace, :description)
                         ON CONFLICT (job_name, namespace) DO NOTHING
-                    """
-                    ),
+                    """),
                     {
                         "job_name": job_name,
                         "namespace": namespace,
@@ -485,16 +473,14 @@ class LineageService:
 
         try:
             conn.execute(
-                text(
-                    """
+                text("""
                     INSERT INTO lineage_datasets (dataset_id, name, namespace, schema_version, schema_json)
                     VALUES (:dataset_id, :name, :namespace, :schema_version, :schema_json::jsonb)
                     ON CONFLICT (dataset_id, namespace) DO UPDATE SET
                         schema_version = COALESCE(EXCLUDED.schema_version, lineage_datasets.schema_version),
                         schema_json = COALESCE(EXCLUDED.schema_json, lineage_datasets.schema_json),
                         updated_at = CURRENT_TIMESTAMP
-                """
-                ),
+                """),
                 {
                     "dataset_id": dataset_id,
                     "name": name,
@@ -516,14 +502,12 @@ class LineageService:
         try:
             with self.database.execute_query() as conn:
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         UPDATE lineage_jobs
                         SET latest_run_id = :run_id,
                             updated_at = CURRENT_TIMESTAMP
                         WHERE job_name = :job_name AND namespace = :namespace
-                    """
-                    ),
+                    """),
                     {
                         "job_name": job_name,
                         "namespace": namespace,

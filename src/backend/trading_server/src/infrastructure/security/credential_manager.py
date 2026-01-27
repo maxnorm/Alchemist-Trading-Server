@@ -16,15 +16,15 @@ class CredentialManager:
     def __init__(self):
         """
         Initialize CredentialManager with encryption key from environment
-        
+
         :raises ValueError: If MT5_ENCRYPTION_KEY is not set
         """
         key = os.getenv("MT5_ENCRYPTION_KEY")
         if not key:
             raise ValueError("MT5_ENCRYPTION_KEY environment variable required")
-        
+
         self.logger = get_logger("credential_manager", "credential_manager.log")
-        
+
         # Support both base64-encoded key or generate from string
         try:
             # Try to use key directly as Fernet key
@@ -40,7 +40,7 @@ class CredentialManager:
     def encrypt_password(self, password: str) -> bytes:
         """
         Encrypt a password
-        
+
         :param password: Plain text password
         :return: Encrypted password as bytes
         """
@@ -53,7 +53,7 @@ class CredentialManager:
     def decrypt_password(self, encrypted: bytes) -> str:
         """
         Decrypt an encrypted password
-        
+
         :param encrypted: Encrypted password as bytes
         :return: Plain text password
         :raises ValueError: If decryption fails

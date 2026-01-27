@@ -5,7 +5,7 @@ Implements IDataSourceConnector for economic data from ECB Statistical Data Ware
 """
 
 import time
-import requests
+import requests  # type: ignore[import-untyped]
 from typing import Dict, Any, Iterator, Optional, Tuple
 from datetime import datetime, timedelta
 from utils.logging_config import get_logger
@@ -199,7 +199,7 @@ class ECBConnector(IDataSourceConnector):
                 return
 
             # Convert to normalized events
-            for timestamp_dt, value in observations:
+            for timestamp_dt, value_float in observations:
                 # Normalize timestamp to UTC
                 timestamp_utc = normalize_to_utc(timestamp_dt)
 
@@ -207,7 +207,7 @@ class ECBConnector(IDataSourceConnector):
                 raw_event = {
                     "timestamp": timestamp_utc,
                     "series_id": series_id,
-                    "value": value,
+                    "value": value_float,
                     "source": "ECB",
                     "country": "EU",  # Eurozone
                     "frequency": frequency,

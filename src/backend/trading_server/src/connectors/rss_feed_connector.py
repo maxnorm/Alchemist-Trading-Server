@@ -4,7 +4,7 @@ Implements IDataSourceConnector for multiple RSS feeds (completely free, no API 
 """
 
 import time
-from typing import Dict, Any, Iterator, Optional, Tuple, Set
+from typing import Dict, Any, Iterator, Optional, Tuple, Set, cast
 from datetime import datetime, timedelta
 from utils.logging_config import get_logger
 from events.normalizer import EventNormalizer
@@ -19,8 +19,8 @@ try:
     SENTIMENT_AVAILABLE = True
 except ImportError:
     SENTIMENT_AVAILABLE = False
-    SentimentAnalyzer = None
-    EntityExtractor = None
+    SentimentAnalyzer = cast(Any, None)  # type: ignore[misc]
+    EntityExtractor = cast(Any, None)  # type: ignore[misc]
 
 try:
     import feedparser

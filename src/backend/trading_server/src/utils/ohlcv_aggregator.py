@@ -99,8 +99,12 @@ class TickToOHLCVAggregator:
             return []
 
         # Sort ticks by timestamp
+        # Handle None values by using a sentinel datetime.min
+        from datetime import datetime as dt
+
         sorted_ticks = sorted(
-            ticks, key=lambda t: t.get("timestamp") or t.get("datetime")
+            ticks,
+            key=lambda t: t.get("timestamp") or t.get("datetime") or dt.min,
         )
 
         bars = []

@@ -9,11 +9,10 @@ tracks drift and alerts when it exceeds thresholds, enabling proactive
 identification of clock synchronization issues.
 """
 
-import os
 import threading
 from collections import deque
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Any
 import statistics
 
 from utils.time_utils import get_utc_time
@@ -63,7 +62,9 @@ class MT5ClockMonitor:
 
         # Drift tracking: deque of (timestamp, drift_seconds) tuples
         self._drift_history: deque = deque(maxlen=window_size)
-        self._lock = threading.RLock()  # Use reentrant lock to allow nested lock acquisition
+        self._lock = (
+            threading.RLock()
+        )  # Use reentrant lock to allow nested lock acquisition
 
         # Negative latency tracking
         self._negative_latency_count = 0
@@ -258,7 +259,7 @@ class MT5ClockMonitor:
                 f"negative: {self._negative_latency_count}/{self._total_tick_count})"
             )
 
-    def get_drift_stats(self) -> Dict[str, any]:
+    def get_drift_stats(self) -> Dict[str, Any]:
         """
         Get drift statistics from rolling window
 
@@ -288,7 +289,7 @@ class MT5ClockMonitor:
                 ),
             }
 
-    def get_negative_latency_stats(self) -> Dict[str, any]:
+    def get_negative_latency_stats(self) -> Dict[str, Any]:
         """
         Get negative latency statistics
 
@@ -317,7 +318,7 @@ class MT5ClockMonitor:
         else:
             return "ok"
 
-    def get_status(self) -> Dict[str, any]:
+    def get_status(self) -> Dict[str, Any]:
         """
         Get current monitoring status
 
@@ -366,7 +367,7 @@ class MT5ClockMonitor:
 
         # Check drift
         if drift_stats["sample_count"] > 0:
-            abs_avg_drift = abs(drift_stats["avg_drift_seconds"] or 0.0)
+            abs_avg_drift: float = abs(drift_stats["avg_drift_seconds"] or 0.0)
             if abs_avg_drift > self.drift_threshold:
                 return False
 
@@ -387,7 +388,10 @@ class MT5ClockMonitor:
 
             # Update drift metric
             drift_stats = self.get_drift_stats()
-            if drift_stats["sample_count"] > 0 and drift_stats["avg_drift_seconds"] is not None:
+            if (
+                drift_stats["sample_count"] > 0
+                and drift_stats["avg_drift_seconds"] is not None
+            ):
                 clock_drift_seconds.labels(source="mt5_broker").set(
                     drift_stats["avg_drift_seconds"]
                 )
@@ -398,7 +402,9 @@ class MT5ClockMonitor:
 
             # Update health status (1=healthy, 0=unhealthy)
             is_healthy = self.is_healthy()
-            clock_sync_status.labels(source="mt5_broker").set(1.0 if is_healthy else 0.0)
+            clock_sync_status.labels(source="mt5_broker").set(
+                1.0 if is_healthy else 0.0
+            )
 
         except Exception as e:
             # Don't fail if metrics update fails

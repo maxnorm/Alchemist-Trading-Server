@@ -85,16 +85,14 @@ class DistributionCollector:
 
             with self.database.execute_query() as conn:
                 conn.execute(
-                    text(
-                        """
+                    text("""
                         INSERT INTO feature_distributions
                         (feature_name, symbol, timestamp, mean, std, min_value,
                          max_value, percentiles, sample_size)
                         VALUES (:feature_name, :symbol, :timestamp, :mean, :std,
                                 :min_value, :max_value, :percentiles::jsonb,
                                 :sample_size)
-                    """
-                    ),
+                    """),
                     {
                         "feature_name": feature_name,
                         "symbol": symbol,
@@ -142,8 +140,7 @@ class DistributionCollector:
 
             with self.database.execute_query() as conn:
                 result = conn.execute(
-                    text(
-                        """
+                    text("""
                         SELECT feature_name, symbol, timestamp, mean, std,
                                min_value, max_value, percentiles, sample_size
                         FROM feature_distributions
@@ -152,8 +149,7 @@ class DistributionCollector:
                           AND timestamp >= :start_time
                           AND timestamp <= :end_time
                         ORDER BY timestamp ASC
-                    """
-                    ),
+                    """),
                     {
                         "feature_name": feature_name,
                         "symbol": symbol,

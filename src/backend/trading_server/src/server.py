@@ -3,20 +3,18 @@ Class Server
 """
 
 import os
-import datetime
 import threading
-import time
 from typing import Dict, Optional
 
 from database import Database
 from utils.time_utils import print_with_datetime
-from models.currency_pair import CurrencyPair
 from models.account import Account
 from infrastructure.zeromq.zeromq_connection_manager import ZeroMQConnectionManager
 from infrastructure.zeromq.zeromq_broker import ZeroMQBroker
-from infrastructure.connections.streamer_discovery_service import StreamerDiscoveryService
+from infrastructure.connections.streamer_discovery_service import (
+    StreamerDiscoveryService,
+)
 from features.catalog import FeatureCatalog
-from environments.live_env import LiveTradingEnv
 from http_controller import HTTPController
 from connectors.registry import ConnectorRegistry
 from experiments import (
@@ -50,9 +48,7 @@ class Server:
         self.__verbose = verbose
         self.__accounts = []
         self.__all_currency_pairs = {}
-        self._connectors = (
-            []
-        )
+        self._connectors = []
         self.__environments = {}
 
         self.__stop_char = "\n"
@@ -128,8 +124,10 @@ class Server:
 
         # Initialize model assignment service
         try:
-            self.__model_assignment_service = ModelAssignmentService(server_instance=self)
-            
+            self.__model_assignment_service = ModelAssignmentService(
+                server_instance=self
+            )
+
             # Initialize model assignment consumer (Redis pub/sub)
             try:
                 self.__model_assignment_consumer = ModelAssignmentConsumer(
@@ -168,7 +166,7 @@ class Server:
         broker_host = os.getenv("ZMQ_HOST", "127.0.0.1")
         broker_port = int(os.getenv("ZMQ_BROKER_PORT", 5557))
         tick_port = int(os.getenv("ZMQ_TICK_PORT", 5555))
-        
+
         self.__zmq_broker = ZeroMQBroker(
             host=broker_host,
             broker_port=broker_port,
@@ -176,14 +174,14 @@ class Server:
             verbose=self.__verbose,
         )
         self.__zmq_broker.start()
-        
+
         # Initialize ZeroMQ connection manager (EA binds, Python connects)
         self.__zmq_manager = ZeroMQConnectionManager(
             host=broker_host,
             order_port=int(os.getenv("ZMQ_ORDER_PORT", 5556)),
             tick_port=tick_port,
         )
-        
+
         self.__streamer_discovery = StreamerDiscoveryService(
             zmq_manager=self.__zmq_manager,
             database=self.__db,
@@ -192,7 +190,7 @@ class Server:
             verbose=self.__verbose,
             server=self,
         )
-        
+
         # Start discovery service
         self.__streamer_discovery.start()
 
@@ -204,13 +202,11 @@ class Server:
             print_with_datetime("ZeroMQ connection manager initialized")
             print_with_datetime("Streamer discovery service started")
 
-    def connect_account(
-        self, account_login: int, auth_token: str
-    ) -> Account:
+    def connect_account(self, account_login: int, auth_token: str) -> Account:
         """
         Connect to MT5 EA terminal for account via ZeroMQ (REQ/REP).
         This method only connects the trading terminal (for order execution).
-        
+
         :param account_login: MT5 account login number
         :param auth_token: Authentication token for the account
         :return: Account instance
@@ -354,13 +350,13 @@ class Server:
     def get_account(self, account_login: int) -> Optional[Account]:
         """
         Get account by login.
-        
+
         :param account_login: Account login number
         :return: Account instance or None if not found
         """
         if not self.__accounts:
             return None
-        
+
         for account in self.__accounts:
             if account.login == account_login:
                 return account
@@ -369,7 +365,7 @@ class Server:
     def get_risk_manager(self):
         """
         Get a risk manager with default configuration.
-        
+
         :return: RiskManager instance with default configuration
         """
         risk_config = RiskConfig.default()
@@ -378,7 +374,7 @@ class Server:
     def get_environment(self, account_login: int):
         """
         Get environment for an account
-        
+
         :param account_login: Account login number
         :return: BaseTradingEnv instance or None if not found
         """
@@ -386,17 +382,17 @@ class Server:
 
     def __del__(self):
         """Cleanup on server destruction"""
-        if hasattr(self, '_Server__streamer_discovery'):
+        if hasattr(self, "_Server__streamer_discovery"):
             try:
                 self.__streamer_discovery.stop()
             except Exception:
                 pass
-        if hasattr(self, '_Server__zmq_broker'):
+        if hasattr(self, "_Server__zmq_broker"):
             try:
                 self.__zmq_broker.stop()
             except Exception:
                 pass
-        if hasattr(self, '_Server__model_assignment_consumer'):
+        if hasattr(self, "_Server__model_assignment_consumer"):
             try:
                 self.__model_assignment_consumer.stop()
             except Exception:

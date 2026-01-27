@@ -17,7 +17,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from database import Database
 
-
 logger = logging.getLogger(__name__)
 
 

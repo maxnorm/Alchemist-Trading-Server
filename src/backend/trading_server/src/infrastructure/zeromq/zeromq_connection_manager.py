@@ -1,11 +1,15 @@
 import asyncio
 import os
 import threading
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 import zmq
 
 from mt5_connection.zeromq_conn import ZeroMQConnection
+
+if TYPE_CHECKING:
+    from mt5_connection.zeromq_terminal import ZeroMQTerminal  # noqa: F401
+    from mt5_connection.zeromq_tick_streamer import ZeroMQTickStreamer  # noqa: F401
 
 
 class ZeroMQConnectionManager:
@@ -29,7 +33,9 @@ class ZeroMQConnectionManager:
         self.context = zmq.Context()
 
         self._terminals: Dict[int, "ZeroMQTerminal"] = {}
-        self._streamers_by_symbol: Dict[str, "ZeroMQTickStreamer"] = {}  # symbol -> streamer
+        self._streamers_by_symbol: Dict[str, "ZeroMQTickStreamer"] = (
+            {}
+        )  # symbol -> streamer
         self._terminal_locks: Dict[int, threading.RLock] = {}
         self._lock = threading.RLock()
 
@@ -76,10 +82,10 @@ class ZeroMQConnectionManager:
     ):
         """
         Create a queue-based tick streamer for a symbol (for auto-discovery).
-        
+
         Streamers no longer use SUB sockets - they receive ticks via queues
         from the discovery service which forwards all messages.
-        
+
         :param symbol: Symbol name
         :param digits: Decimal precision
         :param port_offset: Port offset from base tick_port (unused, kept for compatibility)
@@ -92,14 +98,12 @@ class ZeroMQConnectionManager:
             # Check if already connected by symbol
             if symbol in self._streamers_by_symbol:
                 return self._streamers_by_symbol[symbol]
-            
+
             # Validate token if provided
             if token is not None:
                 if not self._validate_streamer_token(token):
-                    raise ConnectionError(
-                        f"Invalid streamer token for {symbol}"
-                    )
-            
+                    raise ConnectionError(f"Invalid streamer token for {symbol}")
+
             # Create queue-based streamer (no SUB socket needed)
             # Discovery service forwards all ticks via put_tick()
             from mt5_connection.zeromq_tick_streamer import ZeroMQTickStreamer
@@ -111,6 +115,7 @@ class ZeroMQConnectionManager:
             self._streamers_by_symbol[symbol] = streamer
 
             import logging
+
             logger = logging.getLogger("zeromq_connection_manager")
             logger.info(
                 f"Created queue-based streamer for '{symbol}' "
@@ -122,7 +127,7 @@ class ZeroMQConnectionManager:
     def _validate_streamer_token(self, received_token: str) -> bool:
         """
         Validate streamer token against environment variable.
-        
+
         :param received_token: Token received from streamer EA
         :return: True if token is valid
         """

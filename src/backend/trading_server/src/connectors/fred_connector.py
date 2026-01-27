@@ -132,6 +132,9 @@ class FREDConnector(IDataSourceConnector):
         if not self.is_connected():
             raise ConnectionError("Not connected to FRED API")
 
+        if self.fred is None:
+            raise ConnectionError("FRED client not initialized")
+
         try:
             self._rate_limit()
 
@@ -309,6 +312,9 @@ class FREDConnector(IDataSourceConnector):
         if not self.is_connected():
             if not self.connect():
                 raise ConnectionError("Failed to connect to FRED API")
+
+        if self.fred is None:
+            raise ConnectionError("FRED client not initialized")
 
         try:
             # Get range from first key series (FEDFUNDS has long history)

@@ -181,7 +181,9 @@ class HTTPController:
         """Register default route handlers"""
         self.register_route("GET", "/metrics", self._handle_metrics)
         self.register_route("GET", "/health/clock-sync", self._handle_clock_sync_health)
-        self.register_route("GET", "/health/data-quality", self._handle_data_quality_health)
+        self.register_route(
+            "GET", "/health/data-quality", self._handle_data_quality_health
+        )
 
     def register_route(self, method: str, path: str, handler):
         """
@@ -527,7 +529,9 @@ class HTTPController:
                     "status": mt5_status.get("status"),
                 }
 
-                negative_latency_rate = negative_latency_stats.get("negative_latency_rate")
+                negative_latency_rate = negative_latency_stats.get(
+                    "negative_latency_rate"
+                )
 
             # Determine overall health
             overall_healthy = server_healthy and mt5_healthy
@@ -599,16 +603,16 @@ class HTTPController:
 
             # Get gap detector status
             status = gap_detector.get_status()
-            
+
             # Detect current gaps to check if any exceed threshold
             current_gaps = []
             is_healthy = True
-            
+
             if status.get("enabled", False):
                 try:
                     # Get current gaps
                     current_gaps = gap_detector.detect_gaps()
-                    
+
                     # Check if any gaps exceed threshold (5 minutes)
                     gap_threshold_minutes = status.get("gap_threshold_minutes", 5.0)
                     for gap in current_gaps:
@@ -625,13 +629,15 @@ class HTTPController:
                                 f"Error detecting gaps for health check: {e}"
                             )
                     else:
-                        print_with_datetime(f"Error detecting gaps for health check: {e}")
+                        print_with_datetime(
+                            f"Error detecting gaps for health check: {e}"
+                        )
             else:
                 # Gap detector is disabled - consider it healthy but note disabled state
                 is_healthy = True
 
             # Build response
-            response_data = {
+            health_response: Dict[str, Any] = {
                 "status": "healthy" if is_healthy else "unhealthy",
                 "service": "data_quality",
                 "enabled": status.get("enabled", False),
@@ -659,7 +665,7 @@ class HTTPController:
                 ],
             }
 
-            response_body = json.dumps(response_data).encode("utf-8")
+            response_body = json.dumps(health_response).encode("utf-8")
 
             # Return appropriate status code
             status_code = 200 if is_healthy else 503

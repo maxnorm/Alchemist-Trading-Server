@@ -413,9 +413,9 @@ class ExperimentTracker:
             "timestamp": datetime.now().isoformat(),
         }
 
-        # Add random seed if provided
+        # Add random seed if provided (store as string for serialization)
         if random_seed is not None:
-            reproducibility["random_seed"] = random_seed
+            reproducibility["random_seed"] = str(random_seed)
 
         # Add requirements hash if available
         if requirements_info:
@@ -442,9 +442,7 @@ class ExperimentTracker:
             "reproducibility_code_commit",
             git_commit_full or "unknown",
         )
-        mlflow.set_tag(
-            "reproducibility_config_hash", config_hash or "unknown"
-        )
+        mlflow.set_tag("reproducibility_config_hash", config_hash or "unknown")
         mlflow.set_tag(
             "reproducibility_environment",
             reproducibility["environment_id"] or "unknown",
@@ -465,9 +463,7 @@ class ExperimentTracker:
             "reproducibility_code_commit",
             git_commit_full or "unknown",
         )
-        mlflow.log_param(
-            "reproducibility_config_hash", config_hash or "unknown"
-        )
+        mlflow.log_param("reproducibility_config_hash", config_hash or "unknown")
         mlflow.log_param(
             "reproducibility_environment",
             reproducibility["environment_id"] or "unknown",

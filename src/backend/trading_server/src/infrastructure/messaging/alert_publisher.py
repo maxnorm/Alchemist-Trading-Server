@@ -8,13 +8,14 @@ import os
 import json
 import threading
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import logging
 
 logger = logging.getLogger(__name__)
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -24,7 +25,7 @@ except ImportError:
 class AlertPublisher:
     """
     Thread-safe Redis Pub/Sub publisher for alerts.
-    
+
     Publishes alerts to Redis channel for consumption by API service.
     Handles connection failures gracefully - logs warnings but doesn't crash.
     """
@@ -128,7 +129,7 @@ class AlertPublisher:
                 return False
 
             # Build alert payload
-            payload = {
+            payload: Dict[str, Any] = {
                 "alert_type": alert_type,
                 "message": message,
                 "severity": severity,

@@ -7,14 +7,14 @@ Consumes experiment start events from Redis channel and triggers training in Exp
 import os
 import json
 import threading
-import time
-from typing import Optional, Callable
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -24,7 +24,7 @@ except ImportError:
 class ExperimentConsumer:
     """
     Synchronous Redis Pub/Sub consumer for experiment events.
-    
+
     Subscribes to Redis channel and triggers ExperimentRunner.start_experiment().
     Runs in background thread with retry logic.
     Handles connection failures with exponential backoff.
@@ -72,7 +72,9 @@ class ExperimentConsumer:
         self._shutdown_event.clear()
         self._thread = threading.Thread(target=self._consume_loop, daemon=True)
         self._thread.start()
-        logger.info(f"Experiment consumer started, subscribing to channel '{self.channel}'")
+        logger.info(
+            f"Experiment consumer started, subscribing to channel '{self.channel}'"
+        )
 
     def stop(self):
         """Stop consuming experiment events and close connections."""
@@ -173,13 +175,18 @@ class ExperimentConsumer:
                         try:
                             self._handle_experiment_start(message["data"])
                         except Exception as e:
-                            logger.error(f"Error handling experiment start event: {e}", exc_info=True)
+                            logger.error(
+                                f"Error handling experiment start event: {e}",
+                                exc_info=True,
+                            )
 
                 except redis.TimeoutError:
                     # Timeout is expected, continue loop
                     continue
                 except Exception as e:
-                    logger.error(f"Error receiving message from Redis: {e}", exc_info=True)
+                    logger.error(
+                        f"Error receiving message from Redis: {e}", exc_info=True
+                    )
                     # Reset connections on error
                     if self._pubsub is not None:
                         try:
@@ -261,6 +268,8 @@ class ExperimentConsumer:
                 logger.warning(f"Failed to start experiment {experiment_id}")
 
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse experiment start event JSON: {e}, data: {data}")
+            logger.warning(
+                f"Failed to parse experiment start event JSON: {e}, data: {data}"
+            )
         except Exception as e:
             logger.error(f"Error handling experiment start event: {e}", exc_info=True)

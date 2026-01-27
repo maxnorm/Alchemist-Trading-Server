@@ -296,7 +296,9 @@ class ClockSyncMonitor:
 
             # Update health status (1=healthy, 0=unhealthy)
             is_healthy = status in ["ok", "warning"]
-            clock_sync_status.labels(source="server_ntp").set(1.0 if is_healthy else 0.0)
+            clock_sync_status.labels(source="server_ntp").set(
+                1.0 if is_healthy else 0.0
+            )
 
         except Exception as e:
             # Don't fail if metrics update fails

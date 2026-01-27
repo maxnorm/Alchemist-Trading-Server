@@ -179,7 +179,7 @@ class Account:
         """
         Get account type from database ('demo' or 'live')
         Caches result to avoid repeated database queries
-        
+
         :return: Account type string ('demo' or 'live') or None if not found in database
         """
         if self._account_type is None:
@@ -189,7 +189,7 @@ class Account:
     def _get_account_type_from_db(self) -> Optional[str]:
         """
         Get account type from database
-        
+
         :return: Account type string ('demo' or 'live') or None if not found
         """
         try:
