@@ -528,7 +528,7 @@ class HTTPController:
                     "max_drift_seconds": drift_stats.get("max_drift_seconds"),
                     "median_drift_seconds": drift_stats.get("median_drift_seconds"),
                     "sample_count": drift_stats.get("sample_count"),
-                    "status": mt5_status.get("status"),
+                    "status": mt5_status.get("status") or "",
                 }
 
                 negative_latency_rate = negative_latency_stats.get(
@@ -653,15 +653,15 @@ class HTTPController:
                         "data_type": gap.get("data_type"),
                         "gap_minutes": gap.get("gap_seconds", 0) / 60.0,
                         "gap_start": (
-                            gap.get("gap_start").isoformat()
-                            if gap.get("gap_start") is not None
-                            and isinstance(gap.get("gap_start"), datetime)
+                            gap_start.isoformat()
+                            if (gap_start := gap.get("gap_start")) is not None
+                            and isinstance(gap_start, datetime)
                             else str(gap.get("gap_start") or "")
                         ),
                         "gap_end": (
-                            gap.get("gap_end").isoformat()
-                            if gap.get("gap_end") is not None
-                            and isinstance(gap.get("gap_end"), datetime)
+                            gap_end.isoformat()
+                            if (gap_end := gap.get("gap_end")) is not None
+                            and isinstance(gap_end, datetime)
                             else str(gap.get("gap_end") or "")
                         ),
                     }

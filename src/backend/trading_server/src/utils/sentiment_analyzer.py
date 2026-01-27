@@ -13,9 +13,9 @@ try:
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
-    AutoTokenizer = None  # type: ignore[assignment]
-    AutoModelForSequenceClassification = None  # type: ignore[assignment]
-    torch = None  # type: ignore[assignment]
+    AutoTokenizer = None  # type: ignore[misc,assignment]
+    AutoModelForSequenceClassification = None  # type: ignore[misc,assignment]
+    torch = None  # type: ignore[misc,assignment]
 
 
 class SentimentAnalyzer:

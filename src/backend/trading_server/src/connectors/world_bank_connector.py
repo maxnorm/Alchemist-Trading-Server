@@ -60,9 +60,9 @@ class WorldBankConnector(IDataSourceConnector):
             self.logger.error(
                 "wbdata library not installed. Install with: pip install wbdata"
             )
-            self._available: bool = False
+            self._available = False
         else:
-            self._available: bool = True
+            self._available = True
             self.logger.info("World Bank connector initialized successfully")
 
         self._is_connected = False
@@ -89,7 +89,7 @@ class WorldBankConnector(IDataSourceConnector):
             test_indicator = list(self.KEY_INDICATORS.keys())[0]
             test_country = list(self.KEY_COUNTRIES.keys())[0]
             data = wbdata.get_data(
-                test_indicator, country=test_country, date=(2000, 2001)
+                test_indicator, country=test_country, date=(2000, 2001)  # type: ignore[arg-type]
             )
             if data is not None:
                 self._is_connected = True
@@ -155,7 +155,7 @@ class WorldBankConnector(IDataSourceConnector):
             # Fetch data from World Bank
             if date_range is not None:
                 data = wbdata.get_data(
-                    indicator_id, country=country_code, date=date_range
+                    indicator_id, country=country_code, date=date_range  # type: ignore[arg-type]
                 )
             else:
                 data = wbdata.get_data(indicator_id, country=country_code)

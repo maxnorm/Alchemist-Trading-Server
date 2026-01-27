@@ -24,7 +24,7 @@ try:
     OPENLINEAGE_AVAILABLE = True
 except ImportError:
     OPENLINEAGE_AVAILABLE = False
-    OpenLineageClient = None  # type: ignore[assignment]
+    OpenLineageClient = None  # type: ignore[misc,assignment]
 
 
 class LineageService:

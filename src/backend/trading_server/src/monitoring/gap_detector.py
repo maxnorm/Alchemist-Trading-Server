@@ -199,8 +199,8 @@ class GapDetector:
                     # Group gaps by data_type and symbol for metrics
                     gap_counts: Dict[tuple, int] = {}
                     max_gap_duration: Dict[tuple, float] = {}
-                    for gap in detected_gaps:
-                        key = (gap["data_type"], gap["symbol"])
+                    for gap_dict in detected_gaps:
+                        key = (gap_dict["data_type"], gap_dict["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
                         # Track maximum gap duration per symbol/data_type
                         gap_minutes = gap["gap_seconds"] / 60.0
@@ -335,11 +335,11 @@ class GapDetector:
                 try:
                     gap_counts: Dict[tuple, int] = {}
                     max_gap_duration: Dict[tuple, float] = {}
-                    for gap in detected_gaps:
-                        key = (gap["data_type"], gap["symbol"])
+                    for gap_dict in detected_gaps:
+                        key = (gap_dict["data_type"], gap_dict["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
                         # Track maximum gap duration per symbol/data_type
-                        gap_minutes = gap["gap_seconds"] / 60.0
+                        gap_minutes = gap_dict["gap_seconds"] / 60.0
                         if (
                             key not in max_gap_duration
                             or gap_minutes > max_gap_duration[key]
@@ -455,11 +455,11 @@ class GapDetector:
                 try:
                     gap_counts: Dict[tuple, int] = {}
                     max_gap_duration: Dict[tuple, float] = {}
-                    for gap in detected_gaps:
-                        key = (gap["data_type"], gap["symbol"])
+                    for gap_dict in detected_gaps:
+                        key = (gap_dict["data_type"], gap_dict["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
                         # Track maximum gap duration per symbol/data_type
-                        gap_minutes = gap["gap_seconds"] / 60.0
+                        gap_minutes = gap_dict["gap_seconds"] / 60.0
                         if (
                             key not in max_gap_duration
                             or gap_minutes > max_gap_duration[key]
@@ -588,11 +588,11 @@ class GapDetector:
                 try:
                     gap_counts: Dict[tuple, int] = {}
                     max_gap_duration: Dict[tuple, float] = {}
-                    for gap in detected_gaps:
-                        key = (gap["data_type"], gap["symbol"])
+                    for gap_dict in detected_gaps:
+                        key = (gap_dict["data_type"], gap_dict["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
                         # Track maximum gap duration per symbol/data_type
-                        gap_minutes = gap["gap_seconds"] / 60.0
+                        gap_minutes = gap_dict["gap_seconds"] / 60.0
                         if (
                             key not in max_gap_duration
                             or gap_minutes > max_gap_duration[key]

@@ -100,7 +100,7 @@ class BackfillProgressTracker:
                 WHERE id = :progress_id
             """)
             get_result = self.db.execute_with_result(
-                get_query, {"progress_id": progress_id}
+                str(get_query), {"progress_id": progress_id}
             )
 
             if not get_result or len(get_result) == 0:
@@ -214,7 +214,7 @@ class BackfillProgressTracker:
                 "end_time": end_time,
             }
 
-            result = self.db.execute_with_result(query, params)
+            result = self.db.execute_with_result(str(query), params)
 
             if result and len(result) > 0:
                 row = result[0]
@@ -251,7 +251,7 @@ class BackfillProgressTracker:
                 WHERE id = :progress_id
             """)
             get_result = self.db.execute_with_result(
-                get_query, {"progress_id": progress_id}
+                str(get_query), {"progress_id": progress_id}
             )
 
             query = text("""

@@ -48,7 +48,9 @@ class ExperimentConsumer:
         :param channel: Redis channel name for experiment events (default: 'experiments:start')
         """
         self.experiment_runner = experiment_runner
-        self.redis_host: str = redis_host or os.getenv("REDIS_HOST", "redis")
+        self.redis_host: str = (
+            redis_host if redis_host is not None else os.getenv("REDIS_HOST", "redis")
+        )
         self.redis_port = int(os.getenv("REDIS_PORT", str(redis_port)))
         self.redis_db = int(os.getenv("REDIS_DB", str(redis_db)))
         self.channel = channel

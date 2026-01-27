@@ -100,17 +100,24 @@ def collect_mt5_data(
         batch_size = 1000
 
         try:
+            from utils.time_utils import get_utc_time
+
             for tick_event in connector.backfill(
                 start_time=start_time, end_time=end_time, batch_size=batch_size
             ):
                 # Validate data through quality gate
-                is_valid, error_msg = quality_gate.validate_tick(
-                    symbol=tick_event.get("symbol", symbol),
-                    tick_datetime=tick_event.get("timestamp")
+                tick_dict = {
+                    "symbol": tick_event.get("symbol", symbol),
+                    "datetime": tick_event.get("timestamp")
                     or tick_event.get("datetime"),
-                    bid=tick_event.get("bid", 0.0),
-                    ask=tick_event.get("ask", 0.0),
-                    volume=tick_event.get("volume"),
+                    "bid": tick_event.get("bid", 0.0),
+                    "ask": tick_event.get("ask", 0.0),
+                    "volume": tick_event.get("volume"),
+                }
+                is_valid, error_msg, _ = quality_gate.validate(
+                    tick=tick_dict,
+                    symbol=tick_event.get("symbol", symbol),
+                    current_time=get_utc_time(),
                 )
 
                 if is_valid:
