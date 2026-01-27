@@ -4,7 +4,7 @@ on:
   push: 
     branches: [master, dev]
     paths:
-      - 'src/trading_server/**'
+      - 'src/backend/trading_server/**'
       - '.github/workflows/build_server.yml'
 
 jobs:
@@ -24,8 +24,8 @@ jobs:
       - name: Build Server Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./src/trading_server
-          file: ./src/trading_server/Dockerfile
+          context: ./src/backend/trading_server
+          file: ./src/backend/trading_server/Dockerfile
           push: false
           load: true
           tags: alchemist-server:test

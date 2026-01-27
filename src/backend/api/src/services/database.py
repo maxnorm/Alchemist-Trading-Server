@@ -12,9 +12,9 @@ from database.core import (
     init_db as _init_db,
     close_db as _close_db,
     check_db_health as _check_db_health,
-    get_engine as _get_engine,
 )
 from database.session import get_session as _get_session
+
 
 # Re-export with same names for backward compatibility
 def init_db():

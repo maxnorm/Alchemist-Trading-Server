@@ -65,7 +65,9 @@ async def lifespan(app: FastAPI):
         logger.info("Alert consumer started")
     except Exception as e:
         logger.warning(f"Failed to start alert consumer: {e}")
-        logger.info("API will continue without alert consumer. Alerts will not be broadcast.")
+        logger.info(
+            "API will continue without alert consumer. Alerts will not be broadcast."
+        )
 
     # Seed Clerk user if enabled
     if settings.clerk_seed_enabled:
@@ -84,14 +86,14 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down FastAPI service...")
-    
+
     # Stop alert consumer
     if alert_consumer is not None:
         try:
             await alert_consumer.stop()
         except Exception as e:
             logger.warning(f"Error stopping alert consumer: {e}")
-    
+
     close_db()
     await websocket_manager.disconnect_all()
 
@@ -107,11 +109,13 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+
 # Override openapi method to ensure it uses /api/openapi.json
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
     from fastapi.openapi.utils import get_openapi
+
     openapi_schema = get_openapi(
         title=app.title,
         version=app.version,
@@ -120,6 +124,7 @@ def custom_openapi():
     )
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi
 
@@ -180,12 +185,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, tags=["Health"])
 app.include_router(features.router, prefix=settings.api_prefix, tags=["Features"])
 app.include_router(experiments.router, prefix=settings.api_prefix, tags=["Experiments"])
-app.include_router(hyperparameters.router, prefix=settings.api_prefix, tags=["Hyperparameters"])
+app.include_router(
+    hyperparameters.router, prefix=settings.api_prefix, tags=["Hyperparameters"]
+)
 app.include_router(models.router, prefix=settings.api_prefix, tags=["Models"])
 app.include_router(trading.router, prefix=settings.api_prefix, tags=["Trading"])
 app.include_router(performance.router, prefix=settings.api_prefix, tags=["Performance"])
 app.include_router(data.router, prefix=settings.api_prefix, tags=["Data"])
-app.include_router(mt5_accounts.router, prefix=settings.api_prefix, tags=["MT5 Accounts"])
+app.include_router(
+    mt5_accounts.router, prefix=settings.api_prefix, tags=["MT5 Accounts"]
+)
 app.include_router(schema.router, prefix=settings.api_prefix, tags=["Schema Registry"])
 app.include_router(lineage.router, prefix=settings.api_prefix, tags=["Lineage"])
 

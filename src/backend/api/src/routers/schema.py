@@ -2,7 +2,7 @@
 Schema Registry API endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any, List
@@ -22,18 +22,22 @@ router = APIRouter()
 # Request/Response models
 class SchemaRegisterRequest(BaseModel):
     """Request model for registering a schema"""
+
     version: str = Field(..., description="Semantic version (MAJOR.MINOR.PATCH)")
-    schema_data: Dict[str, Any] = Field(..., alias="schema", description="JSON Schema definition (Draft 7 format)")
+    schema_data: Dict[str, Any] = Field(
+        ..., alias="schema", description="JSON Schema definition (Draft 7 format)"
+    )
     compatibility_mode: str = Field(
         default="NONE",
         description="Compatibility mode: BACKWARD, FORWARD, FULL, or NONE",
     )
-    
+
     model_config = {"populate_by_name": True}
 
 
 class SchemaResponse(BaseModel):
     """Response model for schema"""
+
     id: int
     data_type: str
     version: str
@@ -42,25 +46,30 @@ class SchemaResponse(BaseModel):
     status: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-    
+
     model_config = {"populate_by_name": True}
 
 
 class SchemaVersionListResponse(BaseModel):
     """Response model for schema version list"""
+
     data_type: str
     versions: List[SchemaResponse]
 
 
 class CompatibilityCheckRequest(BaseModel):
     """Request model for compatibility check"""
+
     old_schema: Dict[str, Any] = Field(..., description="Old schema definition")
     new_schema: Dict[str, Any] = Field(..., description="New schema definition")
-    mode: str = Field(..., description="Compatibility mode: BACKWARD, FORWARD, FULL, or NONE")
+    mode: str = Field(
+        ..., description="Compatibility mode: BACKWARD, FORWARD, FULL, or NONE"
+    )
 
 
 class CompatibilityCheckResponse(BaseModel):
     """Response model for compatibility check"""
+
     compatible: bool
     message: Optional[str] = None
 
@@ -73,7 +82,7 @@ async def get_latest_schema(
 ):
     """
     Get latest schema for a data type
-    
+
     :param data_type: Data type identifier (e.g., "tick", "bar")
     :return: Latest schema
     """
@@ -87,10 +96,10 @@ async def get_latest_schema(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching latest schema for {data_type}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch schema: {str(e)}"
+        logger.error(
+            f"Error fetching latest schema for {data_type}: {e}", exc_info=True
         )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch schema: {str(e)}")
 
 
 @router.get("/schema/{data_type}/{version}", response_model=SchemaResponse)
@@ -102,7 +111,7 @@ async def get_schema_version(
 ):
     """
     Get specific schema version for a data type
-    
+
     :param data_type: Data type identifier
     :param version: Semantic version (MAJOR.MINOR.PATCH)
     :return: Schema for the specified version
@@ -119,9 +128,7 @@ async def get_schema_version(
         raise
     except Exception as e:
         logger.error(f"Error fetching schema {data_type}:{version}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch schema: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch schema: {str(e)}")
 
 
 @router.post("/schema/{data_type}", response_model=SchemaResponse, status_code=201)
@@ -133,7 +140,7 @@ async def register_schema(
 ):
     """
     Register a new schema version for a data type
-    
+
     :param data_type: Data type identifier
     :param request: Schema registration request
     :return: Registered schema
@@ -158,7 +165,10 @@ async def register_schema(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error registering schema {data_type}:{request.version}: {e}", exc_info=True)
+        logger.error(
+            f"Error registering schema {data_type}:{request.version}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(
             status_code=500, detail=f"Failed to register schema: {str(e)}"
         )
@@ -172,7 +182,7 @@ async def list_schema_versions(
 ):
     """
     List all versions for a data type
-    
+
     :param data_type: Data type identifier
     :return: List of all schema versions
     """
@@ -189,7 +199,10 @@ async def list_schema_versions(
         )
 
 
-@router.post("/schema/{data_type}/validate-compatibility", response_model=CompatibilityCheckResponse)
+@router.post(
+    "/schema/{data_type}/validate-compatibility",
+    response_model=CompatibilityCheckResponse,
+)
 async def validate_compatibility(
     data_type: str,
     request: CompatibilityCheckRequest = Body(...),
@@ -198,10 +211,10 @@ async def validate_compatibility(
 ):
     """
     Check compatibility between two schemas
-    
+
     Note: This is a simplified compatibility check. For full compatibility checking,
     use the Schema Registry's compatibility checker which validates against registered schemas.
-    
+
     :param data_type: Data type identifier (for reference)
     :param request: Compatibility check request
     :return: Compatibility check result
@@ -220,7 +233,10 @@ async def validate_compatibility(
         # which depends on the trading_server codebase
         return CompatibilityCheckResponse(
             compatible=True,
-            message="Compatibility check not fully implemented in API layer. Use Schema Registry directly for full checking.",
+            message=(
+                "Compatibility check not fully implemented in API layer. "
+                "Use Schema Registry directly for full checking."
+            ),
         )
     except HTTPException:
         raise
@@ -238,7 +254,7 @@ async def get_data_docs(
 ):
     """
     Serve Great Expectations Data Docs for a data type
-    
+
     :param data_type: Data type identifier
     :return: HTML response with Data Docs
     """
@@ -246,9 +262,11 @@ async def get_data_docs(
         # Try to find Data Docs in the project
         # Data Docs are typically in great_expectations/data_docs/local_site
         project_root = Path(__file__).parent.parent.parent.parent.parent
-        data_docs_path = project_root / "great_expectations" / "data_docs" / "local_site"
+        data_docs_path = (
+            project_root / "great_expectations" / "data_docs" / "local_site"
+        )
         index_file = data_docs_path / "index.html"
-        
+
         if index_file.exists():
             return FileResponse(
                 str(index_file),
@@ -278,14 +296,16 @@ async def get_data_docs(
 async def get_data_docs_index(user: Dict = Depends(get_current_user)):
     """
     Serve Great Expectations Data Docs index
-    
+
     :return: HTML response with Data Docs index
     """
     try:
         project_root = Path(__file__).parent.parent.parent.parent.parent
-        data_docs_path = project_root / "great_expectations" / "data_docs" / "local_site"
+        data_docs_path = (
+            project_root / "great_expectations" / "data_docs" / "local_site"
+        )
         index_file = data_docs_path / "index.html"
-        
+
         if index_file.exists():
             return FileResponse(
                 str(index_file),

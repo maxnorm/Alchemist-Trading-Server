@@ -8,7 +8,6 @@ import logging
 from typing import Dict, Optional, List, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ class LineageService:
     def get_run_lineage(db: Session, run_id: str) -> Optional[Dict[str, Any]]:
         """
         Get lineage information for a run
-        
+
         :param db: Database session
         :param run_id: Run ID
         :return: Lineage information or None
@@ -36,10 +35,10 @@ class LineageService:
                 WHERE run_id = :run_id
             """)
             run_result = db.execute(run_query, {"run_id": run_id}).fetchone()
-            
+
             if not run_result:
                 return None
-            
+
             # Get input/output datasets
             datasets_query = text("""
                 SELECT dataset_id, io_type, namespace
@@ -47,7 +46,7 @@ class LineageService:
                 WHERE run_id = :run_id
             """)
             datasets_result = db.execute(datasets_query, {"run_id": run_id}).fetchall()
-            
+
             inputs = []
             outputs = []
             for dataset_id, io_type, namespace in datasets_result:
@@ -56,7 +55,7 @@ class LineageService:
                     inputs.append(dataset_info)
                 else:
                     outputs.append(dataset_info)
-            
+
             return {
                 "run_id": run_result[0],
                 "job_name": run_result[1],
@@ -79,14 +78,14 @@ class LineageService:
     ) -> Optional[Dict[str, Any]]:
         """
         Get lineage information for a dataset
-        
+
         :param db: Database session
         :param dataset_name: Dataset name
         :param namespace: Namespace
         :return: Lineage information or None
         """
         dataset_id = f"{namespace}:{dataset_name}"
-        
+
         try:
             # Get dataset details
             dataset_query = text("""
@@ -97,10 +96,10 @@ class LineageService:
             dataset_result = db.execute(
                 dataset_query, {"dataset_id": dataset_id, "namespace": namespace}
             ).fetchone()
-            
+
             if not dataset_result:
                 return None
-            
+
             # Get runs that produced this dataset (outputs)
             output_runs_query = text("""
                 SELECT lr.run_id, lr.job_name, lr.start_time, lr.end_time, lr.status
@@ -113,7 +112,7 @@ class LineageService:
             output_runs = db.execute(
                 output_runs_query, {"dataset_id": dataset_id}
             ).fetchall()
-            
+
             # Get runs that consumed this dataset (inputs)
             input_runs_query = text("""
                 SELECT lr.run_id, lr.job_name, lr.start_time, lr.end_time, lr.status
@@ -126,7 +125,7 @@ class LineageService:
             input_runs = db.execute(
                 input_runs_query, {"dataset_id": dataset_id}
             ).fetchall()
-            
+
             return {
                 "dataset_id": dataset_result[0],
                 "name": dataset_result[1],
@@ -164,7 +163,7 @@ class LineageService:
     ) -> Optional[Dict[str, Any]]:
         """
         Get lineage information for a job
-        
+
         :param db: Database session
         :param job_name: Job name
         :param namespace: Namespace
@@ -180,10 +179,10 @@ class LineageService:
             job_result = db.execute(
                 job_query, {"job_name": job_name, "namespace": namespace}
             ).fetchone()
-            
+
             if not job_result:
                 return None
-            
+
             # Get recent runs for this job
             runs_query = text("""
                 SELECT run_id, start_time, end_time, status, error_message
@@ -195,7 +194,7 @@ class LineageService:
             runs = db.execute(
                 runs_query, {"job_name": job_name, "namespace": namespace}
             ).fetchall()
-            
+
             return {
                 "id": job_result[0],
                 "job_name": job_result[1],
@@ -230,7 +229,7 @@ class LineageService:
     ) -> List[Dict[str, Any]]:
         """
         List runs with filters
-        
+
         :param db: Database session
         :param job_name: Filter by job name
         :param namespace: Filter by namespace
@@ -240,8 +239,8 @@ class LineageService:
         :return: List of run dictionaries
         """
         conditions = []
-        params = {}
-        
+        params: Dict[str, Any] = {}
+
         if job_name:
             conditions.append("job_name = :job_name")
             params["job_name"] = job_name
@@ -251,9 +250,9 @@ class LineageService:
         if status:
             conditions.append("status = :status")
             params["status"] = status
-        
+
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-        
+
         query = text(f"""
             SELECT run_id, job_name, namespace, start_time, end_time, status, error_message
             FROM lineage_runs
@@ -263,20 +262,22 @@ class LineageService:
         """)
         params["limit"] = limit
         params["offset"] = offset
-        
+
         try:
             result = db.execute(query, params)
             runs = []
             for row in result:
-                runs.append({
-                    "run_id": row[0],
-                    "job_name": row[1],
-                    "namespace": row[2],
-                    "start_time": row[3].isoformat() if row[3] else None,
-                    "end_time": row[4].isoformat() if row[4] else None,
-                    "status": row[5],
-                    "error_message": row[6],
-                })
+                runs.append(
+                    {
+                        "run_id": row[0],
+                        "job_name": row[1],
+                        "namespace": row[2],
+                        "start_time": row[3].isoformat() if row[3] else None,
+                        "end_time": row[4].isoformat() if row[4] else None,
+                        "status": row[5],
+                        "error_message": row[6],
+                    }
+                )
             return runs
         except Exception as e:
             logger.error(f"Failed to list runs: {e}")
@@ -288,21 +289,21 @@ class LineageService:
     ) -> List[Dict[str, Any]]:
         """
         List all datasets
-        
+
         :param db: Database session
         :param namespace: Filter by namespace
         :param limit: Maximum number of results
         :return: List of dataset dictionaries
         """
         conditions = []
-        params = {}
-        
+        params: Dict[str, Any] = {}
+
         if namespace:
             conditions.append("namespace = :namespace")
             params["namespace"] = namespace
-        
+
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-        
+
         query = text(f"""
             SELECT dataset_id, name, namespace, schema_version, created_at, updated_at
             FROM lineage_datasets
@@ -311,19 +312,21 @@ class LineageService:
             LIMIT :limit
         """)
         params["limit"] = limit
-        
+
         try:
             result = db.execute(query, params)
             datasets = []
             for row in result:
-                datasets.append({
-                    "dataset_id": row[0],
-                    "name": row[1],
-                    "namespace": row[2],
-                    "schema_version": row[3],
-                    "created_at": row[4].isoformat() if row[4] else None,
-                    "updated_at": row[5].isoformat() if row[5] else None,
-                })
+                datasets.append(
+                    {
+                        "dataset_id": row[0],
+                        "name": row[1],
+                        "namespace": row[2],
+                        "schema_version": row[3],
+                        "created_at": row[4].isoformat() if row[4] else None,
+                        "updated_at": row[5].isoformat() if row[5] else None,
+                    }
+                )
             return datasets
         except Exception as e:
             logger.error(f"Failed to list datasets: {e}")

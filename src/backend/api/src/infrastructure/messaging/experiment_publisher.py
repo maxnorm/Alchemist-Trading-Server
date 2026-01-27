@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import redis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -24,7 +25,7 @@ except ImportError:
 class ExperimentPublisher:
     """
     Thread-safe Redis Pub/Sub publisher for experiment events.
-    
+
     Publishes experiment start events to Redis channel for consumption by Trading Server.
     Handles connection failures gracefully - logs warnings but doesn't crash.
     """
@@ -117,7 +118,9 @@ class ExperimentPublisher:
         try:
             client = self._get_redis_client()
             if client is None:
-                logger.warning("Redis client unavailable - experiment start event not published")
+                logger.warning(
+                    "Redis client unavailable - experiment start event not published"
+                )
                 return False
 
             # Build event payload

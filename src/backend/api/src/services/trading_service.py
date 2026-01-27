@@ -56,15 +56,13 @@ def get_trading_status(db: Session) -> TradingStatusResponse:
     total_equity = None
     total_balance = None
     try:
-        result = db.execute(
-            text("""
-                SELECT 
+        result = db.execute(text("""
+                SELECT
                     COALESCE(SUM(equity), 0) as total_equity,
                     COALESCE(SUM(balance), 0) as total_balance
                 FROM mt5_accounts
                 WHERE is_active = TRUE
-            """)
-        )
+            """))
         row = result.fetchone()
         if row and (row[0] is not None or row[1] is not None):
             total_equity = float(row[0]) if row[0] is not None else None
@@ -144,16 +142,12 @@ def reset_kill_switch() -> bool:
 def get_circuit_breaker_status(db: Session) -> CircuitBreakerStatusResponse:
     """Get circuit breaker status"""
     try:
-        result = db.execute(
-            text(
-                """
+        result = db.execute(text("""
                 SELECT is_active, reason, loss_threshold, current_loss, updated_at
                 FROM circuit_breaker_status
                 ORDER BY updated_at DESC
                 LIMIT 1
-            """
-            )
-        )
+            """))
         row = result.fetchone()
 
         if row:
@@ -177,15 +171,11 @@ def get_circuit_breaker_status(db: Session) -> CircuitBreakerStatusResponse:
 def reset_circuit_breaker(db: Session) -> bool:
     """Reset circuit breaker"""
     try:
-        result = db.execute(
-            text(
-                """
+        result = db.execute(text("""
                 UPDATE circuit_breaker_status
                 SET is_active = FALSE, reason = NULL, updated_at = NOW()
                 WHERE is_active = TRUE
-            """
-            )
-        )
+            """))
         db.commit()
         # Cast to CursorResult to access rowcount attribute
         cursor_result = cast(CursorResult[Any], result)
@@ -198,17 +188,13 @@ def reset_circuit_breaker(db: Session) -> bool:
 def get_open_positions(db: Session) -> List[PositionResponse]:
     """Get open positions"""
     try:
-        result = db.execute(
-            text(
-                """
+        result = db.execute(text("""
                 SELECT id, experiment_id, account_login, symbol, order_type,
                        entry_price, volume, pnl, entry_time, status
                 FROM orders
                 WHERE state IN ('NEW', 'PARTIALLY_FILLED', 'FILLED')
                 ORDER BY entry_time DESC
-            """
-            )
-        )
+            """))
         rows = result.fetchall()
 
         positions = []
@@ -217,12 +203,12 @@ def get_open_positions(db: Session) -> List[PositionResponse]:
             entry_price = float(row[5])
             volume = float(row[6])
             symbol = row[3]
-            
+
             # Get current price from latest tick data (if available)
             current_price = None
             unrealized_pnl = None
             unrealized_pnl_pct = None
-            
+
             try:
                 price_result = db.execute(
                     text("""
@@ -232,7 +218,7 @@ def get_open_positions(db: Session) -> List[PositionResponse]:
                         ORDER BY timestamp DESC
                         LIMIT 1
                     """),
-                    {"symbol": symbol}
+                    {"symbol": symbol},
                 )
                 price_row = price_result.fetchone()
                 if price_row:
@@ -241,20 +227,22 @@ def get_open_positions(db: Session) -> List[PositionResponse]:
                     ask = float(price_row[1]) if price_row[1] else None
                     if bid is not None and ask is not None:
                         current_price = (bid + ask) / 2.0
-                        
+
                         # Calculate unrealized P&L
                         order_type = row[4]
                         if current_price and entry_price:
-                            if order_type.upper() == 'BUY':
+                            if order_type.upper() == "BUY":
                                 unrealized_pnl = (current_price - entry_price) * volume
-                            elif order_type.upper() == 'SELL':
+                            elif order_type.upper() == "SELL":
                                 unrealized_pnl = (entry_price - current_price) * volume
-                            
+
                             if unrealized_pnl is not None and entry_price > 0:
-                                unrealized_pnl_pct = (unrealized_pnl / (entry_price * volume)) * 100
+                                unrealized_pnl_pct = (
+                                    unrealized_pnl / (entry_price * volume)
+                                ) * 100
             except Exception as e:
                 logger.debug(f"Could not get current price for {symbol}: {e}")
-            
+
             positions.append(
                 PositionResponse(
                     id=row[0],
@@ -334,7 +322,15 @@ def get_available_currency_pairs(db: Session) -> List[str]:
         # If no pairs found in database, return fallback list
         if not pairs:
             logger.warning("No currency pairs found in database, using fallback list")
-            return ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"]
+            return [
+                "EURUSD",
+                "GBPUSD",
+                "USDJPY",
+                "AUDUSD",
+                "USDCAD",
+                "USDCHF",
+                "NZDUSD",
+            ]
         return pairs
     except Exception as e:
         logger.error(f"Failed to get currency pairs: {e}")

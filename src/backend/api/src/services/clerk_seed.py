@@ -1,6 +1,7 @@
 """
 Clerk user seeding service for local development
 """
+
 import logging
 from typing import Optional, List
 
@@ -65,7 +66,7 @@ def seed_clerk_user(
             logger.info(f"User {seed_email} already exists (ID: {existing_user.id})")
             user = existing_user
             user_created = False
-            
+
             # Update password for existing user using create_password method
             logger.info(f"Setting password for existing user: {seed_email}")
             try:
@@ -85,10 +86,15 @@ def seed_clerk_user(
                         password=seed_password,
                         skip_password_checks=True,
                     )
-                    logger.info(f"Password updated via update method for user: {seed_email}")
+                    logger.info(
+                        f"Password updated via update method for user: {seed_email}"
+                    )
                 except Exception as e:
                     logger.warning(f"Could not set password for existing user: {e}")
-                    logger.info("User exists but password may not be set. You may need to reset it manually via Clerk dashboard.")
+                    logger.info(
+                        "User exists but password may not be set. "
+                        "You may need to reset it manually via Clerk dashboard."
+                    )
             except Exception as e:
                 logger.warning(f"Failed to set password: {e}")
                 logger.info("Continuing with role assignment...")
@@ -116,44 +122,60 @@ def seed_clerk_user(
             except Exception as e:
                 logger.error(f"Failed to create user: {e}")
                 return False
-        
+
         # Ensure email is verified (required for password authentication)
         try:
             # Check if email is verified
             if user.email_addresses and len(user.email_addresses) > 0:
                 email_address = user.email_addresses[0]
                 is_verified = False
-                
+
                 # Check verification status
-                if hasattr(email_address, 'verification'):
+                if hasattr(email_address, "verification"):
                     if email_address.verification:
-                        if hasattr(email_address.verification, 'status'):
-                            is_verified = email_address.verification.status == "verified"
+                        if hasattr(email_address.verification, "status"):
+                            is_verified = (
+                                email_address.verification.status == "verified"
+                            )
                         elif isinstance(email_address.verification, dict):
-                            is_verified = email_address.verification.get("status") == "verified"
-                
+                            is_verified = (
+                                email_address.verification.get("status") == "verified"
+                            )
+
                 if not is_verified:
-                    logger.info(f"Email {seed_email} is not verified, attempting to verify...")
+                    logger.info(
+                        f"Email {seed_email} is not verified, attempting to verify..."
+                    )
                     # Try to verify email using Clerk's API
                     try:
                         # Use create_email_address_verification or verify_email_address
-                        if hasattr(clerk.users, 'create_email_address_verification'):
-                            verification = clerk.users.create_email_address_verification(
-                                user_id=user.id,
-                                email_address_id=email_address.id,
+                        if hasattr(clerk.users, "create_email_address_verification"):
+                            _ = (
+                                clerk.users.create_email_address_verification(
+                                    user_id=user.id,
+                                    email_address_id=email_address.id,
+                                )
                             )
-                            logger.info(f"Email verification initiated for user: {seed_email}")
-                        elif hasattr(clerk.users, 'verify_email_address'):
+                            logger.info(
+                                f"Email verification initiated for user: {seed_email}"
+                            )
+                        elif hasattr(clerk.users, "verify_email_address"):
                             clerk.users.verify_email_address(
                                 user_id=user.id,
                                 email_address_id=email_address.id,
                             )
                             logger.info(f"Email verified for user: {seed_email}")
                         else:
-                            logger.warning("Email verification method not available - email may need manual verification in Clerk dashboard")
+                            logger.warning(
+                                "Email verification method not available - "
+                                "email may need manual verification in Clerk dashboard"
+                            )
                     except Exception as e:
                         logger.warning(f"Could not verify email automatically: {e}")
-                        logger.info("Note: You may need to verify the email manually in Clerk dashboard for password authentication to work")
+                        logger.info(
+                            "Note: You may need to verify the email manually in Clerk dashboard "
+                            "for password authentication to work"
+                        )
                 else:
                     logger.info(f"Email {seed_email} is already verified")
         except Exception as e:
@@ -181,7 +203,11 @@ def seed_clerk_user(
                 clerk.users.update(
                     user_id=user.id,
                     public_metadata={
-                        **(current_metadata if isinstance(current_metadata, dict) else {}),
+                        **(
+                            current_metadata
+                            if isinstance(current_metadata, dict)
+                            else {}
+                        ),
                         "roles": new_roles,
                     },
                 )
@@ -192,7 +218,9 @@ def seed_clerk_user(
         else:
             logger.info(f"User already has required roles: {current_roles}")
 
-        logger.info(f"Clerk user seeded successfully: {seed_email} (ID: {user.id}, Roles: {new_roles})")
+        logger.info(
+            f"Clerk user seeded successfully: {seed_email} (ID: {user.id}, Roles: {new_roles})"
+        )
         return True
 
     except Exception as e:

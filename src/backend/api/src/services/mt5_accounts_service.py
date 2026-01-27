@@ -3,7 +3,7 @@ MT5 Accounts service layer
 """
 
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_
+from sqlalchemy import text
 from typing import List, Optional
 from datetime import datetime
 import secrets
@@ -15,27 +15,36 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Add trading_server to path for CredentialManager import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../backend/trading_server/src"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "../../../../backend/trading_server/src")
+)
 
-from models.mt5_accounts import MT5Account, AccountModelAssignment, MT5Connection
+from models.mt5_accounts import (  # noqa: E402
+    MT5Account,
+    AccountModelAssignment,
+    MT5Connection,
+)
+
 try:
     from infrastructure.security.credential_manager import CredentialManager
+
     CREDENTIAL_MANAGER_AVAILABLE = True
 except ImportError:
     CREDENTIAL_MANAGER_AVAILABLE = False
     logger.warning("CredentialManager not available - password encryption disabled")
-from schemas.mt5_accounts import (
+from schemas.mt5_accounts import (  # noqa: E402
     MT5AccountResponse,
     MT5AccountCreateRequest,
     MT5AccountUpdateRequest,
     MT5ConnectionStatusResponse,
     MT5ConnectionHistoryItem,
-    ModelAssignmentRequest,
     ModelAssignmentResponse,
     ConnectionStatus,
 )
+
 try:
     from websocket import channels as ws_channels
+
     WS_AVAILABLE = True
 except ImportError:
     WS_AVAILABLE = False
@@ -58,7 +67,7 @@ def get_all_accounts(
 
     if connected_only:
         # Join with connections to filter by is_connected
-        query = query.join(MT5Connection).filter(MT5Connection.is_connected == True)
+        query = query.join(MT5Connection).filter(MT5Connection.is_connected.is_(True))
 
     if account_type:
         query = query.filter(MT5Account.account_type == account_type)
@@ -67,7 +76,11 @@ def get_all_accounts(
         # Filter by user ownership
         query = query.filter(MT5Account.user_id == user_id)
 
-    accounts = query.filter(MT5Account.is_active == True).order_by(MT5Account.created_at.desc()).all()
+    accounts = (
+        query.filter(MT5Account.is_active.is_(True))
+        .order_by(MT5Account.created_at.desc())
+        .all()
+    )
 
     # Convert to response models with computed fields
     result = []
@@ -80,7 +93,11 @@ def get_all_accounts(
 
 def get_account_by_id(db: Session, account_id: int) -> Optional[MT5AccountResponse]:
     """Get MT5 account by ID"""
-    account = db.query(MT5Account).filter(MT5Account.id == account_id, MT5Account.is_active == True).first()
+    account = (
+        db.query(MT5Account)
+        .filter(MT5Account.id == account_id, MT5Account.is_active.is_(True))
+        .first()
+    )
 
     if not account:
         return None
@@ -96,11 +113,15 @@ def get_account_by_login(db: Session, login: int) -> Optional[MT5Account]:
 
 def verify_account_ownership(db: Session, account_id: int, user_id: str) -> bool:
     """Verify that user owns the account"""
-    account = db.query(MT5Account).filter(
-        MT5Account.id == account_id,
-        MT5Account.user_id == user_id,
-        MT5Account.is_active == True
-    ).first()
+    account = (
+        db.query(MT5Account)
+        .filter(
+            MT5Account.id == account_id,
+            MT5Account.user_id == user_id,
+            MT5Account.is_active.is_(True),
+        )
+        .first()
+    )
     return account is not None
 
 
@@ -115,10 +136,14 @@ def create_account_for_user(
     encrypted_password = None
     if hasattr(request, "mt5_password") and request.mt5_password:
         if not CREDENTIAL_MANAGER_AVAILABLE:
-            raise ValueError("CredentialManager not available - cannot encrypt password")
+            raise ValueError(
+                "CredentialManager not available - cannot encrypt password"
+            )
         try:
             credential_manager = CredentialManager()
-            encrypted_password = credential_manager.encrypt_password(request.mt5_password)
+            encrypted_password = credential_manager.encrypt_password(
+                request.mt5_password
+            )
         except Exception as e:
             logger.error(f"Failed to encrypt password: {e}", exc_info=True)
             raise ValueError(f"Failed to encrypt password: {e}")
@@ -203,10 +228,14 @@ def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountR
     encrypted_password = None
     if hasattr(request, "mt5_password") and request.mt5_password:
         if not CREDENTIAL_MANAGER_AVAILABLE:
-            raise ValueError("CredentialManager not available - cannot encrypt password")
+            raise ValueError(
+                "CredentialManager not available - cannot encrypt password"
+            )
         try:
             credential_manager = CredentialManager()
-            encrypted_password = credential_manager.encrypt_password(request.mt5_password)
+            encrypted_password = credential_manager.encrypt_password(
+                request.mt5_password
+            )
         except Exception as e:
             logger.error(f"Failed to encrypt password: {e}", exc_info=True)
             raise ValueError(f"Failed to encrypt password: {e}")
@@ -281,7 +310,11 @@ def update_account(
     db: Session, account_id: int, request: MT5AccountUpdateRequest
 ) -> Optional[MT5AccountResponse]:
     """Update MT5 account settings"""
-    account = db.query(MT5Account).filter(MT5Account.id == account_id, MT5Account.is_active == True).first()
+    account = (
+        db.query(MT5Account)
+        .filter(MT5Account.id == account_id, MT5Account.is_active.is_(True))
+        .first()
+    )
 
     if not account:
         return None
@@ -310,8 +343,11 @@ def delete_account(db: Session, account_id: int) -> bool:
     if WS_AVAILABLE:
         try:
             import asyncio
+
             asyncio.create_task(
-                ws_channels.broadcast_account_disconnected(account_id, "Account deleted")
+                ws_channels.broadcast_account_disconnected(
+                    account_id, "Account deleted"
+                )
             )
         except Exception as e:
             logger.warning(f"Failed to broadcast account deletion: {e}")
@@ -319,7 +355,9 @@ def delete_account(db: Session, account_id: int) -> bool:
     return True
 
 
-def get_connection_status(db: Session, account_id: int) -> Optional[MT5ConnectionStatusResponse]:
+def get_connection_status(
+    db: Session, account_id: int
+) -> Optional[MT5ConnectionStatusResponse]:
     """Get current connection status for an account"""
     account = db.query(MT5Account).filter(MT5Account.id == account_id).first()
 
@@ -362,30 +400,42 @@ def get_connection_history(
         .all()
     )
 
-    return [MT5ConnectionHistoryItem(**{
-        "id": c.id,
-        "connected_at": c.connected_at,
-        "disconnected_at": c.disconnected_at,
-        "disconnect_reason": c.disconnect_reason,
-        "connection_ip": c.connection_ip,
-        "ea_version": c.ea_version,
-        "terminal_id": c.terminal_id,
-    }) for c in connections]
+    return [
+        MT5ConnectionHistoryItem(
+            **{
+                "id": c.id,
+                "connected_at": c.connected_at,
+                "disconnected_at": c.disconnected_at,
+                "disconnect_reason": c.disconnect_reason,
+                "connection_ip": c.connection_ip,
+                "ea_version": c.ea_version,
+                "terminal_id": c.terminal_id,
+            }
+        )
+        for c in connections
+    ]
 
 
 def assign_model_to_account(
-    db: Session, account_id: int, model_id: int, trading_mode: str = "live", notes: Optional[str] = None
+    db: Session,
+    account_id: int,
+    model_id: int,
+    trading_mode: str = "live",
+    notes: Optional[str] = None,
 ) -> Optional[ModelAssignmentResponse]:
     """Assign a model to an MT5 account"""
     # Verify account exists
-    account = db.query(MT5Account).filter(MT5Account.id == account_id, MT5Account.is_active == True).first()
+    account = (
+        db.query(MT5Account)
+        .filter(MT5Account.id == account_id, MT5Account.is_active.is_(True))
+        .first()
+    )
     if not account:
         return None
 
     # Verify model exists and get stage
     result = db.execute(
-        text("SELECT id, version, stage FROM models WHERE id = :id"),
-        {"id": model_id}
+        text("SELECT id, version, stage FROM models WHERE id = :id"), {"id": model_id}
     )
     model_row = result.fetchone()
     if not model_row:
@@ -403,7 +453,7 @@ def assign_model_to_account(
                 f"Account must be type 'live' for live trading. "
                 f"Current account type is '{account.account_type}'."
             )
-        
+
         # Model must be in production stage (or paper for testing)
         if model_stage not in ("production", "paper"):
             raise ValueError(
@@ -422,13 +472,11 @@ def assign_model_to_account(
 
     # Deactivate any existing active assignment
     db.execute(
-        text(
-            """
+        text("""
             UPDATE account_model_assignments
             SET is_active = FALSE, deactivated_at = NOW()
             WHERE account_id = :account_id AND is_active = TRUE
-        """
-        ),
+        """),
         {"account_id": account_id},
     )
 
@@ -448,8 +496,8 @@ def assign_model_to_account(
     # Publish model assignment event to Redis for Trading Server
     try:
         from infrastructure.messaging.experiment_publisher import ExperimentPublisher
-        
-        publisher = ExperimentPublisher.get_instance()
+
+        _ = ExperimentPublisher.get_instance()  # Publisher for future use
         # Use a different channel for model assignments
         # We'll extend ExperimentPublisher or create a new publisher
         # For now, we'll publish to a model assignment channel
@@ -457,15 +505,15 @@ def assign_model_to_account(
             import redis
             import json
             from datetime import datetime
-            
+
             redis_host = os.getenv("REDIS_HOST", "redis")
             redis_port = int(os.getenv("REDIS_PORT", "6379"))
             redis_db = int(os.getenv("REDIS_DB", "0"))
-            
+
             redis_client = redis.Redis(
                 host=redis_host, port=redis_port, db=redis_db, decode_responses=True
             )
-            
+
             payload = {
                 "event_type": "model_assignment",
                 "account_id": account_id,
@@ -474,7 +522,7 @@ def assign_model_to_account(
                 "trading_mode": trading_mode,
                 "timestamp": datetime.utcnow().isoformat(),
             }
-            
+
             redis_client.publish("model_assignments", json.dumps(payload))
             logger.info(
                 f"Published model assignment event to Redis: account_id={account_id}, model_id={model_id}"
@@ -488,8 +536,11 @@ def assign_model_to_account(
     if WS_AVAILABLE:
         try:
             import asyncio
+
             asyncio.create_task(
-                ws_channels.broadcast_model_assigned(account_id, model_id, model_version)
+                ws_channels.broadcast_model_assigned(
+                    account_id, model_id, model_version
+                )
             )
         except Exception as e:
             logger.warning(f"Failed to broadcast assignment: {e}")
@@ -511,7 +562,10 @@ def unassign_model_from_account(db: Session, account_id: int) -> bool:
     """Unassign model from account"""
     assignment = (
         db.query(AccountModelAssignment)
-        .filter(AccountModelAssignment.account_id == account_id, AccountModelAssignment.is_active == True)
+        .filter(
+            AccountModelAssignment.account_id == account_id,
+            AccountModelAssignment.is_active.is_(True),
+        )
         .first()
     )
 
@@ -526,20 +580,24 @@ def unassign_model_from_account(db: Session, account_id: int) -> bool:
     if WS_AVAILABLE:
         try:
             import asyncio
-            asyncio.create_task(
-                ws_channels.broadcast_model_unassigned(account_id)
-            )
+
+            asyncio.create_task(ws_channels.broadcast_model_unassigned(account_id))
         except Exception as e:
             logger.warning(f"Failed to broadcast unassignment: {e}")
 
     return True
 
 
-def get_current_assignment(db: Session, account_id: int) -> Optional[ModelAssignmentResponse]:
+def get_current_assignment(
+    db: Session, account_id: int
+) -> Optional[ModelAssignmentResponse]:
     """Get current active model assignment for account"""
     assignment = (
         db.query(AccountModelAssignment)
-        .filter(AccountModelAssignment.account_id == account_id, AccountModelAssignment.is_active == True)
+        .filter(
+            AccountModelAssignment.account_id == account_id,
+            AccountModelAssignment.is_active.is_(True),
+        )
         .first()
     )
 
@@ -547,7 +605,9 @@ def get_current_assignment(db: Session, account_id: int) -> Optional[ModelAssign
         return None
 
     # Get model version
-    result = db.execute(text("SELECT version FROM models WHERE id = :id"), {"id": assignment.model_id})
+    result = db.execute(
+        text("SELECT version FROM models WHERE id = :id"), {"id": assignment.model_id}
+    )
     model_row = result.fetchone()
     model_version = model_row[0] if model_row else None
 
@@ -564,7 +624,9 @@ def get_current_assignment(db: Session, account_id: int) -> Optional[ModelAssign
     )
 
 
-def regenerate_account_token(db: Session, account_id: int, user_id: str) -> Optional[str]:
+def regenerate_account_token(
+    db: Session, account_id: int, user_id: str
+) -> Optional[str]:
     """Regenerate auth token for an account (requires ownership verification)"""
     # Verify ownership
     if not verify_account_ownership(db, account_id, user_id):
@@ -582,7 +644,9 @@ def regenerate_account_token(db: Session, account_id: int, user_id: str) -> Opti
     return account.auth_token
 
 
-def pause_trading(db: Session, account_id: int) -> Optional[MT5ConnectionStatusResponse]:
+def pause_trading(
+    db: Session, account_id: int
+) -> Optional[MT5ConnectionStatusResponse]:
     """Pause trading on an account (mark connection as paused)"""
     # This is a placeholder - actual implementation would depend on trading control logic
     # For now, we'll just return the connection status
@@ -612,13 +676,11 @@ def log_connection(
     """Log a new connection event"""
     # Close any existing active connections for this account
     db.execute(
-        text(
-            """
+        text("""
             UPDATE mt5_connections
             SET is_connected = FALSE, disconnected_at = NOW(), disconnect_reason = 'New connection'
             WHERE account_id = :account_id AND is_connected = TRUE
-        """
-        ),
+        """),
         {"account_id": account_id},
     )
 
@@ -646,6 +708,7 @@ def log_connection(
     if WS_AVAILABLE:
         try:
             import asyncio
+
             asyncio.create_task(
                 ws_channels.broadcast_account_connected(account_id, terminal_id)
             )
@@ -671,23 +734,22 @@ def update_connection_status(
         )
     else:
         # Mark connection as disconnected
-        query = text(
-            """
+        query = text("""
             UPDATE mt5_connections
             SET is_connected = FALSE, disconnected_at = NOW(), disconnect_reason = :reason
             WHERE account_id = :account_id AND is_connected = TRUE
-        """
-        )
-        params = {"account_id": account_id, "reason": disconnect_reason or "Disconnected"}
+        """)
+        params = {
+            "account_id": account_id,
+            "reason": disconnect_reason or "Disconnected",
+        }
 
         if terminal_id:
-            query = text(
-                """
+            query = text("""
                 UPDATE mt5_connections
                 SET is_connected = FALSE, disconnected_at = NOW(), disconnect_reason = :reason
                 WHERE account_id = :account_id AND terminal_id = :terminal_id AND is_connected = TRUE
-            """
-            )
+            """)
             params["terminal_id"] = terminal_id
 
         db.execute(query, params)
@@ -696,8 +758,11 @@ def update_connection_status(
         if WS_AVAILABLE:
             try:
                 import asyncio
+
                 asyncio.create_task(
-                    ws_channels.broadcast_account_disconnected(account_id, disconnect_reason)
+                    ws_channels.broadcast_account_disconnected(
+                        account_id, disconnect_reason
+                    )
                 )
             except Exception as e:
                 logger.warning(f"Failed to broadcast disconnection: {e}")
@@ -722,7 +787,10 @@ def _account_to_dict(account: MT5Account, db: Session) -> dict:
     # Get current model assignment
     assignment = (
         db.query(AccountModelAssignment)
-        .filter(AccountModelAssignment.account_id == account.id, AccountModelAssignment.is_active == True)
+        .filter(
+            AccountModelAssignment.account_id == account.id,
+            AccountModelAssignment.is_active.is_(True),
+        )
         .first()
     )
 
@@ -731,7 +799,10 @@ def _account_to_dict(account: MT5Account, db: Session) -> dict:
     if assignment:
         current_model_id = assignment.model_id
         # Get model version
-        result = db.execute(text("SELECT version FROM models WHERE id = :id"), {"id": assignment.model_id})
+        result = db.execute(
+            text("SELECT version FROM models WHERE id = :id"),
+            {"id": assignment.model_id},
+        )
         model_row = result.fetchone()
         current_model_version = model_row[0] if model_row else None
 

@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, dev]
     paths:
-      - 'src/trading_server/**'
+      - 'src/backend/trading_server/**'
       - '.github/workflows/lint_server.yml'
 
 jobs:
@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y build-essential
       
       - name: Install dependencies
-        working-directory: src/trading_server
+        working-directory: src/backend/trading_server
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
@@ -35,12 +35,12 @@ jobs:
       
       - name: Run code formatting check (Black)
         run: |
-          black --check src/trading_server/src || exit 1
+          black --check src/backend/trading_server/src || exit 1
       
       - name: Run linter (flake8)
         run: |
-          flake8 src/trading_server/src --max-line-length=120 --extend-ignore=E203,W503 || exit 1
+          flake8 src/backend/trading_server/src --max-line-length=120 --extend-ignore=E203,W503 || exit 1
       
       - name: Run type checking (mypy)
         run: |
-          mypy src/trading_server/src --ignore-missing-imports || exit 1
+          mypy src/backend/trading_server/src --ignore-missing-imports || exit 1

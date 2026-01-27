@@ -1,12 +1,12 @@
 """
 Authentication middleware for FastAPI using Clerk
 """
+
 from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Dict
 import logging
 
-from config import settings
 from services.clerk_service import clerk_service
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,7 @@ def require_roles(*allowed_roles: str):
         async def my_endpoint(user: dict = Depends(require_roles("admin", "user"))):
             # Only users with admin or user role can access
     """
+
     async def role_checker(
         request: Request,
         user: Dict = Depends(get_current_user),
@@ -113,10 +114,11 @@ def require_account_ownership(account_id_param: str = "account_id"):
         ):
             # Only account owner or admin can access
     """
+
     async def ownership_checker(
         request: Request,
         user: Dict = Depends(get_current_user),
-        db: Session = Depends(lambda: None),  # Will be injected by FastAPI
+        db=None,  # Will be injected by FastAPI
     ):
         from dependencies import get_db
         from services.mt5_accounts_service import verify_account_ownership

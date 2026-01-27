@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, dev]
     paths:
-      - 'src/api/**'
+      - 'src/backend/api/**'
       - 'tests/api/**'
       - '.github/workflows/test_api.yml'
 
@@ -43,7 +43,7 @@ jobs:
           sudo apt-get install -y postgresql-client
       
       - name: Install dependencies
-        working-directory: src/api
+        working-directory: src/backend/api
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
@@ -58,7 +58,7 @@ jobs:
           DB_PASSWORD: forex_password
           DB_NAME: db_forex
         run: |
-          pytest tests/api/ --cov=src/api/src --cov-report=xml --cov-report=term -v || exit 1
+          pytest tests/api/ --cov=src/backend/api/src --cov-report=xml --cov-report=term -v || exit 1
       
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3

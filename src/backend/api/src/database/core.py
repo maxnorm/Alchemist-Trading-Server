@@ -23,33 +23,33 @@ _engine: Optional[Engine] = None
 def init_db() -> None:
     """
     Initialize database connection pool with retry logic.
-    
+
     Creates a singleton SQLAlchemy engine with connection pooling.
     Performs connection test with exponential backoff retry.
-    
+
     Raises:
         Exception: If connection fails after all retries
     """
     global _engine
-    
+
     if _engine is not None:
         logger.debug("Database engine already initialized")
         return
-    
+
     database_url = get_database_url()
     pool_config = get_pool_config()
     retry_config = get_retry_config()
-    
+
     # Log connection attempt (mask password)
     log_url = database_url.split("@")[1] if "@" in database_url else "***"
     logger.info(f"Initializing database connection: {log_url}")
-    
+
     # Connection arguments for PostgreSQL
     connect_args = {
         "connect_timeout": 10,
         "options": "-c statement_timeout=30000 -c client_encoding=utf8",
     }
-    
+
     # Create engine with connection pooling
     _engine = create_engine(
         database_url,
@@ -62,11 +62,11 @@ def init_db() -> None:
         echo=False,
         connect_args=connect_args,
     )
-    
+
     # Test connection with retry logic
     max_retries = retry_config["max_retries"]
     retry_delay = retry_config["retry_delay"]
-    
+
     for attempt in range(max_retries):
         try:
             with _engine.connect() as conn:
@@ -102,29 +102,27 @@ def init_db() -> None:
 def get_engine() -> Engine:
     """
     Get or create database engine instance.
-    
+
     Returns:
         SQLAlchemy Engine instance
-        
+
     Raises:
         RuntimeError: If engine is not initialized (call init_db() first)
     """
     if _engine is None:
-        raise RuntimeError(
-            "Database engine not initialized. Call init_db() first."
-        )
+        raise RuntimeError("Database engine not initialized. Call init_db() first.")
     return _engine
 
 
 def close_db() -> None:
     """
     Close database connections and dispose engine.
-    
+
     Releases all connections from the pool and disposes the engine.
     Safe to call multiple times.
     """
     global _engine
-    
+
     if _engine is not None:
         _engine.dispose()
         logger.info("Database connections closed")
@@ -134,14 +132,14 @@ def close_db() -> None:
 def check_db_health() -> bool:
     """
     Check database connection health.
-    
+
     Returns:
         True if database is healthy and reachable, False otherwise
     """
     try:
         if _engine is None:
             return False
-        
+
         with _engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return True

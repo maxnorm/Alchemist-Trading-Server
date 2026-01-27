@@ -41,8 +41,17 @@ class MT5AccountBase(BaseModel):
 class MT5AccountCreateRequest(MT5AccountBase):
     """Request schema for creating MT5 account"""
 
-    mt5_password: Optional[str] = Field(None, description="MT5 account password (optional, required for Python API connection)")
-    mt5_server: Optional[str] = Field(None, description="MT5 broker server name (optional, required for Python API connection, e.g., 'ICMarkets-Demo', 'FXCM-Demo')")
+    mt5_password: Optional[str] = Field(
+        None,
+        description="MT5 account password (optional, required for Python API connection)",
+    )
+    mt5_server: Optional[str] = Field(
+        None,
+        description=(
+            "MT5 broker server name (optional, required for Python API connection, "
+            "e.g., 'ICMarkets-Demo', 'FXCM-Demo')"
+        ),
+    )
     ea_version: Optional[str] = None
     connection_ip: Optional[str] = None
     terminal_id: Optional[int] = None
@@ -137,7 +146,9 @@ class ModelAssignmentRequest(BaseModel):
     """Request schema for model assignment"""
 
     model_id: int
-    trading_mode: str = Field(default="live", description="Trading mode: 'paper' or 'live'")
+    trading_mode: str = Field(
+        default="live", description="Trading mode: 'paper' or 'live'"
+    )
     notes: Optional[str] = None
 
 

@@ -19,10 +19,12 @@ class SchemaRegistryService:
     """
 
     @staticmethod
-    def get_schema(db: Session, data_type: str, version: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def get_schema(
+        db: Session, data_type: str, version: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Retrieve schema for a data type
-        
+
         :param db: Database session
         :param data_type: Data type identifier
         :param version: Specific version (None for latest)
@@ -30,7 +32,7 @@ class SchemaRegistryService:
         """
         if version:
             query = text("""
-                SELECT id, data_type, version, schema_json, compatibility_mode, status, 
+                SELECT id, data_type, version, schema_json, compatibility_mode, status,
                        created_at, updated_at
                 FROM schema_registry
                 WHERE data_type = :data_type AND version = :version
@@ -40,7 +42,7 @@ class SchemaRegistryService:
             params = {"data_type": data_type, "version": version}
         else:
             query = text("""
-                SELECT id, data_type, version, schema_json, compatibility_mode, status, 
+                SELECT id, data_type, version, schema_json, compatibility_mode, status,
                        created_at, updated_at
                 FROM schema_registry
                 WHERE data_type = :data_type AND status = 'active'
@@ -59,7 +61,9 @@ class SchemaRegistryService:
                 "id": row[0],
                 "data_type": row[1],
                 "version": row[2],
-                "schema_json": json.loads(row[3]) if isinstance(row[3], str) else row[3],
+                "schema_json": (
+                    json.loads(row[3]) if isinstance(row[3], str) else row[3]
+                ),
                 "compatibility_mode": row[4],
                 "status": row[5],
                 "created_at": row[6],
@@ -73,13 +77,13 @@ class SchemaRegistryService:
     def list_versions(db: Session, data_type: str) -> List[Dict[str, Any]]:
         """
         List all versions for a data type
-        
+
         :param db: Database session
         :param data_type: Data type identifier
         :return: List of schema dictionaries
         """
         query = text("""
-            SELECT id, data_type, version, schema_json, compatibility_mode, status, 
+            SELECT id, data_type, version, schema_json, compatibility_mode, status,
                    created_at, updated_at
             FROM schema_registry
             WHERE data_type = :data_type
@@ -91,16 +95,20 @@ class SchemaRegistryService:
             result = db.execute(query, params)
             versions = []
             for row in result:
-                versions.append({
-                    "id": row[0],
-                    "data_type": row[1],
-                    "version": row[2],
-                    "schema_json": json.loads(row[3]) if isinstance(row[3], str) else row[3],
-                    "compatibility_mode": row[4],
-                    "status": row[5],
-                    "created_at": row[6],
-                    "updated_at": row[7],
-                })
+                versions.append(
+                    {
+                        "id": row[0],
+                        "data_type": row[1],
+                        "version": row[2],
+                        "schema_json": (
+                            json.loads(row[3]) if isinstance(row[3], str) else row[3]
+                        ),
+                        "compatibility_mode": row[4],
+                        "status": row[5],
+                        "created_at": row[6],
+                        "updated_at": row[7],
+                    }
+                )
             return versions
         except Exception as e:
             logger.error(f"Failed to list versions for {data_type}: {e}")
@@ -116,7 +124,7 @@ class SchemaRegistryService:
     ) -> Dict[str, Any]:
         """
         Register a new schema version
-        
+
         :param db: Database session
         :param data_type: Data type identifier
         :param version: Semantic version
@@ -127,7 +135,9 @@ class SchemaRegistryService:
         # Validate version format
         parts = version.split(".")
         if len(parts) != 3:
-            raise ValueError(f"Invalid version format: {version}. Expected MAJOR.MINOR.PATCH")
+            raise ValueError(
+                f"Invalid version format: {version}. Expected MAJOR.MINOR.PATCH"
+            )
         for part in parts:
             int(part)  # Validate it's an integer
 
@@ -140,7 +150,7 @@ class SchemaRegistryService:
         query = text("""
             INSERT INTO schema_registry (data_type, version, schema_json, compatibility_mode, status)
             VALUES (:data_type, :version, :schema_json, :compatibility_mode, 'active')
-            RETURNING id, data_type, version, schema_json, compatibility_mode, status, 
+            RETURNING id, data_type, version, schema_json, compatibility_mode, status,
                       created_at, updated_at
         """)
         params = {
@@ -158,7 +168,9 @@ class SchemaRegistryService:
                 "id": row[0],
                 "data_type": row[1],
                 "version": row[2],
-                "schema_json": json.loads(row[3]) if isinstance(row[3], str) else row[3],
+                "schema_json": (
+                    json.loads(row[3]) if isinstance(row[3], str) else row[3]
+                ),
                 "compatibility_mode": row[4],
                 "status": row[5],
                 "created_at": row[6],

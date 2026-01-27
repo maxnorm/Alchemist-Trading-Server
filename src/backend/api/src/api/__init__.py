@@ -13,7 +13,7 @@ from config import settings
 class APIVersionManager:
     """
     Manages multiple API versions for the FastAPI application.
-    
+
     This class provides a foundation for supporting multiple API versions
     simultaneously (e.g., v1, v2, v3) without requiring major refactoring.
     """
@@ -26,7 +26,7 @@ class APIVersionManager:
     def register_version(self, version: str, routers: List[APIRouter]) -> None:
         """
         Register routers for a specific API version.
-        
+
         Args:
             version: API version string (e.g., 'v1', 'v2')
             routers: List of APIRouter instances for this version
@@ -36,10 +36,10 @@ class APIVersionManager:
     def get_routers(self, version: Optional[str] = None) -> List[APIRouter]:
         """
         Get routers for a specific version.
-        
+
         Args:
             version: API version string. Defaults to settings.api_version.
-        
+
         Returns:
             List of routers for the specified version, or empty list if not found.
         """
@@ -50,7 +50,7 @@ class APIVersionManager:
     def get_available_versions(self) -> List[str]:
         """
         Get list of all registered API versions.
-        
+
         Returns:
             List of version strings (e.g., ['v1', 'v2'])
         """
@@ -59,10 +59,10 @@ class APIVersionManager:
     def is_version_supported(self, version: str) -> bool:
         """
         Check if a specific API version is supported.
-        
+
         Args:
             version: API version string to check
-        
+
         Returns:
             True if version is registered, False otherwise
         """

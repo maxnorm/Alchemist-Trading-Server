@@ -40,10 +40,7 @@ async def get_trading_status(
         raise
     except SQLAlchemyError as e:
         # Database errors should return 503
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get trading status: {str(e)}"

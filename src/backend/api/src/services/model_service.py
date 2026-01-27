@@ -29,7 +29,10 @@ try:
     TWO_FA_AVAILABLE = True
 except ImportError:
     TWO_FA_AVAILABLE = False
-    logger.debug("TwoFactorAuth not available - 2FA verification will be limited (this is expected if trading_server module is not available)")
+    logger.debug(
+        "TwoFactorAuth not available - 2FA verification will be limited "
+        "(this is expected if trading_server module is not available)"
+    )
 
     # Create a stub for development
     class TwoFactorAuth:  # type: ignore[no-redef]
@@ -261,13 +264,11 @@ def rollback_production(
 def get_paper_sessions(db: Session, model_id: int) -> List[PaperSessionResponse]:
     """Get paper trading sessions for a model"""
     result = db.execute(
-        text(
-            """
+        text("""
             SELECT * FROM paper_trading_sessions
             WHERE model_id = :model_id
             ORDER BY started_at DESC
-        """
-        ),
+        """),
         {"model_id": model_id},
     )
     rows = result.fetchall()
@@ -292,13 +293,11 @@ def start_paper_session(
         raise ValueError(f"Model must be in paper stage, currently {model.stage}")
 
     result = db.execute(
-        text(
-            """
+        text("""
             INSERT INTO paper_trading_sessions
             (model_id, status, start_balance, current_balance, started_at)
             VALUES (:model_id, 'running', :start_balance, :start_balance, NOW())
-        """
-        ),
+        """),
         {"model_id": model_id, "start_balance": start_balance},
     )
     db.commit()
@@ -347,13 +346,11 @@ def stop_paper_session(db: Session, session_id: int) -> PaperSessionResponse:
         raise ValueError(f"Session {session_id} not found")
 
     db.execute(
-        text(
-            """
+        text("""
             UPDATE paper_trading_sessions
             SET status = 'completed', ended_at = NOW()
             WHERE id = :id
-        """
-        ),
+        """),
         {"id": session_id},
     )
     db.commit()

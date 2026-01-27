@@ -24,47 +24,45 @@ _SessionLocal: Optional[sessionmaker] = None
 def _get_session_factory() -> sessionmaker:
     """
     Get or create session factory.
-    
+
     Returns:
         SQLAlchemy sessionmaker instance
-        
+
     Raises:
         RuntimeError: If engine is not initialized
     """
     global _SessionLocal
-    
+
     if _SessionLocal is None:
         # Ensure engine is initialized
         init_db()
         engine = get_engine()
-        _SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=engine
-        )
-    
+        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
     return _SessionLocal
 
 
 def get_session() -> Session:
     """
     Get a database session with retry logic.
-    
+
     Creates a new SQLAlchemy session and tests the connection.
     Implements exponential backoff retry on connection failures.
-    
+
     Returns:
         SQLAlchemy Session instance
-        
+
     Raises:
         RuntimeError: If database is not initialized
         OperationalError: If connection fails after all retries
     """
     SessionLocal = _get_session_factory()
     retry_config = get_retry_config()
-    
+
     # Try to get a session with retry logic
     max_retries = min(retry_config["max_retries"], 3)  # Cap at 3 for sessions
     retry_delay = 1
-    
+
     for attempt in range(max_retries):
         try:
             session = SessionLocal()
@@ -92,10 +90,10 @@ def get_session() -> Session:
 def SessionLocal() -> Session:
     """
     Get a new database session (for dependency injection).
-    
+
     This is a convenience function that creates a new session.
     For direct access to the sessionmaker, use _get_session_factory().
-    
+
     Returns:
         SQLAlchemy Session instance
     """

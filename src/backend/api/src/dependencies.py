@@ -18,7 +18,7 @@ def get_db() -> Generator[Session, None, None]:
 
     Services handle their own commits. SQLAlchemy automatically rolls back
     uncommitted transactions when the session is closed.
-    
+
     Raises HTTPException with 503 status if database is unavailable.
     """
     try:
@@ -27,15 +27,15 @@ def get_db() -> Generator[Session, None, None]:
         logger.error(f"Database not initialized: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database service is currently unavailable. Please try again later."
+            detail="Database service is currently unavailable. Please try again later.",
         )
     except Exception as e:
         logger.error(f"Failed to get database session: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database connection error. Please try again later."
+            detail="Database connection error. Please try again later.",
         )
-    
+
     try:
         yield db
     except SQLAlchemyError as e:
@@ -43,7 +43,7 @@ def get_db() -> Generator[Session, None, None]:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database operation failed. Please try again later."
+            detail="Database operation failed. Please try again later.",
         )
     finally:
         try:

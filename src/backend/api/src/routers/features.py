@@ -36,10 +36,7 @@ async def list_features(
         raise
     except SQLAlchemyError as e:
         # Database errors should return 503
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch features: {str(e)}"
@@ -63,14 +60,10 @@ async def get_feature(
         raise
     except SQLAlchemyError as e:
         # Database errors should return 503
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch feature: {str(e)}"
+            status_code=500, detail=f"Failed to fetch feature: {str(e)}"
         )
 
 
@@ -88,10 +81,7 @@ async def list_data_sources(
         raise
     except SQLAlchemyError as e:
         # Database errors should return 503
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch data sources: {str(e)}"
@@ -117,12 +107,8 @@ async def get_source_health(
         raise
     except SQLAlchemyError as e:
         # Database errors should return 503
-        raise HTTPException(
-            status_code=503,
-            detail=f"Database error: {str(e)}"
-        )
+        raise HTTPException(status_code=503, detail=f"Database error: {str(e)}")
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch data source health: {str(e)}"
+            status_code=500, detail=f"Failed to fetch data source health: {str(e)}"
         )

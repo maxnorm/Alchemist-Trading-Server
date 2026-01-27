@@ -6,7 +6,7 @@ Allows users to connect, manage, and monitor their MT5 accounts
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from typing import Optional, List, Dict
+from typing import Optional, Dict
 from datetime import datetime
 from dependencies import get_db
 from middleware.auth import get_current_user
@@ -62,11 +62,13 @@ async def list_accounts(
     try:
         user_id = user.get("id") or request.state.user_id
         user_roles = request.state.roles
-        
+
         # Admins can see all accounts, regular users see only their own
         filter_user_id = None if "admin" in user_roles else user_id
-        
-        accounts = get_all_accounts(db, connected_only=connected_only, account_type=account_type, user_id=filter_user_id)
+
+        accounts = get_all_accounts(
+            db, connected_only=connected_only, account_type=account_type, user_id=filter_user_id
+        )
         return MT5AccountListResponse(accounts=accounts, total=len(accounts))
     except HTTPException:
         # Re-raise HTTPException to preserve status code (e.g., 503 from get_db)
@@ -163,16 +165,16 @@ async def register_account_with_secret(
         # Validate: if password provided, server must be provided (and vice versa)
         has_password = hasattr(request, "mt5_password") and request.mt5_password
         has_server = hasattr(request, "mt5_server") and request.mt5_server
-        
+
         if has_password and not has_server:
             raise HTTPException(
-                status_code=400, 
-                detail="mt5_server is required when mt5_password is provided (for Python API connection)"
+                status_code=400,
+                detail="mt5_server is required when mt5_password is provided (for Python API connection)",
             )
         if has_server and not has_password:
             raise HTTPException(
-                status_code=400, 
-                detail="mt5_password is required when mt5_server is provided (for Python API connection)"
+                status_code=400,
+                detail="mt5_password is required when mt5_server is provided (for Python API connection)",
             )
 
         # Create or update account with user association
@@ -187,7 +189,7 @@ async def register_account_with_secret(
 
         # Get auth_token for ZeroMQ connection
         auth_token = orm_account.auth_token if orm_account.auth_token else None
-        
+
         # Get server host/port for EA configuration
         server_host = settings.mt5_server_public_host
         server_port = settings.mt5_server_public_port
@@ -576,7 +578,7 @@ async def websocket_account_status(websocket: WebSocket, account_id: int):
     try:
         while True:
             # Keep connection alive and send updates
-            data = await websocket.receive_text()
+            _ = await websocket.receive_text()  # Receive to keep connection alive
             # Echo or handle client messages if needed
             await websocket_manager.send_personal_message(
                 {"type": "pong", "timestamp": datetime.utcnow().isoformat()},

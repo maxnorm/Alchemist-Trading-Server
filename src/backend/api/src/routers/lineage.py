@@ -20,6 +20,7 @@ router = APIRouter()
 # Response models
 class RunLineageResponse(BaseModel):
     """Response model for run lineage"""
+
     run_id: str
     job_name: str
     namespace: str
@@ -34,6 +35,7 @@ class RunLineageResponse(BaseModel):
 
 class DatasetLineageResponse(BaseModel):
     """Response model for dataset lineage"""
+
     dataset_id: str
     name: str
     namespace: str
@@ -41,12 +43,13 @@ class DatasetLineageResponse(BaseModel):
     schema_data: Optional[Dict[str, Any]] = Field(None, alias="schema")
     produced_by: List[Dict[str, Any]] = []
     consumed_by: List[Dict[str, Any]] = []
-    
+
     model_config = {"populate_by_name": True}
 
 
 class JobLineageResponse(BaseModel):
     """Response model for job lineage"""
+
     id: int
     job_name: str
     namespace: str
@@ -59,6 +62,7 @@ class JobLineageResponse(BaseModel):
 
 class RunListItem(BaseModel):
     """Response model for run list item"""
+
     run_id: str
     job_name: str
     namespace: str
@@ -70,6 +74,7 @@ class RunListItem(BaseModel):
 
 class DatasetListItem(BaseModel):
     """Response model for dataset list item"""
+
     dataset_id: str
     name: str
     namespace: str
@@ -86,16 +91,14 @@ async def get_run_lineage(
 ):
     """
     Get run details and lineage
-    
+
     :param run_id: Run ID
     :return: Run lineage information
     """
     try:
         lineage = LineageService.get_run_lineage(db, run_id)
         if not lineage:
-            raise HTTPException(
-                status_code=404, detail=f"Run not found: {run_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
         return RunLineageResponse(**lineage)
     except HTTPException:
         raise
@@ -106,7 +109,10 @@ async def get_run_lineage(
         )
 
 
-@router.get("/lineage/datasets/{namespace}/{dataset_name}", response_model=DatasetLineageResponse)
+@router.get(
+    "/lineage/datasets/{namespace}/{dataset_name}",
+    response_model=DatasetLineageResponse,
+)
 async def get_dataset_lineage(
     dataset_name: str,
     namespace: str,
@@ -115,7 +121,7 @@ async def get_dataset_lineage(
 ):
     """
     Get dataset lineage (upstream/downstream)
-    
+
     :param dataset_name: Dataset name
     :param namespace: Namespace
     :return: Dataset lineage information
@@ -149,7 +155,7 @@ async def get_job_lineage(
 ):
     """
     Get job lineage and run history
-    
+
     :param job_name: Job name
     :param namespace: Namespace
     :return: Job lineage information
@@ -186,7 +192,7 @@ async def list_runs(
 ):
     """
     List runs with filters
-    
+
     :param job_name: Filter by job name
     :param namespace: Filter by namespace
     :param status: Filter by status (RUNNING, COMPLETE, FAILED, ABORTED)
@@ -196,14 +202,17 @@ async def list_runs(
     """
     try:
         runs = LineageService.list_runs(
-            db, job_name=job_name, namespace=namespace, status=status, limit=limit, offset=offset
+            db,
+            job_name=job_name,
+            namespace=namespace,
+            status=status,
+            limit=limit,
+            offset=offset,
         )
         return [RunListItem(**run) for run in runs]
     except Exception as e:
         logger.error(f"Error listing runs: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list runs: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to list runs: {str(e)}")
 
 
 @router.get("/lineage/datasets", response_model=List[DatasetListItem])
@@ -215,7 +224,7 @@ async def list_datasets(
 ):
     """
     List all datasets
-    
+
     :param namespace: Filter by namespace
     :param limit: Maximum number of results
     :return: List of datasets

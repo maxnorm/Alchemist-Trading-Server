@@ -8,12 +8,13 @@ import asyncio
 import json
 import logging
 import os
-from typing import Optional, Dict
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 try:
     import redis.asyncio as aioredis
+
     REDIS_AVAILABLE = True
 except ImportError:
     REDIS_AVAILABLE = False
@@ -23,7 +24,7 @@ except ImportError:
 class AlertConsumer:
     """
     Async Redis Pub/Sub consumer for alerts.
-    
+
     Subscribes to Redis channel and broadcasts alerts via WebSocket.
     Handles connection failures with retry logic.
     """

@@ -6,47 +6,51 @@ both DATABASE_URL and individual DB_* variables.
 """
 
 import os
-from typing import Optional
 
 
 def get_database_url() -> str:
     """
     Get database connection URL from environment variables.
-    
+
     Supports two formats:
     1. DATABASE_URL - Full connection string (takes precedence)
     2. Individual DB_* variables - Constructed from components
-    
+
     Returns:
         PostgreSQL connection URL string
-        
+
     Environment Variables:
         DATABASE_URL: Full connection string (optional)
         DB_HOST: Database host
         DB_PORT: Database port
         DB_USER: Database user
-        DB_PASSWORD: Database password  
+        DB_PASSWORD: Database password
         DB_NAME: Database name
     """
     # Check for full DATABASE_URL first
     database_url = os.getenv("DATABASE_URL")
     if database_url:
         return database_url
-    
+
     # Construct from individual components
     db_host = os.getenv("DB_HOST")
-    db_port = int(os.getenv("DB_PORT"))
+    db_port_str = os.getenv("DB_PORT")
+    if db_port_str is None:
+        raise ValueError("DB_PORT environment variable is required")
+    db_port = int(db_port_str)
     db_user = os.getenv("DB_USER")
     db_password = os.getenv("DB_PASSWORD")
     db_name = os.getenv("DB_NAME")
-    
-    return f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
+    return (
+        f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    )
 
 
 def get_pool_config() -> dict:
     """
     Get connection pool configuration from environment variables.
-    
+
     Returns:
         Dictionary with pool configuration parameters
     """
@@ -61,7 +65,7 @@ def get_pool_config() -> dict:
 def get_retry_config() -> dict:
     """
     Get retry configuration from environment variables.
-    
+
     Returns:
         Dictionary with retry configuration parameters
     """

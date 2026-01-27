@@ -1,9 +1,9 @@
 """
 Clerk integration service for authentication and authorization
 """
+
 from typing import Optional, Dict, Any, List
 from clerk_backend_api import Clerk
-from clerk_backend_api.security import authenticate_request
 from clerk_backend_api.security.types import AuthenticateRequestOptions
 import httpx
 import logging
@@ -24,7 +24,8 @@ class ClerkService:
         if self._clerk is None:
             if not settings.clerk_secret_key:
                 raise ValueError(
-                    "CLERK_SECRET_KEY is not configured. Please set CLERK_SECRET_KEY environment variable to use authentication."
+                    "CLERK_SECRET_KEY is not configured. "
+                    "Please set CLERK_SECRET_KEY environment variable to use authentication."
                 )
             self._clerk = Clerk(bearer_auth=settings.clerk_secret_key)
 
@@ -49,12 +50,11 @@ class ClerkService:
         """
         try:
             request_state = self.clerk.authenticate_request(
-                request,
-                AuthenticateRequestOptions()
+                request, AuthenticateRequestOptions()
             )
 
             if not request_state.is_signed_in:
-                reason = getattr(request_state, 'reason', 'Authentication failed')
+                reason = getattr(request_state, "reason", "Authentication failed")
                 raise ValueError(f"Request not authenticated: {reason}")
 
             # Extract user information from payload
@@ -95,7 +95,7 @@ class ClerkService:
             request = httpx.Request(
                 method="GET",
                 url="https://api.example.com",
-                headers={"Authorization": f"Bearer {token}"}
+                headers={"Authorization": f"Bearer {token}"},
             )
             return self.verify_request(request)
         except Exception as e:
@@ -126,14 +126,21 @@ class ClerkService:
                         roles.extend(metadata_roles)
 
             # Also check organization memberships for roles
-            if hasattr(user, "organization_memberships") and user.organization_memberships:
+            if (
+                hasattr(user, "organization_memberships")
+                and user.organization_memberships
+            ):
                 for membership in user.organization_memberships:
                     if hasattr(membership, "role") and membership.role:
                         roles.append(membership.role)
 
             return {
                 "id": user.id,
-                "email": user.email_addresses[0].email_address if user.email_addresses else None,
+                "email": (
+                    user.email_addresses[0].email_address
+                    if user.email_addresses
+                    else None
+                ),
                 "username": user.username,
                 "first_name": user.first_name,
                 "last_name": user.last_name,

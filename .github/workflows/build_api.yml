@@ -21,8 +21,8 @@ jobs:
       - name: Build API Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./src/api
-          file: ./src/api/Dockerfile
+          context: ./src/backend/api
+          file: ./src/backend/api/Dockerfile
           push: false
           load: true
           tags: alchemist-api:test

@@ -3,7 +3,7 @@ WebSocket channel handlers
 """
 
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Optional, Set, Dict
+from typing import Optional, Set, Dict, Any
 import json
 import logging
 import re
@@ -84,7 +84,7 @@ async def handle_websocket(websocket: WebSocket, channel: str):
 async def handle_generic_websocket(websocket: WebSocket):
     """
     Handle generic WebSocket connection with channel subscription support.
-    
+
     Clients can subscribe to multiple channels via messages:
     - {"action": "subscribe", "channel": "/ws/trading/positions"}
     - {"action": "unsubscribe", "channel": "/ws/trading/positions"}
@@ -128,73 +128,81 @@ async def handle_generic_websocket(websocket: WebSocket):
                 message = json.loads(data)
                 action = message.get("action")
                 channel_path = message.get("channel")
-                
+
                 if action == "subscribe" and channel_path:
                     # Map frontend channel path to backend channel name
                     backend_channel = CHANNEL_MAPPING.get(channel_path)
-                    
+
                     # Try pattern matching for dynamic channels
                     if not backend_channel:
                         for pattern, mapped_channel in CHANNEL_PATTERNS:
                             if pattern.match(channel_path):
                                 backend_channel = mapped_channel
                                 break
-                    
+
                     if backend_channel:
                         # Subscribe to the backend channel
-                        await websocket_manager.connect(websocket, backend_channel, accept=False)
+                        await websocket_manager.connect(
+                            websocket, backend_channel, accept=False
+                        )
                         subscribed_channels.add(backend_channel)
-                        logger.info(f"Client subscribed to {channel_path} (backend: {backend_channel})")
-                        
+                        logger.info(
+                            f"Client subscribed to {channel_path} (backend: {backend_channel})"
+                        )
+
                         # Send confirmation
                         await websocket_manager.send_personal_message(
                             {
                                 "type": "subscription_confirmed",
                                 "channel": channel_path,
-                                "status": "subscribed"
+                                "status": "subscribed",
                             },
-                            websocket
+                            websocket,
                         )
                     else:
                         logger.warning(f"Unknown channel path: {channel_path}")
                         await websocket_manager.send_personal_message(
                             {
                                 "type": "error",
-                                "message": f"Unknown channel: {channel_path}"
+                                "message": f"Unknown channel: {channel_path}",
                             },
-                            websocket
+                            websocket,
                         )
-                
+
                 elif action == "unsubscribe" and channel_path:
                     backend_channel = CHANNEL_MAPPING.get(channel_path)
-                    
+
                     # Try pattern matching for dynamic channels
                     if not backend_channel:
                         for pattern, mapped_channel in CHANNEL_PATTERNS:
                             if pattern.match(channel_path):
                                 backend_channel = mapped_channel
                                 break
-                    
+
                     if backend_channel and backend_channel in subscribed_channels:
                         await websocket_manager.disconnect(websocket, backend_channel)
                         subscribed_channels.discard(backend_channel)
-                        logger.info(f"Client unsubscribed from {channel_path} (backend: {backend_channel})")
-                        
+                        logger.info(
+                            f"Client unsubscribed from {channel_path} (backend: {backend_channel})"
+                        )
+
                         # Send confirmation
                         await websocket_manager.send_personal_message(
                             {
                                 "type": "unsubscription_confirmed",
                                 "channel": channel_path,
-                                "status": "unsubscribed"
+                                "status": "unsubscribed",
                             },
-                            websocket
+                            websocket,
                         )
                     else:
-                        logger.warning(f"Channel not subscribed or unknown: {channel_path}")
-                
+                        logger.warning(
+                            f"Channel not subscribed or unknown: {channel_path}"
+                        )
+
                 else:
                     logger.debug(f"Received message on generic WebSocket: {message}")
-                    
+
             except json.JSONDecodeError:
                 logger.warning(f"Invalid JSON received on generic WebSocket: {data}")
             except Exception as e:
@@ -265,10 +273,13 @@ async def broadcast_metrics(balance: float, equity: float, pnl: float):
 
 
 async def broadcast_alert(
-    alert_type: str, message: str, severity: str = "info", metrics: Optional[dict] = None
+    alert_type: str,
+    message: str,
+    severity: str = "info",
+    metrics: Optional[dict] = None,
 ):
     """Broadcast alert notification"""
-    alert = {
+    alert: Dict[str, Any] = {
         "type": "alert",
         "alert_type": alert_type,
         "message": message,
@@ -450,7 +461,9 @@ async def broadcast_validation_update(model_id: int, validation_result: dict):
 # MT5 Accounts WebSocket channels
 
 
-async def broadcast_account_connected(account_id: int, terminal_id: Optional[int] = None):
+async def broadcast_account_connected(
+    account_id: int, terminal_id: Optional[int] = None
+):
     """Broadcast MT5 account connection event"""
     from datetime import datetime
 
@@ -482,7 +495,9 @@ async def broadcast_account_disconnected(account_id: int, reason: Optional[str] 
     await websocket_manager.broadcast_to_channel(f"mt5_account_{account_id}", message)
 
 
-async def broadcast_model_assigned(account_id: int, model_id: int, model_version: Optional[str] = None):
+async def broadcast_model_assigned(
+    account_id: int, model_id: int, model_version: Optional[str] = None
+):
     """Broadcast model assignment to account"""
     from datetime import datetime
 

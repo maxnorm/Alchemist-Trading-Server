@@ -2,13 +2,25 @@
 SQLAlchemy ORM models for MT5 Accounts
 """
 
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Text, ForeignKey, DateTime, UniqueConstraint, Numeric, LargeBinary
+from sqlalchemy import (
+    Column,
+    Integer,
+    BigInteger,
+    String,
+    Boolean,
+    Text,
+    ForeignKey,
+    DateTime,
+    UniqueConstraint,
+    Numeric,
+    LargeBinary,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from . import Base
 
 
-class MT5Account(Base):
+class MT5Account(Base):  # type: ignore[misc,valid-type]
     """MT5 Account model"""
 
     __tablename__ = "mt5_accounts"
@@ -42,7 +54,7 @@ class MT5Account(Base):
         return f"<MT5Account(id={self.id}, login={self.account_login}, type={self.account_type})>"
 
 
-class AccountModelAssignment(Base):
+class AccountModelAssignment(Base):  # type: ignore[misc,valid-type]
     """Model assignment to MT5 account"""
 
     __tablename__ = "account_model_assignments"
@@ -63,14 +75,23 @@ class AccountModelAssignment(Base):
 
     # Unique constraint: only one active assignment per account
     __table_args__ = (
-        UniqueConstraint("account_id", "is_active", name="unique_active_account", deferrable=True, initially="DEFERRED"),
+        UniqueConstraint(
+            "account_id",
+            "is_active",
+            name="unique_active_account",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
     )
 
     def __repr__(self):
-        return f"<AccountModelAssignment(id={self.id}, account_id={self.account_id}, model_id={self.model_id}, active={self.is_active})>"
+        return (
+            f"<AccountModelAssignment(id={self.id}, account_id={self.account_id}, "
+            f"model_id={self.model_id}, active={self.is_active})>"
+        )
 
 
-class MT5Connection(Base):
+class MT5Connection(Base):  # type: ignore[misc,valid-type]
     """MT5 connection history"""
 
     __tablename__ = "mt5_connections"

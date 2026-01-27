@@ -26,7 +26,7 @@ async def health_check_db():
     """Database health check with detailed diagnostics (internal-only endpoint, not exposed through gateway)"""
     from database.core import get_engine
     from config import settings
-    
+
     try:
         is_healthy = check_db_health()
         if is_healthy:
@@ -48,7 +48,7 @@ async def health_check_db():
                 "database": settings.db_name,
                 "user": settings.db_user,
             }
-            
+
             # Try to get more specific error
             try:
                 engine = get_engine()
@@ -63,7 +63,7 @@ async def health_check_db():
                         error_details["error_type"] = type(conn_error).__name__
             except RuntimeError as e:
                 error_details["error"] = f"Database engine not initialized: {str(e)}"
-            
+
             return JSONResponse(status_code=503, content=error_details)
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
@@ -83,7 +83,10 @@ async def health_check_db():
 
 @router.get("/health/clock-sync")
 async def health_check_clock_sync():
-    """Clock synchronization health check - proxies to trading server (internal-only endpoint, not exposed through gateway)"""
+    """
+    Clock synchronization health check - proxies to trading server
+    (internal-only endpoint, not exposed through gateway)
+    """
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(

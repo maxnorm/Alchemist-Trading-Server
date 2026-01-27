@@ -19,7 +19,9 @@ class ConnectionManager:
         self.connections: Set[WebSocket] = set()
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, channel: str, accept: bool = True) -> None:
+    async def connect(
+        self, websocket: WebSocket, channel: str, accept: bool = True
+    ) -> None:
         """Connect a WebSocket to a channel"""
         if accept:
             await websocket.accept()
@@ -68,10 +70,7 @@ class ConnectionManager:
                 "trading": "/ws/trading/status",
             }
             frontend_channel = channel_path_mapping.get(channel, f"/ws/{channel}")
-            wrapped_message = {
-                "channel": frontend_channel,
-                "data": message
-            }
+            wrapped_message = {"channel": frontend_channel, "data": message}
 
         disconnected = set()
         async with self._lock:

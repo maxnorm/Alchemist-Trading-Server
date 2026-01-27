@@ -46,12 +46,8 @@ class Settings(BaseSettings):
     )
 
     # Trading Server URL for health checks
-    trading_server_host: str = Field(
-        default="server", alias="TRADING_SERVER_HOST"
-    )
-    trading_server_port: int = Field(
-        default=8080, alias="TRADING_SERVER_PORT"
-    )
+    trading_server_host: str = Field(default="server", alias="TRADING_SERVER_HOST")
+    trading_server_port: int = Field(default=8080, alias="TRADING_SERVER_PORT")
 
     # Clerk Configuration
     clerk_secret_key: Optional[str] = Field(default=None, alias="CLERK_SECRET_KEY")
