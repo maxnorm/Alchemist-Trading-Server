@@ -84,7 +84,7 @@ def get_session() -> Session:
         except Exception as e:
             logger.error(f"Unexpected error getting database session: {e}")
             raise
-    
+
     # This should never be reached, but MyPy needs it for type checking
     raise RuntimeError("Failed to get database session after all retries")
 
