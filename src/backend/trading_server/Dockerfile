@@ -10,7 +10,10 @@ ENV PYTHONUNBUFFERED=1
 # Best practice: Sync the host system with NTP, containers automatically inherit correct time.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ntpsec-ntpdate \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/* \
+    && rm -rf /var/tmp/*
 
 RUN pip install --upgrade pip
 
@@ -20,8 +23,14 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install dependencies with BuildKit cache mount (faster rebuilds, not in final image)
+# Use --no-cache-dir to avoid storing pip cache in the image and save space
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    # Clean up any temporary files and Python bytecode caches to free space
+    find /usr/local/lib/python3.11 -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find /usr/local/lib/python3.11 -name "*.pyc" -delete 2>/dev/null || true && \
+    find /usr/local/lib/python3.11 -name "*.pyo" -delete 2>/dev/null || true && \
+    rm -rf /tmp/* /var/tmp/*
 
 # Copy application code
 COPY . .
