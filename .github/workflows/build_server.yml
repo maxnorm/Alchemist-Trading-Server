@@ -50,11 +50,3 @@ jobs:
           tags: alchemist-server:test
           cache-from: type=gha
           cache-to: type=gha,mode=min
-      
-      - name: Verify image
-        run: |
-          docker images | grep alchemist-server
-          echo "Final disk space:"
-          df -h
-          echo "Docker disk usage:"
-          docker system df
