@@ -3,9 +3,6 @@ name: Lint Dashboard
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/dashboard/**'
-      - '.github/workflows/lint_dashboard.yml'
 
 jobs:
   lint:

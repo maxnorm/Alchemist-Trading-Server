@@ -1,12 +1,52 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-export const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+// Use relative paths when behind gateway, absolute for dev
+const getBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL
+  // If env URL is explicitly set (including empty string), always use it (respects docker-compose configuration)
+  if (envUrl !== undefined) {
+    // Handle case where env var contains a comment string (common in .env files)
+    // If it's a comment (starts with #) or whitespace-only, treat as empty string
+    const trimmed = typeof envUrl === 'string' ? envUrl.trim() : String(envUrl)
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      return ''
+    }
+    // Empty string means use relative paths (endpoints already include /api/v1/)
+    // If env URL is relative (starts with /), use it as-is for gateway
+    // If absolute, use it directly
+    return trimmed
+  }
+  // Fallback: In development, check if we're accessing via gateway (port 80) or directly (port 8000)
+  const isGateway = window.location.port === '' || window.location.port === '80'
+  return isGateway ? '' : 'http://localhost:8000'
+}
+
+const getWsUrl = () => {
+  const envUrl = import.meta.env.VITE_WS_URL
+  if (envUrl) {
+    // If env URL is relative (starts with /), make it absolute
+    if (envUrl.startsWith('/')) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      return `${protocol}//${window.location.host}${envUrl}`
+    }
+    return envUrl
+  }
+  // Use same protocol as current page
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  // Check if we're accessing via gateway (port 80) or directly (port 8000)
+  const isGateway = window.location.port === '' || window.location.port === '80'
+  return isGateway 
+    ? `${protocol}//${window.location.host}/ws` 
+    : 'ws://localhost:8000/ws'
+}
+
+export const API_BASE_URL = getBaseUrl()
+export const WS_BASE_URL = getWsUrl()
 
 export const API_ENDPOINTS = {
   features: '/api/v1/features',
   experiments: '/api/v1/experiments',
   models: '/api/v1/models',
   trading: '/api/v1/trading',
-  mt5Accounts: '/api/v1/mt5-accounts',
+  mt5Accounts: '/api/v1/accounts/mt5',
   performance: '/api/v1/performance',
   optuna: '/api/v1/optuna',
 } as const

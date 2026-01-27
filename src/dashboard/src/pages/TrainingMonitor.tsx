@@ -7,6 +7,8 @@ import toast from 'react-hot-toast'
 import { formatRelativeTime } from '@/utils/formatters'
 import { useExperimentProgress } from '@/hooks/useExperimentProgress'
 import type { Experiment } from '@/types/experiment'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
 
 function ExperimentCard({ experiment, onStop }: { experiment: Experiment; onStop: (id: number) => void }) {
   const { latest } = useExperimentProgress(experiment.id)
@@ -82,18 +84,24 @@ export default function TrainingMonitor() {
     },
   })
 
-  if (isLoading) {
-    return <LoadingSpinner />
-  }
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Training Monitor</h1>
-        <p className="text-muted-foreground">Monitor active training experiments in real-time</p>
-      </div>
+      <PageHeader
+        title="Training Monitor"
+        description="Monitor active training experiments in real-time"
+        actions={
+          <div className="flex items-center gap-3">
+            <HealthDot 
+              status={activeExperiments.length > 0 ? 'ok' : 'error'} 
+              label="Active Experiments" 
+            />
+          </div>
+        }
+      />
 
-      {activeExperiments.length === 0 ? (
+      {isLoading && !experiments ? (
+        <LoadingSpinner />
+      ) : activeExperiments.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             No active experiments. Create one from the Experiment Builder.

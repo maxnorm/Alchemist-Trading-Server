@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EquityCurveChart } from '@/components/charts/EquityCurveChart'
@@ -9,6 +10,10 @@ import { formatCurrency, formatPercent, formatDuration } from '@/utils/formatter
 import { usePeriodFilter } from '@/hooks/usePeriodFilter'
 import { usePerformanceMetrics } from '@/features/performance/hooks/usePerformanceMetrics'
 import { useEquityCurve } from '@/features/performance/hooks/useEquityCurve'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
+import { RefreshCw, Download, ArrowLeft } from 'lucide-react'
+import toast from 'react-hot-toast'
 import type { Trade } from '@/types/performance'
 
 export default function ModelPerformance() {
@@ -39,8 +44,50 @@ export default function ModelPerformance() {
     enabled: !!modelId,
   })
 
+  const queryClient = useQueryClient()
+
   if (!modelId) {
     return <div>No model ID provided</div>
+  }
+
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['performance', modelId] })
+    queryClient.invalidateQueries({ queryKey: ['model-statistics', modelId] })
+    queryClient.invalidateQueries({ queryKey: ['model-trades', modelId] })
+    queryClient.invalidateQueries({ queryKey: ['model-comparison', modelId] })
+    toast.success('Model performance data refreshed')
+  }
+
+  const handleExport = () => {
+    if (!metrics) {
+      toast.error('No performance data to export')
+      return
+    }
+
+    const data = {
+      model_id: modelId,
+      period,
+      metrics: {
+        total_pnl: metrics.total_pnl,
+        total_pnl_pct: metrics.total_pnl_pct,
+        sharpe_ratio: metrics.sharpe_ratio,
+        max_drawdown: metrics.max_drawdown,
+        win_rate: metrics.win_rate,
+        total_trades: metrics.total_trades,
+      },
+      statistics,
+      exported_at: new Date().toISOString(),
+    }
+
+    const json = JSON.stringify(data, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `model-${modelId}-performance-${period}-${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Model performance data exported')
   }
 
   if (isLoading && !metrics) {
@@ -49,19 +96,49 @@ export default function ModelPerformance() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link to="/performance" className="hover:text-foreground">
-          Portfolio Performance
-        </Link>
-        <span>/</span>
-        <span>Model {modelId}</span>
-      </div>
-
-      <div>
-        <h1 className="text-3xl font-bold">Model Performance</h1>
-        <p className="text-muted-foreground">Detailed performance metrics for model {modelId}</p>
-      </div>
+      <PageHeader
+        title={`Model ${modelId} Performance`}
+        description={`Detailed performance metrics and analytics for model ${modelId} (${period.replace('_', ' ')})`}
+        breadcrumbs={[
+          { label: 'Portfolio Performance', href: '/performance' },
+          { label: `Model ${modelId}` },
+        ]}
+        actions={
+          <div className="flex items-center gap-3">
+            <Link
+              to="/performance"
+              className="inline-flex items-center justify-center gap-2 h-9 px-3 rounded-sm text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 disabled:pointer-events-none disabled:opacity-50 border border-border bg-transparent hover:bg-mono-300 hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={!metrics}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <HealthDot 
+              status={metrics && metrics.total_pnl >= 0 ? 'ok' : metrics ? 'warn' : 'error'} 
+              label={metrics ? formatCurrency(metrics.total_pnl) : 'No data'}
+            />
+          </div>
+        }
+      />
 
       {/* Time Range Filter */}
       <div className="flex gap-2">

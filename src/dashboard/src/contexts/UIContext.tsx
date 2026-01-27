@@ -14,14 +14,35 @@ interface UIContextValue {
 const UIContext = createContext<UIContextValue | undefined>(undefined)
 
 export function UIContextProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(
-    (localStorage.getItem('theme') as Theme) || 'light'
-  )
+  // Initialize theme from localStorage or default to dark (our primary theme)
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const stored = localStorage.getItem('theme') as Theme
+    const initial = stored || 'dark'
+    
+    // Apply theme class immediately on mount
+    if (initial === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+      document.documentElement.classList.add('light')
+    }
+    
+    return initial
+  })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const setTheme = useCallback((newTheme: Theme) => {
     localStorage.setItem('theme', newTheme)
-    document.documentElement.classList.toggle('dark', newTheme === 'dark')
+    
+    // Update document classes
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark')
+      document.documentElement.classList.remove('light')
+    } else {
+      document.documentElement.classList.add('light')
+      document.documentElement.classList.remove('dark')
+    }
+    
     setThemeState(newTheme)
   }, [])
 

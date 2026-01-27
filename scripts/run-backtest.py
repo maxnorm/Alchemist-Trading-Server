@@ -17,7 +17,8 @@ from datetime import datetime
 from pathlib import Path
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/backend/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 import numpy as np
 
@@ -26,6 +27,13 @@ try:
 except ImportError:
     print("pandas required. Install with: pip install pandas")
     sys.exit(1)
+
+try:
+    from walk_forward_validation import walk_forward_validation
+    WALK_FORWARD_AVAILABLE = True
+except ImportError:
+    WALK_FORWARD_AVAILABLE = False
+    print("Warning: walk_forward_validation module not available")
 
 
 def load_data(data_path: str) -> pd.DataFrame:
@@ -346,6 +354,36 @@ Examples:
         help="Random seed for reproducibility (default: 42)"
     )
     parser.add_argument(
+        "--walk-forward",
+        action="store_true",
+        help="Enable walk-forward validation mode"
+    )
+    parser.add_argument(
+        "--train-window",
+        type=int,
+        default=180,
+        help="Training window size in days for walk-forward (default: 180)"
+    )
+    parser.add_argument(
+        "--test-window",
+        type=int,
+        default=30,
+        help="Test window size in days for walk-forward (default: 30)"
+    )
+    parser.add_argument(
+        "--step-size",
+        type=int,
+        default=30,
+        help="Step size in days for walk-forward (default: 30)"
+    )
+    parser.add_argument(
+        "--window-type",
+        type=str,
+        default="expanding",
+        choices=["expanding", "rolling"],
+        help="Window type for walk-forward: expanding (grows) or rolling (fixed) (default: expanding)"
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show configuration without running"
@@ -364,6 +402,12 @@ Examples:
     print(f"  Balance:       ${args.balance:,.2f}")
     print(f"  Window:        {args.window}")
     print(f"  Seed:          {args.seed}")
+    if args.walk_forward:
+        print(f"  Walk-Forward:  Enabled")
+        print(f"  Train Window:  {args.train_window} days")
+        print(f"  Test Window:   {args.test_window} days")
+        print(f"  Step Size:     {args.step_size} days")
+        print(f"  Window Type:   {args.window_type}")
     print("=" * 60)
     
     if args.dry_run:
@@ -383,20 +427,93 @@ Examples:
     print("\nLoading agent...")
     agent = load_agent(args.model, state_shape, action_size)
     
-    # Run backtest
-    results = run_backtest(
-        data=data,
-        agent=agent,
-        output_dir=args.output,
-        slippage_type=args.slippage,
-        transaction_cost=args.cost,
-        initial_balance=args.balance,
-        window_size=args.window,
-        seed=args.seed
-    )
-    
-    # Print results
-    print_results(results)
+    # Run backtest with or without walk-forward
+    if args.walk_forward:
+        if not WALK_FORWARD_AVAILABLE:
+            print("Error: Walk-forward validation not available")
+            sys.exit(1)
+        
+        if 'timestamp' not in data.columns:
+            print("Error: Walk-forward validation requires 'timestamp' column in data")
+            sys.exit(1)
+        
+        print("\nRunning walk-forward validation...")
+        
+        # Define backtest function for walk-forward
+        def backtest_func(train_data, test_data, **kwargs):
+            """Run backtest on train/test split"""
+            # For walk-forward, we typically train on train_data and test on test_data
+            # For simplicity, we'll just run backtest on test_data
+            # In a full implementation, you would train the model on train_data first
+            return run_backtest(
+                data=test_data,
+                agent=agent,
+                output_dir=None,  # Don't save individual window results
+                slippage_type=args.slippage,
+                transaction_cost=args.cost,
+                initial_balance=args.balance,
+                window_size=args.window,
+                seed=args.seed
+            )['metrics']
+        
+        # Run walk-forward validation
+        wf_results = walk_forward_validation(
+            data=data,
+            train_window_days=args.train_window,
+            test_window_days=args.test_window,
+            step_days=args.step_size,
+            window_type=args.window_type,
+            backtest_func=backtest_func
+        )
+        
+        # Save walk-forward results
+        output_path = Path(args.output)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_path / 'walk_forward_results.json', 'w') as f:
+            json.dump(wf_results, f, indent=2, default=str)
+        
+        # Print summary
+        print("\n" + "=" * 60)
+        print("WALK-FORWARD VALIDATION RESULTS")
+        print("=" * 60)
+        print(f"  Total Windows: {wf_results['config']['total_windows']}")
+        print(f"  Window Type:    {wf_results['config']['window_type']}")
+        
+        agg = wf_results['aggregated_metrics']
+        if 'sharpe_ratio_mean' in agg:
+            print(f"\n  Sharpe Ratio:")
+            print(f"    Mean:   {agg['sharpe_ratio_mean']:.3f}")
+            print(f"    Std:    {agg['sharpe_ratio_std']:.3f}")
+            print(f"    Min:    {agg['sharpe_ratio_min']:.3f}")
+            print(f"    Max:    {agg['sharpe_ratio_max']:.3f}")
+        
+        if 'total_return_mean' in agg:
+            print(f"\n  Total Return:")
+            print(f"    Mean:   {agg['total_return_mean']:.2%}")
+            print(f"    Std:    {agg['total_return_std']:.2%}")
+            print(f"    Min:    {agg['total_return_min']:.2%}")
+            print(f"    Max:    {agg['total_return_max']:.2%}")
+        
+        print("=" * 60)
+        print(f"\nResults saved to {output_path / 'walk_forward_results.json'}")
+        
+        results = wf_results
+    else:
+        # Run standard backtest
+        results = run_backtest(
+            data=data,
+            agent=agent,
+            output_dir=args.output,
+            slippage_type=args.slippage,
+            transaction_cost=args.cost,
+            initial_balance=args.balance,
+            window_size=args.window,
+            seed=args.seed
+        )
+        
+        # Print results
+        print_results(results)
 
 
 if __name__ == "__main__":

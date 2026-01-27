@@ -1,34 +1,50 @@
+import { lazy } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Toaster } from 'react-hot-toast'
+import { ClerkProvider } from '@clerk/clerk-react'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { Layout } from '@/components/Layout/Layout'
 import { WebSocketProvider } from '@/contexts/WebSocketContext'
 import { UIContextProvider } from '@/contexts/UIContext'
+import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { clerkConfig } from '@/config/clerk'
+import { clerkAppearance } from '@/config/clerkAppearance'
+import { useClerkApi } from '@/hooks/useClerkApi'
 
-// Pages
-import Dashboard from '@/pages/Dashboard'
-import ExperimentBuilder from '@/pages/ExperimentBuilder'
-import HyperparameterSearch from '@/pages/HyperparameterSearch'
-import TrainingMonitor from '@/pages/TrainingMonitor'
-import FeatureCatalog from '@/pages/FeatureCatalog'
-import ModelRegistry from '@/pages/ModelRegistry'
-import LiveTrading from '@/pages/LiveTrading'
-import MT5Accounts from '@/pages/MT5Accounts'
-import PortfolioPerformance from '@/pages/PortfolioPerformance'
-import ModelPerformance from '@/pages/ModelPerformance'
+// Lazy load pages for code splitting
+const Dashboard = lazy(() => import('@/pages/Dashboard'))
+const ExperimentBuilder = lazy(() => import('@/pages/ExperimentBuilder'))
+const HyperparameterSearch = lazy(() => import('@/pages/HyperparameterSearch'))
+const TrainingMonitor = lazy(() => import('@/pages/TrainingMonitor'))
+const FeatureCatalog = lazy(() => import('@/pages/FeatureCatalog'))
+const ModelRegistry = lazy(() => import('@/pages/ModelRegistry'))
+const LiveTrading = lazy(() => import('@/pages/LiveTrading'))
+const MT5Accounts = lazy(() => import('@/pages/MT5Accounts'))
+const PortfolioPerformance = lazy(() => import('@/pages/PortfolioPerformance'))
+const ModelPerformance = lazy(() => import('@/pages/ModelPerformance'))
+const Unauthorized = lazy(() => import('@/pages/Unauthorized'))
+const SignInPage = lazy(() => import('@/pages/SignInPage'))
+const SignUpPage = lazy(() => import('@/pages/SignUpPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 30000,
+      staleTime: 30000, // 30 seconds - data is considered fresh
+      gcTime: 5 * 60 * 1000, // 5 minutes - cache time (formerly cacheTime)
+      // Enable request deduplication for parallel queries
+      refetchOnMount: false, // Don't refetch if data is fresh
     },
   },
 })
 
-function App() {
+function AppContent() {
+  // Initialize API client with Clerk token getter
+  useClerkApi()
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -36,26 +52,81 @@ function App() {
           <WebSocketProvider>
             <BrowserRouter>
               <Routes>
+                  {/* Authentication pages */}
+                  <Route path="/sign-in/*" element={<SignInPage />} />
+                  <Route path="/sign-up/*" element={<SignUpPage />} />
+                  <Route path="/unauthorized" element={<Unauthorized />} />
+                  
+                  {/* Protected routes */}
                 <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="dashboard" element={<Dashboard />} />
-                  <Route path="experiments" element={<ExperimentBuilder />} />
-                  <Route path="hyperparameters" element={<HyperparameterSearch />} />
-                  <Route path="training" element={<TrainingMonitor />} />
-                  <Route path="features" element={<FeatureCatalog />} />
-                  <Route path="models" element={<ModelRegistry />} />
-                  <Route path="trading" element={<LiveTrading />} />
-                  <Route path="accounts" element={<MT5Accounts />} />
-                  <Route path="performance" element={<PortfolioPerformance />} />
-                  <Route path="performance/:modelId" element={<ModelPerformance />} />
+                  <Route index element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="experiments" element={<ProtectedRoute><ExperimentBuilder /></ProtectedRoute>} />
+                  <Route path="hyperparameters" element={<ProtectedRoute><HyperparameterSearch /></ProtectedRoute>} />
+                  <Route path="training" element={<ProtectedRoute><TrainingMonitor /></ProtectedRoute>} />
+                  <Route path="features" element={<ProtectedRoute><FeatureCatalog /></ProtectedRoute>} />
+                  <Route path="models" element={<ProtectedRoute><ModelRegistry /></ProtectedRoute>} />
+                  <Route path="trading" element={<ProtectedRoute><LiveTrading /></ProtectedRoute>} />
+                  <Route path="accounts" element={<ProtectedRoute><MT5Accounts /></ProtectedRoute>} />
+                  <Route path="performance" element={<ProtectedRoute><PortfolioPerformance /></ProtectedRoute>} />
+                  <Route path="performance/:modelId" element={<ProtectedRoute><ModelPerformance /></ProtectedRoute>} />
                 </Route>
               </Routes>
             </BrowserRouter>
-            <Toaster position="top-right" />
+            <Toaster
+              position="bottom-right"
+              toastOptions={{
+                className: '',
+                style: {
+                  background: 'hsl(var(--mono-200))',
+                  color: 'hsl(var(--mono-800))',
+                  border: '1px solid hsl(var(--mono-400))',
+                  borderRadius: 'var(--radius)',
+                  padding: '0.75rem 1rem',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2)',
+                },
+                success: {
+                  iconTheme: {
+                    primary: 'hsl(var(--success))',
+                    secondary: 'hsl(var(--mono-200))',
+                  },
+                },
+                error: {
+                  iconTheme: {
+                    primary: 'hsl(var(--destructive))',
+                    secondary: 'hsl(var(--mono-200))',
+                  },
+                },
+              }}
+            />
+            {/* React Query DevTools - only in development */}
+            {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
           </WebSocketProvider>
         </UIContextProvider>
       </QueryClientProvider>
     </ErrorBoundary>
+  )
+}
+
+function App() {
+  if (!clerkConfig.publishableKey) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">Configuration Error</h1>
+          <p className="text-muted-foreground">Clerk publishable key is not configured</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <ClerkProvider 
+      publishableKey={clerkConfig.publishableKey}
+      appearance={clerkAppearance}
+    >
+      <AppContent />
+    </ClerkProvider>
   )
 }
 

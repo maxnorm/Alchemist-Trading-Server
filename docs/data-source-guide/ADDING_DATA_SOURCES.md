@@ -45,10 +45,10 @@ The data source plugin system enables:
 
 ### Step 1: Create Provider Class
 
-Create a new file in `src/mt5-python_server/src/data_providers/`:
+Create a new file in `src/trading_server/src/data_providers/`:
 
 ```python
-# src/mt5-python_server/src/data_providers/sentiment_provider.py
+# src/trading_server/src/data_providers/sentiment_provider.py
 
 import threading
 import logging
@@ -144,7 +144,7 @@ class SentimentProvider(DataProvider):
 
 ### Step 2: Register Provider in Server
 
-Update `src/mt5-python_server/src/server.py` to register your provider:
+Update `src/trading_server/src/server.py` to register your provider:
 
 ```python
 # In Server.__init__() or appropriate initialization method
@@ -284,7 +284,7 @@ def get_current_data(self) -> Dict[str, Any]:
 
 ## Example: Complete Provider
 
-See `src/mt5-python_server/src/data_providers/price_provider.py` and `indicator_provider.py` for complete examples.
+See `src/trading_server/src/data_providers/price_provider.py` and `indicator_provider.py` for complete examples.
 
 ## Integration Checklist
 

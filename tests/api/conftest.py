@@ -9,7 +9,7 @@ import sys
 import os
 
 # Add API source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/api/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/api/src'))
 
 from main import app
 from dependencies import get_db

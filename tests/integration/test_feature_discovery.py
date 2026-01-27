@@ -10,10 +10,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from data_providers.registry import DataProviderRegistry
-from data_providers.base_provider import Feature
+from domain.models.feature import Feature
 from data_providers.price_provider import PriceDataProvider
 from data_providers.indicator_provider import IndicatorProvider
 from models.currency_pair import CurrencyPair

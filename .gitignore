@@ -1,6 +1,9 @@
 /database/data
 /mt5-python_server/venv
 /drivers
+/docs/generated
+.dukascopy-cache
+data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -68,6 +71,8 @@ db.sqlite3-journal
 # Application logs (keep directory structure)
 logs/*.log
 logs/*.log.*
+airflow_logs/*
+airflow_plugins/*
 
 # Trained models (persisted via Docker volume)
 models/*
@@ -140,6 +145,11 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+.env.*.local
+.env.staging
+.env.production
+.env.development
 .venv
 env/
 venv/
@@ -184,7 +194,10 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-.cursor/
-
 # Node.js
 node_modules/
+
+google-cloud-sdk/
+google-cloud-cli-linux-x86_64.tar.gz
+
+.agents/

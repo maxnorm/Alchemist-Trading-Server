@@ -1,0 +1,491 @@
+import os
+import pickle
+import numpy as np
+import threading
+import logging
+from typing import Optional, Dict, List, Any
+from environments.base_trading_env import BaseTradingEnv
+from utils.feature_engineering import FeatureEngineer
+from utils.performance_metrics import PerformanceMetrics
+from utils.transaction_costs import TransactionCostModel
+from application.environment.price_history_manager import PriceHistoryManager
+from application.environment.feature_engine import FeatureEngine
+from application.environment.state_builder import StateBuilder
+from environments.reward_normalizer import RewardNormalizer
+from environments.reward_monitor import RewardMonitor
+from connectors.base import IDataSourceConnector
+
+
+class LiveTradingEnv(BaseTradingEnv):
+    def __init__(
+        self,
+        account,
+        connectors: List[IDataSourceConnector],
+        window_size: int = 50,
+        feature_engineer: Optional[FeatureEngineer] = None,
+        reward_normalizer: Optional[RewardNormalizer] = None,
+        use_reward_normalization: bool = True,
+        reward_monitor: Optional[RewardMonitor] = None,
+        use_reward_monitoring: bool = True,
+        seed: Optional[int] = None,
+        selected_features: Optional[List[str]] = None,
+    ):
+        """
+        Initialize the live trading environment
+        :param account: The account to use for trading (Account object)
+        :param connectors: The data source connectors to use for the environment (IDataSourceConnector objects)
+        :param window_size: The window size to use for the environment
+        :param feature_engineer: Optional pre-fitted feature engineer
+        :param reward_normalizer: Optional reward normalizer instance
+        :param use_reward_normalization: Whether to normalize rewards (default: True)
+        :param reward_monitor: Optional reward monitor instance
+        :param use_reward_monitoring: Whether to monitor rewards (default: True)
+        :param seed: Random seed for reproducibility
+        :param selected_features: Optional list of feature names to filter by (if None, uses all features)
+        """
+        # Calculate number of pairs and features per pair
+        n_pairs = len(connectors) if connectors else 1
+        features_per_pair = 15  # Updated for feature count
+        # Economic calendar features - DISABLED
+        # TODO: Re-enable when new scraping methods are implemented
+        # economic_features = 6  # Economic calendar features added by StateBuilder
+        # total_features = n_pairs * features_per_pair + economic_features
+        total_features = n_pairs * features_per_pair
+
+        # Update action space: (n_pairs * 3) + 1 actions
+        # Action encoding:
+        #   action = 0 → Global HOLD (no pair)
+        #   action = 1 + (pair_index * 3 + action_type_offset) for pair actions
+        #   where action_type_offset: 0=BUY, 1=SELL, 2=CLOSE
+        action_size = (n_pairs * 3) + 1
+
+        super().__init__(
+            window_size, price_shape=total_features, action_size=action_size, seed=seed
+        )
+        self.account = account
+        self.connectors = connectors
+        self.n_pairs = n_pairs
+        self.features_per_pair = features_per_pair
+        self.state_buffer: List[Any] = []
+        self._state_lock = threading.Lock()
+
+        # Initialize feature engineer
+        self.feature_engineer = feature_engineer or FeatureEngineer(
+            normalization_method="robust"
+        )
+        self.account_login = getattr(account, "login", "default")
+        self.scaler_dir = os.path.join(
+            "models", f"account_{self.account_login}", "scalers"
+        )
+        os.makedirs(self.scaler_dir, exist_ok=True)
+        self._load_feature_engineer()
+
+        # Initialize components
+        self.price_history_manager = PriceHistoryManager(window_size, connectors)
+
+        # Load historical data if available
+        try:
+            from database import Database
+
+            db = Database()
+            symbols = (
+                [
+                    (
+                        getattr(getattr(connector, "config", None), "symbol", "unknown")
+                        if getattr(connector, "config", None)
+                        else "unknown"
+                    )
+                    for connector in connectors
+                ]
+                if connectors
+                else []
+            )
+            if symbols:
+                self.price_history_manager.load_historical_data(
+                    db, symbols, limit=100, hours=24
+                )
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            if hasattr(logger, "log_error"):
+                logger.log_error(
+                    event_type="historical_data_load_error",
+                    error=f"Could not load historical data: {e}",
+                    exc_info=False,
+                )
+            else:
+                logger.warning(f"Could not load historical data: {e}")
+
+        # Initialize feature engine with database for versioning
+        try:
+            from mlops.feature_registry import FeatureRegistry
+
+            feature_registry = FeatureRegistry(db) if db else None
+        except Exception as e:
+            logger.warning(f"Failed to create feature registry: {e}")
+            feature_registry = None
+
+        self.feature_engine = FeatureEngine(
+            feature_engineer=self.feature_engineer,
+            window_size=window_size,
+            features_per_pair=features_per_pair,
+            database=db,
+            feature_registry=feature_registry,
+        )
+
+        # Filter features if specified
+        if selected_features:
+            self.feature_engine.filter_features(selected_features)
+
+        self.state_builder = StateBuilder(
+            price_history_manager=self.price_history_manager,
+            feature_engine=self.feature_engine,
+            window_size=window_size,
+            connectors=connectors,
+        )
+
+        # Store selected features for reference
+        self.selected_features = selected_features
+
+        # Initialize performance metrics tracker
+        # Window size of 252 = 1 year of trading days (for annualized metrics)
+        self.performance_metrics = PerformanceMetrics(window_size=252)
+        self.previous_balance = None
+
+        # Initialize transaction cost model
+        self.transaction_cost_model = TransactionCostModel()
+
+        # Initialize reward normalizer
+        self.use_reward_normalization = use_reward_normalization
+        if reward_normalizer is not None:
+            self.reward_normalizer: Optional[RewardNormalizer] = reward_normalizer
+        elif use_reward_normalization:
+            self.reward_normalizer = RewardNormalizer(
+                alpha=0.99, clip_range=(-3.0, 3.0)
+            )
+        else:
+            self.reward_normalizer = None
+
+        # Initialize reward monitor
+        self.use_reward_monitoring = use_reward_monitoring
+        if reward_monitor is not None:
+            self.reward_monitor: Optional[RewardMonitor] = reward_monitor
+        elif use_reward_monitoring:
+            self.reward_monitor = RewardMonitor(window_size=100, anomaly_threshold=3.0)
+        else:
+            self.reward_monitor = None
+
+        # Initialize with current balance if account exists
+        if account and account.balance:
+            self.previous_balance = account.balance
+
+        # Note: Connectors are consumed by PriceHistoryManager via background threads
+        # No need to subscribe here - data flows through PriceHistoryManager
+
+    def _on_data_update(self, data):
+        """Callback function to handle data updates from any provider"""
+        with self._state_lock:
+            self.state_buffer.append(data)
+            if len(self.state_buffer) > self.window_size:
+                self.state_buffer.pop(0)
+
+            # Extract price for technical indicators and track by pair
+            if "mid" in data and "symbol" in data and data["mid"] is not None:
+                symbol = data["symbol"]
+                # Extract timestamp if available, otherwise use current time
+                timestamp = None
+                if "timestamp" in data:
+                    timestamp = data["timestamp"]
+                elif "datetime" in data:
+                    timestamp = data["datetime"]
+                self.price_history_manager.add_price(
+                    symbol, data["mid"], timestamp=timestamp
+                )
+
+    def get_state(self, mode: str = "live", include_latency: bool = True):
+        """
+        Get current state from all data sources - delegates to StateBuilder
+
+        :param mode: 'training' (point-in-time) or 'live' (real-time)
+        :param include_latency: Include latency features in state
+        :return: State array with latency features
+        """
+        from utils.time_utils import get_utc_time
+
+        current_time = get_utc_time()
+        return self.state_builder.build_state(
+            current_time=current_time, mode=mode, include_latency=include_latency
+        )
+
+    # Property for backward compatibility
+    @property
+    def price_history_by_pair(self) -> Dict[str, List[float]]:
+        """Get price history by pair (backward compatibility)"""
+        return self.price_history_manager.get_all_histories()
+
+    def _process_state(self, state):
+        """Convert raw state data into model input format"""
+        # State is already processed in get_state()
+        return state
+
+    def calculate_reward(
+        self,
+        previous_balance: float,
+        current_balance: float,
+        action: int,
+        has_position: bool,
+        transaction_cost: Optional[float] = None,
+        entry_price: Optional[float] = None,
+        exit_price: Optional[float] = None,
+        lot_size: Optional[float] = None,
+        is_long: Optional[bool] = None,
+        pair=None,
+        volatility: Optional[float] = None,
+    ) -> float:
+        """
+        Enhanced reward function with risk-adjusted metrics
+
+        Components:
+        1. Sharpe ratio reward (risk-adjusted returns)
+        2. Drawdown penalty (large losses)
+        3. Volatility penalty (high volatility)
+        4. Transaction cost penalty (trading costs) - now uses detailed cost model
+        5. Action-based adjustments (behavior fine-tuning)
+
+        :param previous_balance: Previous account balance
+        :param current_balance: Current account balance
+        :param action: Action taken (0=Hold, 1=Buy, 2=Sell, 3=Close)
+        :param has_position: Whether agent has open position
+        :param transaction_cost: Optional fixed transaction cost (for backward compatibility)
+        :param entry_price: Entry price for the trade (for detailed cost calculation)
+        :param exit_price: Exit price for the trade (for detailed cost calculation)
+        :param lot_size: Position size in lots (for detailed cost calculation)
+        :param is_long: True for long position, False for short (for detailed cost calculation)
+        :param pair: Currency pair object (for actual spread calculation)
+        :param volatility: Current volatility (for slippage calculation)
+        :return: Reward value
+        """
+        # Update performance metrics with new balance
+        if self.previous_balance is not None and self.previous_balance > 0:
+            self.performance_metrics.update(current_balance, self.previous_balance)
+
+        self.previous_balance = current_balance
+
+        # Get current performance metrics
+        metrics = self.performance_metrics.get_all_metrics()
+
+        # Component 1: Sharpe Ratio Reward
+        # Why: Reward risk-adjusted returns, not just returns
+        # This is the primary learning signal for risk-adjusted performance
+        # Normalize to [-1, 1] range (Sharpe typically ranges from -3 to +3)
+        sharpe_ratio = metrics["sharpe_ratio"]
+        sharpe_reward = np.clip(sharpe_ratio / 3.0, -1.0, 1.0)
+
+        # Component 2: Drawdown Penalty
+        # Why: Strongly penalize large losses to protect capital
+        # Normalize drawdown penalty to [-1, 0] range
+        # Max drawdown of 20% = -1.0 penalty
+        current_drawdown = metrics["current_drawdown"]
+        if current_drawdown > 0.05:  # More than 5% drawdown
+            drawdown_penalty = np.clip(-abs(current_drawdown) / 0.20, -1.0, 0.0)
+        else:
+            drawdown_penalty = 0.0
+
+        # Component 3: Volatility Penalty
+        # Why: Penalize high volatility strategies (harder to execute, higher risk)
+        # Encourages consistent, stable strategies
+        # Normalize volatility penalty to [-1, 0] range
+        # Max volatility of 10% = -1.0 penalty
+        # Note: volatility is annualized, so 0.02 = ~0.126% daily (2% / sqrt(252))
+        volatility = metrics["volatility"]
+        if volatility > 0.02:  # More than 2% annualized volatility
+            volatility_penalty = np.clip(-volatility / 0.10, -1.0, 0.0)
+        else:
+            volatility_penalty = 0.0
+
+        # Component 4: Transaction Cost Penalty
+        # Why: Account for real trading costs (spread, commission, slippage)
+        # Prevents overtrading and ensures realistic performance expectations
+        if action in [1, 2, 3]:  # Buy, Sell, or Close (actions that involve trading)
+            # Use detailed cost model if we have the necessary information
+            if (
+                transaction_cost is None
+                and entry_price is not None
+                and lot_size is not None
+                and is_long is not None
+            ):
+                # Calculate detailed transaction cost
+                cost_value = self.transaction_cost_model.calculate_cost_for_action(
+                    action=action,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    lot_size=lot_size,
+                    is_long=is_long,
+                    pair=pair,
+                    volatility=volatility,
+                )
+                # Convert absolute cost to percentage of account balance for penalty
+                if previous_balance > 0:
+                    transaction_cost_pct = cost_value / previous_balance
+                else:
+                    transaction_cost_pct = 0.0
+                transaction_penalty = -transaction_cost_pct
+            else:
+                # Fallback to fixed transaction cost (backward compatibility)
+                if transaction_cost is None:
+                    transaction_cost = 0.001  # Default 0.1%
+                transaction_penalty = -transaction_cost
+        else:
+            transaction_penalty = 0.0
+
+        # Component 5: Action-based adjustments
+        # Why: Fine-tune agent behavior with small adjustments
+
+        # Small penalty for holding without position (encourage action)
+        action_penalty = 0.0
+        if action == 0 and not has_position:
+            action_penalty = -0.01
+
+        # Bonus for closing profitable position (encourage profit-taking)
+        profit = current_balance - previous_balance
+        if action == 3 and has_position and profit > 0:  # Close with profit
+            action_penalty += 0.1
+
+        # Combine all components
+        reward = (
+            sharpe_reward
+            + drawdown_penalty
+            + volatility_penalty
+            + transaction_penalty
+            + action_penalty
+        )
+
+        # Track reward components for monitoring
+        reward_components = {
+            "sharpe_reward": sharpe_reward,
+            "drawdown_penalty": drawdown_penalty,
+            "volatility_penalty": volatility_penalty,
+            "transaction_penalty": transaction_penalty,
+            "action_penalty": action_penalty,
+        }
+
+        # Normalize reward if normalizer is configured
+        if self.reward_normalizer is not None and self.use_reward_normalization:
+            reward = self.reward_normalizer.normalize(reward)
+
+        # Update reward monitor if configured
+        if self.reward_monitor is not None and self.use_reward_monitoring:
+            self.reward_monitor.update(reward, components=reward_components)
+
+        return reward
+
+    def get_performance_metrics(self) -> dict:
+        """
+        Get current performance metrics
+        Useful for monitoring and logging
+        :return: Dictionary of performance metrics
+        """
+        return self.performance_metrics.get_all_metrics()
+
+    def reset_metrics(self):
+        """
+        Reset performance metrics (useful for new episodes or testing)
+        """
+        self.performance_metrics.reset()
+        self.previous_balance = None
+        if self.reward_normalizer is not None:
+            self.reward_normalizer.reset()
+        if self.reward_monitor is not None:
+            self.reward_monitor.reset()
+
+    def get_reward_statistics(self) -> dict:
+        """
+        Get reward normalization statistics
+        Useful for monitoring reward stability
+
+        :return: Dictionary with reward statistics
+        """
+        stats = {}
+        if self.reward_normalizer is not None:
+            stats["normalizer"] = self.reward_normalizer.get_statistics()
+        if self.reward_monitor is not None:
+            stats["monitor"] = self.reward_monitor.get_statistics()
+        return stats
+
+    def _save_feature_engineer(self):
+        """Persist fitted feature engineer for reuse across sessions"""
+        try:
+            filepath = os.path.join(self.scaler_dir, "feature_engineer.pkl")
+            with open(filepath, "wb") as f:
+                pickle.dump(self.feature_engineer, f)
+        except Exception:
+            # Persistence failures should not stop trading; safe to ignore
+            pass
+
+    def _load_feature_engineer(self):
+        """Load persisted feature engineer if available"""
+        filepath = os.path.join(self.scaler_dir, "feature_engineer.pkl")
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "rb") as f:
+                    loaded_engineer = pickle.load(f)
+
+                # Validate loaded scaler
+                if hasattr(loaded_engineer, "is_fitted") and loaded_engineer.is_fitted:
+                    # Check that scalers exist and are valid
+                    if hasattr(loaded_engineer, "scalers") and loaded_engineer.scalers:
+                        # Validate scaler statistics
+                        for name, scaler in loaded_engineer.scalers.items():
+                            if hasattr(scaler, "mean_") and scaler.mean_ is not None:
+                                if np.any(np.isnan(scaler.mean_)) or np.any(
+                                    np.isinf(scaler.mean_)
+                                ):
+                                    raise ValueError(
+                                        f"Invalid scaler statistics for {name}"
+                                    )
+                            # Check for other scaler types (MinMaxScaler, RobustScaler)
+                            if hasattr(scaler, "scale_") and scaler.scale_ is not None:
+                                if np.any(np.isnan(scaler.scale_)) or np.any(
+                                    np.isinf(scaler.scale_)
+                                ):
+                                    raise ValueError(f"Invalid scaler scale for {name}")
+
+                        self.feature_engineer = loaded_engineer
+                        logger = logging.getLogger(__name__)
+                        if hasattr(logger, "log_event"):
+                            logger.log_event(
+                                event_type="feature_engineer_loaded",
+                                message=f"✅ Loaded feature engineer from {filepath}",
+                                metrics={"filepath": filepath},
+                            )
+                        else:
+                            logger.info(f"✅ Loaded feature engineer from {filepath}")
+                        return
+
+                # If validation fails, fall through to create new
+                logger = logging.getLogger(__name__)
+                if hasattr(logger, "log_event"):
+                    logger.log_event(
+                        event_type="feature_engineer_validation_failed",
+                        message="Loaded feature engineer failed validation, creating new one",
+                        level="WARNING",
+                    )
+                else:
+                    logger.warning(
+                        "Loaded feature engineer failed validation, creating new one"
+                    )
+
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                if hasattr(logger, "log_error"):
+                    logger.log_error(
+                        event_type="feature_engineer_load_error",
+                        error=f"Error loading feature engineer: {e}, creating new one",
+                        exc_info=False,
+                    )
+                else:
+                    logger.warning(
+                        f"Error loading feature engineer: {e}, creating new one"
+                    )
+
+        # On failure, start fresh with new feature engineer
+        self.feature_engineer = FeatureEngineer(normalization_method="robust")

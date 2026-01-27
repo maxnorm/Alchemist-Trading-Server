@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+
+Always generate markdown files like report, investigation, audit, etc to the /docs/generated folder
+
+Unless explicit location prompt

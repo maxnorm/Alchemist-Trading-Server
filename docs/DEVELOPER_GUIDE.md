@@ -4,7 +4,7 @@
 
 ### Step 1: Create Provider Class
 
-Create a new file in `src/mt5-python_server/src/data_providers/`:
+Create a new file in `src/trading_server/src/data_providers/`:
 
 ```python
 from data_providers.base_provider import DataProvider, Feature
@@ -40,7 +40,7 @@ class MyDataProvider(DataProvider):
 
 ### Step 2: Register Provider
 
-In `src/mt5-python_server/src/server.py`, register your provider:
+In `src/trading_server/src/server.py`, register your provider:
 
 ```python
 from data_providers.my_provider import MyDataProvider
@@ -58,7 +58,7 @@ After restarting, your features will automatically appear in the Feature Catalog
 
 ### Adding New Indicators
 
-1. Add calculation function to `src/mt5-python_server/src/features/technical_indicators.py`
+1. Add calculation function to `src/trading_server/src/features/technical_indicators.py`
 2. Add feature declaration to `IndicatorProvider.get_features()`
 3. Restart server
 
@@ -96,7 +96,7 @@ pytest tests/integration/
 pytest tests/api/
 
 # With coverage
-pytest tests/ --cov=src/mt5-python_server/src --cov-report=html
+pytest tests/ --cov=src/trading_server/src --cov-report=html
 ```
 
 ### Writing Tests
@@ -123,6 +123,41 @@ def test_integration_flow():
     assert result is not None
 ```
 
+## Local Development Setup
+
+### Seeding Clerk User Account
+
+For local development, you can automatically create a Clerk user account with default credentials using the seed script:
+
+```bash
+# With defaults (dev@localhost / dev123)
+python scripts/seed_clerk_user.py
+
+# With custom credentials via environment variables
+CLERK_SEED_EMAIL=admin@localhost CLERK_SEED_PASSWORD=admin123 python scripts/seed_clerk_user.py
+
+# With custom roles
+CLERK_SEED_ROLES=admin,user python scripts/seed_clerk_user.py
+```
+
+**Environment Variables:**
+- `CLERK_SEED_EMAIL`: Email address for the seed user (default: `dev@localhost`)
+- `CLERK_SEED_PASSWORD`: Password for the seed user (default: `dev123`)
+- `CLERK_SEED_ROLES`: Comma-separated list of roles (default: `admin,user`)
+
+**Requirements:**
+- `CLERK_SECRET_KEY` must be set in your environment or `.env` file
+- The script is idempotent - safe to run multiple times
+- If the user already exists, it will update roles if needed
+
+**Using Docker Compose:**
+
+You can also run the seed script via Docker Compose. Uncomment the `clerk-seed` service in `docker-compose.yml` and run:
+
+```bash
+docker-compose up clerk-seed
+```
+
 ## Database Schema
 
 ### Key Tables
@@ -139,8 +174,12 @@ def test_integration_flow():
 
 ```bash
 # Run all migrations
-mysql -u user -p database < src/database/scripts/06_features.sql
-mysql -u user -p database < src/database/scripts/07_experiments.sql
+# Use the migration script instead
+python scripts/run-migrations.py
+
+# Or connect to PostgreSQL directly
+psql -h localhost -U forex_user -d db_forex -f src/database/scripts/06_features.sql
+psql -h localhost -U forex_user -d db_forex -f src/database/scripts/07_experiments.sql
 # ... etc
 ```
 

@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 
 class TestExperimentTracker:
@@ -86,6 +86,138 @@ class TestExperimentTracker:
         tracker.log_params({'learning_rate': 0.001, 'batch_size': 32})
         
         mock_mlflow.log_params.assert_called_once()
+    
+    def test_compute_experiment_config_hash_deterministic(self, mock_mlflow):
+        """Test that experiment config hash is deterministic"""
+        from mlops.experiment_tracker import ExperimentTracker
+        
+        mock_mlflow.set_tracking_uri = MagicMock()
+        mock_mlflow.set_experiment = MagicMock()
+        mock_mlflow.get_experiment_by_name = MagicMock(return_value=MagicMock(experiment_id="1"))
+        mock_mlflow.start_run = MagicMock(return_value=MagicMock(info=MagicMock(run_id="test-run-id")))
+        mock_mlflow.end_run = MagicMock()
+        
+        tracker = ExperimentTracker()
+        tracker.start_run("test")
+        
+        experiment_config = {
+            "hyperparameters": {"learning_rate": 0.001, "batch_size": 64},
+            "currency_pairs": ["EURUSD", "GBPUSD"],
+            "features": ["price_mid", "rsi_14"],
+            "training_mode": "live",
+            "name": "test_experiment",
+            "description": "Test description",
+            "experiment_id": 1,
+        }
+        
+        # Compute hash twice - should be identical
+        hash1 = tracker._compute_experiment_config_hash(experiment_config)
+        hash2 = tracker._compute_experiment_config_hash(experiment_config)
+        
+        assert hash1 == hash2
+        assert hash1 is not None
+        assert len(hash1) == 16  # SHA256 hash, first 16 chars
+    
+    def test_compute_experiment_config_hash_different_configs(self, mock_mlflow):
+        """Test that different configs produce different hashes"""
+        from mlops.experiment_tracker import ExperimentTracker
+        
+        mock_mlflow.set_tracking_uri = MagicMock()
+        mock_mlflow.set_experiment = MagicMock()
+        mock_mlflow.get_experiment_by_name = MagicMock(return_value=MagicMock(experiment_id="1"))
+        mock_mlflow.start_run = MagicMock(return_value=MagicMock(info=MagicMock(run_id="test-run-id")))
+        mock_mlflow.end_run = MagicMock()
+        
+        tracker = ExperimentTracker()
+        tracker.start_run("test")
+        
+        config1 = {
+            "hyperparameters": {"learning_rate": 0.001},
+            "currency_pairs": ["EURUSD"],
+        }
+        
+        config2 = {
+            "hyperparameters": {"learning_rate": 0.002},  # Different value
+            "currency_pairs": ["EURUSD"],
+        }
+        
+        hash1 = tracker._compute_experiment_config_hash(config1)
+        hash2 = tracker._compute_experiment_config_hash(config2)
+        
+        assert hash1 != hash2
+    
+    def test_compute_experiment_config_hash_order_independent(self, mock_mlflow):
+        """Test that config hash is independent of key order"""
+        from mlops.experiment_tracker import ExperimentTracker
+        
+        mock_mlflow.set_tracking_uri = MagicMock()
+        mock_mlflow.set_experiment = MagicMock()
+        mock_mlflow.get_experiment_by_name = MagicMock(return_value=MagicMock(experiment_id="1"))
+        mock_mlflow.start_run = MagicMock(return_value=MagicMock(info=MagicMock(run_id="test-run-id")))
+        mock_mlflow.end_run = MagicMock()
+        
+        tracker = ExperimentTracker()
+        tracker.start_run("test")
+        
+        # Same config, different key order (should produce same hash due to sort_keys=True)
+        config1 = {
+            "hyperparameters": {"learning_rate": 0.001, "batch_size": 64},
+            "currency_pairs": ["EURUSD"],
+        }
+        
+        config2 = {
+            "currency_pairs": ["EURUSD"],  # Different order
+            "hyperparameters": {"batch_size": 64, "learning_rate": 0.001},  # Different order
+        }
+        
+        hash1 = tracker._compute_experiment_config_hash(config1)
+        hash2 = tracker._compute_experiment_config_hash(config2)
+        
+        assert hash1 == hash2
+    
+    def test_log_reproducibility_metadata_with_seed_and_config(self, mock_mlflow):
+        """Test that reproducibility metadata logs git_commit, random_seed, and config_hash tags"""
+        from mlops.experiment_tracker import ExperimentTracker
+        
+        mock_mlflow.set_tracking_uri = MagicMock()
+        mock_mlflow.set_experiment = MagicMock()
+        mock_mlflow.get_experiment_by_name = MagicMock(return_value=MagicMock(experiment_id="1"))
+        mock_run = MagicMock(info=MagicMock(run_id="test-run-id"))
+        mock_mlflow.start_run = MagicMock(return_value=mock_run)
+        mock_mlflow.set_tag = MagicMock()
+        mock_mlflow.log_param = MagicMock()
+        mock_mlflow.log_dict = MagicMock()
+        mock_mlflow.end_run = MagicMock()
+        
+        tracker = ExperimentTracker()
+        tracker.start_run("test", log_reproducibility=False)
+        
+        experiment_config = {
+            "hyperparameters": {"learning_rate": 0.001},
+            "currency_pairs": ["EURUSD"],
+            "features": ["price_mid"],
+            "training_mode": "live",
+            "name": "test",
+            "description": "test",
+            "experiment_id": 1,
+        }
+        
+        # Mock git commit
+        with patch.object(tracker, '_get_git_commit', return_value='abc123def456'):
+            tracker.log_reproducibility_metadata(
+                random_seed=42,
+                experiment_config=experiment_config
+            )
+        
+        # Verify required tags are set
+        tag_calls = {call[0][0]: call[0][1] for call in mock_mlflow.set_tag.call_args_list}
+        assert 'git_commit' in tag_calls
+        assert tag_calls['git_commit'] == 'abc123def456'
+        assert 'random_seed' in tag_calls
+        assert tag_calls['random_seed'] == '42'
+        assert 'config_hash' in tag_calls
+        assert tag_calls['config_hash'] is not None
+        assert tag_calls['config_hash'] != 'unknown'
 
 
 class TestDataVersioner:

@@ -1,0 +1,108 @@
+groups:
+  - name: data_quality_alerts
+    interval: 30s
+    rules:
+      # Data Freshness Alert
+      - alert: DataFreshnessAlert
+        expr: data_freshness_seconds > 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data freshness alert for {{ $labels.source }}/{{ $labels.symbol }}"
+          description: "Data has not been received for {{ $value }} seconds (threshold: 3600s)"
+
+      # Quarantine Rate Alert
+      - alert: QuarantineRateAlert
+        expr: data_quarantine_rate > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High quarantine rate for {{ $labels.source }}/{{ $labels.symbol }}"
+          description: "Quarantine rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Quality Gate Rejection Rate Alert (per symbol)
+      - alert: QualityGateHighRejectionRate
+        expr: quality_gate_rejection_rate{symbol!=""} > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High quality gate rejection rate for {{ $labels.symbol }}"
+          description: "Quality gate rejection rate is {{ $value | humanizePercentage }} (threshold: 5%) for {{ $labels.symbol }}"
+
+      # Quality Gate Rejection Rate Alert (aggregate)
+      - alert: QualityGateHighRejectionRateAggregate
+        expr: quality_gate_rejection_rate{symbol=""} > 0.10
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High quality gate rejection rate (system-wide)"
+          description: "System-wide quality gate rejection rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      # Quality Gate Outlier Rejection Alert
+      - alert: QualityGateHighOutlierRate
+        expr: |
+          rate(quality_gate_outliers_rejected_total[5m]) / 
+          rate(quality_gate_ticks_processed_total[5m]) > 0.02
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High outlier rejection rate for {{ $labels.symbol }}"
+          description: "Outlier rejection rate is {{ $value | humanizePercentage }} (threshold: 2%) for {{ $labels.symbol }}"
+
+      # Data Volume Drop Alert
+      - alert: DataVolumeDropAlert
+        expr: |
+          rate(data_volume_total[1h]) < 0.5 * rate(data_volume_total[1h] offset 24h)
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Data volume drop detected for {{ $labels.source }}/{{ $labels.symbol }}"
+          description: "Data volume dropped by more than 50% compared to 24h ago"
+
+      # Distribution Drift Alert
+      - alert: DistributionDriftAlert
+        expr: data_drift_psi_score > 0.25
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Feature drift detected for {{ $labels.feature_name }}/{{ $labels.symbol }}"
+          description: "PSI score is {{ $value }} (threshold: 0.25) - major drift detected"
+
+      # Schema Compatibility Violation Alert
+      - alert: SchemaCompatibilityViolationAlert
+        expr: increase(schema_compatibility_violations_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Schema compatibility violation for {{ $labels.data_type }}/{{ $labels.version }}"
+          description: "Schema compatibility check failed"
+
+      # Great Expectations Failure Alert
+      - alert: GreatExpectationsFailureAlert
+        expr: |
+          rate(ge_validation_failures_total[15m]) / rate(ge_validation_total[15m]) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High GE validation failure rate for {{ $labels.data_type }}"
+          description: "GE validation failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+
+      # Lineage Tracking Failure Alert
+      - alert: LineageTrackingFailureAlert
+        expr: |
+          time() - lineage_runs_duration_seconds{status="RUNNING"} > 1800
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "Lineage tracking may have failed for {{ $labels.job_name }}"
+          description: "Lineage run has been running for more than 30 minutes"

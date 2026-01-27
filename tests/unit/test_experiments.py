@@ -7,7 +7,7 @@ from datetime import datetime
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from experiments.models import Experiment, ExperimentStatus, ExperimentRepository
 from experiments.builder import ExperimentBuilder
@@ -71,7 +71,7 @@ class TestExperimentBuilder(unittest.TestCase):
         self.mock_catalog = Mock()
         
         # Mock feature catalog
-        from data_providers.base_provider import Feature
+        from domain.models.feature import Feature
         mock_features = [
             Feature(name="price_mid", data_type=float, source="MT5", description="Mid price"),
             Feature(name="rsi_14", data_type=float, source="Indicators", description="RSI 14")

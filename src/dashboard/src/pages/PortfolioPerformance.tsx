@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EquityCurveChart } from '@/components/charts/EquityCurveChart'
@@ -8,6 +9,10 @@ import { usePeriodFilter } from '@/hooks/usePeriodFilter'
 import { usePerformanceMetrics } from '@/features/performance/hooks/usePerformanceMetrics'
 import { useEquityCurve } from '@/features/performance/hooks/useEquityCurve'
 import { usePerformanceBreakdown } from '@/features/performance/hooks/usePerformanceBreakdown'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
+import { RefreshCw, Download } from 'lucide-react'
+import toast from 'react-hot-toast'
 import type { PortfolioMetrics, PerformanceBreakdown } from '@/types/performance'
 
 export default function PortfolioPerformance() {
@@ -15,6 +20,7 @@ export default function PortfolioPerformance() {
   const { metrics, isLoading } = usePerformanceMetrics(period)
   const { equityCurve } = useEquityCurve()
   const { breakdown } = usePerformanceBreakdown(period === 'all_time' ? 'day' : period)
+  const queryClient = useQueryClient()
 
   const { data: allocation } = useQuery({
     queryKey: ['portfolio-allocation'],
@@ -26,6 +32,46 @@ export default function PortfolioPerformance() {
     queryFn: () => api.listModelPerformance(),
   })
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['performance'] })
+    queryClient.invalidateQueries({ queryKey: ['portfolio-allocation'] })
+    queryClient.invalidateQueries({ queryKey: ['model-performance-list'] })
+    toast.success('Performance data refreshed')
+  }
+
+  const handleExport = () => {
+    if (!displayMetrics) {
+      toast.error('No performance data to export')
+      return
+    }
+
+    const data = {
+      period,
+      total_pnl: displayMetrics.total_pnl,
+      total_pnl_pct: displayMetrics.total_pnl_pct,
+      sharpe_ratio: displayMetrics.sharpe_ratio,
+      max_drawdown: displayMetrics.max_drawdown,
+      max_drawdown_pct: displayMetrics.max_drawdown_pct,
+      win_rate: displayMetrics.win_rate,
+      total_trades: displayMetrics.total_trades,
+      winning_trades: displayMetrics.winning_trades,
+      losing_trades: displayMetrics.losing_trades,
+      profit_factor: displayMetrics.profit_factor,
+      expectancy: displayMetrics.expectancy,
+      exported_at: new Date().toISOString(),
+    }
+
+    const json = JSON.stringify(data, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `portfolio-performance-${period}-${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Performance data exported')
+  }
+
   if (isLoading && !metrics) {
     return <LoadingSpinner />
   }
@@ -34,10 +80,38 @@ export default function PortfolioPerformance() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Portfolio Performance</h1>
-        <p className="text-muted-foreground">Overall performance across all models</p>
-      </div>
+      <PageHeader
+        title="Portfolio Performance"
+        description={`Overall performance metrics across all models (${period.replace('_', ' ')})`}
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={!displayMetrics}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <HealthDot 
+              status={displayMetrics && displayMetrics.total_pnl >= 0 ? 'ok' : displayMetrics ? 'warn' : 'error'} 
+              label={displayMetrics ? formatCurrency(displayMetrics.total_pnl) : 'No data'}
+            />
+          </div>
+        }
+      />
 
       {/* Time Range Filter */}
       <div className="flex gap-2">
@@ -264,7 +338,7 @@ export default function PortfolioPerformance() {
               <CardTitle>Currency Pair Allocation</CardTitle>
             </CardHeader>
             <CardContent>
-              {Object.keys(allocation.by_pair).length > 0 ? (
+              {allocation.by_pair && typeof allocation.by_pair === 'object' && Object.keys(allocation.by_pair).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(allocation.by_pair).map(([pair, value]) => (
                     <div key={pair} className="flex items-center justify-between">
@@ -283,7 +357,7 @@ export default function PortfolioPerformance() {
               <CardTitle>Model Allocation</CardTitle>
             </CardHeader>
             <CardContent>
-              {Object.keys(allocation.by_model).length > 0 ? (
+              {allocation.by_model && typeof allocation.by_model === 'object' && Object.keys(allocation.by_model).length > 0 ? (
                 <div className="space-y-2">
                   {Object.entries(allocation.by_model).map(([model, value]) => (
                     <div key={model} className="flex items-center justify-between">

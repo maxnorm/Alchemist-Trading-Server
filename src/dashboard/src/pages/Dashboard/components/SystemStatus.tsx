@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { formatCurrency } from '@/utils/formatters'
 import { CheckCircle2, XCircle, AlertTriangle, ArrowRight } from 'lucide-react'
 import type { TradingStatus } from '@/types/trading'
 import type { CircuitBreakerStatus } from '@/types/trading'
+import { DenseCard, DenseCardHeader, DenseCardContent } from '@/components/common/DenseCard'
 
 interface SystemStatusProps {
   status: TradingStatus | null
@@ -12,12 +12,12 @@ interface SystemStatusProps {
 
 export function SystemStatus({ status, circuitBreaker }: SystemStatusProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>System Status</CardTitle>
-        <CardDescription>Current system health and trading status</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <DenseCard density="dense" hover>
+      <DenseCardHeader
+        title="System Status"
+        description="Current system health and trading status"
+      />
+      <DenseCardContent className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted-foreground">Trading Status</span>
           <div className="flex items-center gap-2">
@@ -83,12 +83,12 @@ export function SystemStatus({ status, circuitBreaker }: SystemStatusProps) {
 
         <Link
           to="/trading"
-          className="flex items-center gap-2 text-sm text-primary hover:underline mt-4"
+          className="flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors mt-3"
         >
           View Trading Controls
           <ArrowRight className="h-4 w-4" />
         </Link>
-      </CardContent>
-    </Card>
+      </DenseCardContent>
+    </DenseCard>
   )
 }

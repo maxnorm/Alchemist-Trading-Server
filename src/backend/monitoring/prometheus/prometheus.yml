@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'trading-platform'
+    environment: 'production'
+
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets: ['alertmanager:9093']
+
+rule_files:
+ - '/etc/prometheus/alerts/*.yml'
+
+scrape_configs:
+ - job_name: 'api'
+   static_configs:
+   - targets: ['api:${API_PORT:-8000}']
+   metrics_path: '/metrics'
+   
+ - job_name: 'server'
+   static_configs:
+   - targets: ['server:${SERVER_PORT:-8080}']
+   metrics_path: '/metrics'
+   
+ - job_name: 'prometheus'
+   static_configs:
+   - targets: ['127.0.0.1:${PROMETHEUS_PORT:-9090}']

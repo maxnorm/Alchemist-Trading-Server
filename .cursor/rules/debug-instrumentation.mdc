@@ -1,0 +1,13 @@
+---
+description: Use the log folder "/logs" for write intrumentations
+alwaysApply: false
+---
+Use the log folder "/app/logs" for write instrumentations
+
+This folder is mounted to host from the containers (./logs:/app/logs in docker-compose.yml)
+
+Volume binding in docker-compose.yml
+```yml
+volumes:
+  - "./logs:/app/logs"
+```

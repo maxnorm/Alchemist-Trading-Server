@@ -3,15 +3,16 @@ import { API_BASE_URL, API_ENDPOINTS } from '@/utils/constants'
 import type { Experiment, CreateExperimentDto } from '@/types/experiment'
 import type { Feature, FeatureFilters } from '@/types/feature'
 import type { Model, ModelStage } from '@/types/model'
-import type { TradingStatus, CircuitBreakerStatus } from '@/types/trading'
-import type { MT5Account, ModelAssignment } from '@/types/mt5'
+import type { TradingStatus, CircuitBreakerStatus, Position } from '@/types/trading'
+import type { MT5Account, MT5AccountCreatePayload, MT5AccountSecret, ModelAssignment } from '@/types/mt5'
 import type { PortfolioMetrics, ModelMetrics, EquityPoint, Trade, ModelStatistics, ModelComparison } from '@/types/performance'
 import type { OptunaStudy, OptunaTrial, OptunaConfig } from '@/types/optuna'
 import type { PaperSession, ValidationResult } from '@/types/model'
 import type { PerformanceBreakdown } from '@/types/performance'
 
-class ApiClient {
+export class ApiClient {
   private client: AxiosInstance
+  private getToken: (() => Promise<string | null>) | null = null
 
   constructor() {
     this.client = axios.create({
@@ -22,13 +23,15 @@ class ApiClient {
       timeout: 30000,
     })
 
-    // Request interceptor
+    // Request interceptor - add Clerk token
     this.client.interceptors.request.use(
-      (config) => {
-        // Add auth token if available (for future use)
-        const token = localStorage.getItem('auth_token')
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
+      async (config) => {
+        // Get token from Clerk if token getter is set
+        if (this.getToken) {
+          const token = await this.getToken()
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`
+          }
         }
         return config
       },
@@ -39,7 +42,12 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        if (error.response) {
+        if (error.response?.status === 401) {
+          // Token expired or invalid - redirect to sign-in
+          if (window.location.pathname !== '/sign-in') {
+            window.location.href = '/sign-in'
+          }
+        } else if (error.response) {
           // Server responded with error
           const errorData = error.response.data as { detail?: string } | undefined
           const message = errorData?.detail || error.message
@@ -55,10 +63,30 @@ class ApiClient {
     )
   }
 
+  // Method to set token getter (called from useClerkApi hook)
+  setTokenGetter(getToken: () => Promise<string | null>) {
+    this.getToken = getToken
+  }
+
   // Features
   async getFeatures(filters?: FeatureFilters): Promise<Feature[]> {
-    const response = await this.client.get<Feature[]>(API_ENDPOINTS.features, { params: filters })
-    return Array.isArray(response.data) ? response.data : []
+    const response = await this.client.get<{ features: Feature[]; total: number }>(API_ENDPOINTS.features, { params: filters })
+    // API returns { features: [...], total: number }, extract the features array
+    if (response.data && response.data.features && Array.isArray(response.data.features)) {
+      // Map is_available from API to available for frontend
+      return response.data.features.map(f => ({
+        ...f,
+        available: (f as Feature & { is_available?: boolean }).is_available ?? true
+      }))
+    }
+    // Fallback: if response.data is already an array (backward compatibility)
+    if (Array.isArray(response.data)) {
+      return response.data.map(f => ({
+        ...f,
+        available: (f as Feature & { is_available?: boolean; available?: boolean }).is_available ?? (f as Feature & { available?: boolean }).available ?? true
+      }))
+    }
+    return []
   }
 
   async getFeature(id: number): Promise<Feature> {
@@ -228,8 +256,24 @@ class ApiClient {
 
   // MT5 Accounts
   async getMT5Accounts(): Promise<MT5Account[]> {
-    const response = await this.client.get<MT5Account[]>(API_ENDPOINTS.mt5Accounts)
-    return Array.isArray(response.data) ? response.data : []
+    const response = await this.client.get<{ accounts: MT5Account[]; total: number } | MT5Account[]>(API_ENDPOINTS.mt5Accounts)
+    // Handle both response formats: { accounts: [], total: number } or MT5Account[]
+    if (Array.isArray(response.data)) {
+      return response.data
+    }
+    if (response.data && typeof response.data === 'object' && 'accounts' in response.data) {
+      return Array.isArray(response.data.accounts) ? response.data.accounts : []
+    }
+    return []
+  }
+
+  async postMt5AccountRegister(payload: MT5AccountCreatePayload): Promise<MT5AccountSecret> {
+    // Response includes auth_token for ZeroMQ connections
+    const response = await this.client.post<MT5AccountSecret>(
+      `${API_ENDPOINTS.mt5Accounts}/register`,
+      payload
+    )
+    return response.data
   }
 
   async getMT5Account(id: number): Promise<MT5Account> {
@@ -364,6 +408,37 @@ class ApiClient {
     )
     return Array.isArray(response.data?.pairs) ? response.data.pairs : []
   }
+
+  // Positions
+  async getPositions(): Promise<Position[]> {
+    const response = await this.client.get<Position[]>(`${API_ENDPOINTS.trading}/positions`)
+    return Array.isArray(response.data) ? response.data : []
+  }
+
+  // Trade History
+  async getTradeHistory(filters?: {
+    symbol?: string;
+    startDate?: string;
+    endDate?: string;
+    experimentId?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ trades: Trade[]; total: number }> {
+    const response = await this.client.get<{ trades: Trade[]; total: number }>(
+      `${API_ENDPOINTS.trading}/history`,
+      { params: filters }
+    )
+    return response.data
+  }
+
+  // Parameter Importance (Optuna)
+  async getParameterImportance(experimentId: number): Promise<{ importance: Record<string, number> }> {
+    const response = await this.client.get<{ importance: Record<string, number> }>(
+      `${API_ENDPOINTS.experiments}/${experimentId}/optuna/importance`
+    )
+    return response.data
+  }
 }
 
-export const api = new ApiClient()
+// Re-export the singleton instance from api-factory to ensure all components use the same instance
+export { api } from './api-factory'

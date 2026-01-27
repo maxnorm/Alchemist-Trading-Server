@@ -3,9 +3,6 @@ name: Lint Server
 on:
   push:
     branches: [master, dev]
-    paths:
-      - 'src/mt5-python_server/**'
-      - '.github/workflows/lint_server.yml'
 
 jobs:
   lint:
@@ -24,10 +21,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libmariadb-dev build-essential
+          sudo apt-get install -y build-essential
       
       - name: Install dependencies
-        working-directory: src/mt5-python_server
+        working-directory: src/backend/trading_server
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
@@ -35,13 +32,12 @@ jobs:
       
       - name: Run code formatting check (Black)
         run: |
-          black --check src/mt5-python_server/src || exit 1
+          black --check src/backend/trading_server/src || exit 1
       
       - name: Run linter (flake8)
         run: |
-          flake8 src/mt5-python_server/src --max-line-length=120 --extend-ignore=E203,W503 || exit 1
-      
+          flake8 src/backend/trading_server/src --max-line-length=120 --extend-ignore=E203,W503 || exit 1
       
       - name: Run type checking (mypy)
         run: |
-          mypy src/mt5-python_server/src --ignore-missing-imports || exit 1
+          mypy src/backend/trading_server/src --ignore-missing-imports || exit 1

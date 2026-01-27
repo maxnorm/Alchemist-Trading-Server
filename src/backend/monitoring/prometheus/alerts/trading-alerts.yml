@@ -1,0 +1,84 @@
+groups:
+  - name: trading_alerts
+    interval: 30s
+    rules:
+      - alert: KillSwitchActive
+        expr: kill_switch_active == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kill switch is active"
+          description: "Kill switch has been triggered and trading is halted"
+
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state{state="open"} == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker is open"
+          description: "Circuit breaker has tripped and trading is halted"
+
+      - alert: HighDrawdown
+        expr: trading_drawdown_pct > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High drawdown detected"
+          description: "Current drawdown is {{ $value }}%, exceeding 15% threshold"
+
+      - alert: OMSReconciliationErrors
+        expr: rate(oms_reconciliation_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High OMS reconciliation error rate"
+          description: "OMS reconciliation errors are occurring at {{ $value }} errors/second"
+
+      - alert: SystemFailure
+        expr: up{job=~"api|server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "{{ $labels.job }} service is not responding"
+
+      - alert: HighQuarantineRate
+        expr: data_quarantine_rate > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High quarantine rate detected"
+          description: "Quarantine rate for {{ $labels.symbol }} is {{ $value }}%, exceeding 10% threshold"
+
+      - alert: DataGapDetected
+        expr: data_gap_minutes{symbol!=""} > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data gap detected for {{ $labels.symbol }}"
+          description: "Data gap of {{ $value }} minutes detected for {{ $labels.symbol }} ({{ $labels.data_type }}), exceeding 5 minute threshold"
+
+      - alert: SystemWideGap
+        expr: system_wide_gap_active == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "System-wide data gap detected"
+          description: "Multiple symbols experiencing data gaps simultaneously - possible connection/server issue"
+
+      - alert: ProlongedGap
+        expr: data_gap_minutes{symbol!=""} > 30
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prolonged data gap detected"
+          description: "Prolonged data gap of {{ $value }} minutes (>30 minutes) detected for {{ $labels.symbol }} ({{ $labels.data_type }})"

@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -6,10 +7,15 @@ import { formatCurrency, formatPercent } from '@/utils/formatters'
 import { useTradingStatus } from '@/features/trading/hooks/useTradingStatus'
 import { useKillSwitch } from '@/features/trading/hooks/useKillSwitch'
 import { useTradingPositions } from '@/hooks/useTradingPositions'
+import { PageHeader } from '@/components/common/PageHeader'
+import { HealthDot } from '@/components/common/StatusBadge'
+import { RefreshCw, AlertTriangle } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 export default function LiveTrading() {
   const { status } = useTradingStatus()
   const { positions } = useTradingPositions()
+  const queryClient = useQueryClient()
   const {
     killSwitchCode,
     setKillSwitchCode,
@@ -22,12 +28,41 @@ export default function LiveTrading() {
     isResetting,
   } = useKillSwitch()
 
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['trading-status'] })
+    queryClient.invalidateQueries({ queryKey: ['positions'] })
+    toast.success('Trading data refreshed')
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Live Trading</h1>
-        <p className="text-muted-foreground">Monitor and control live trading operations</p>
-      </div>
+      <PageHeader
+        title="Live Trading"
+        description="Monitor and control live trading operations, positions, and safety systems"
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+            {status?.kill_switch_active && (
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm font-medium">Kill Switch Active</span>
+              </div>
+            )}
+            <HealthDot 
+              status={status?.kill_switch_active ? 'error' : status?.is_active ? 'ok' : 'warn'} 
+              label={status?.is_active ? 'Trading Active' : 'Trading Inactive'}
+            />
+          </div>
+        }
+      />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>

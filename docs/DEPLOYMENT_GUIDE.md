@@ -49,15 +49,15 @@
 
 ```env
 # Database
-DB_HOST=mariadb
-DB_PORT=3306
+DB_HOST=postgres
+DB_PORT=5432
 DB_NAME=db_forex
 DB_USER=forex_user
 DB_PASSWORD=forex_password
 
 # Server
 SERVER_IP=0.0.0.0
-SERVER_PORT=1234
+SERVER_PORT=8080
 
 # MLflow
 MLFLOW_TRACKING_URI=http://mlflow:5000
@@ -77,26 +77,39 @@ CIRCUIT_BREAKER_MAX_DRAWDOWN_PCT=20.0
 # MyFxBook (optional)
 MYFXBOOK_EMAIL=your_email@example.com
 MYFXBOOK_PASSWORD=your_password
+
+# Streamer Authentication (Required for tick streamers)
+# Generate a secure random token (minimum 32 characters)
+# Example: openssl rand -hex 32
+# Never commit this to git!
+STREAMER_AUTH_TOKEN=your_secure_random_token_here
 ```
 
 ## Database Migrations
 
 ### Running Migrations
 
-Migrations are in `src/database/scripts/` and should be run in order:
+Migrations are in `src/database/scripts/` and should be run in order using the migration script:
 
 ```bash
-# Connect to database
-mysql -u forex_user -p db_forex
-
-# Run migrations
-source src/database/scripts/06_features.sql
-source src/database/scripts/07_experiments.sql
-source src/database/scripts/08_performance_tracking.sql
-source src/database/scripts/09_models.sql
+# Run all migrations
+python scripts/run-migrations.py
 ```
 
-Or use the migration script:
+Or connect to PostgreSQL directly:
+```bash
+# Connect to database
+psql -h localhost -U forex_user -d db_forex
+
+# Run migrations manually (in order)
+\i src/database/scripts/00_triggers.sql
+\i src/database/scripts/01_create.sql
+\i src/database/scripts/02_procedures.sql
+# ... continue with other scripts in order
+\i src/database/scripts/16_timescaledb_setup.sql
+```
+
+The migration script:
 ```bash
 python scripts/run-migrations.py
 ```
@@ -118,10 +131,76 @@ python scripts/run-migrations.py
    - Tools → Options → Expert Advisors
    - Enable "Allow algorithmic trading"
 
-4. **Test Connection**
-   - Start the server: `docker compose up server`
-   - Check logs for connection status
-   - Verify in dashboard
+4. **Configure MT5 Gateway Connection**
+
+   The MT5 EAs connect to the server through the gateway on port 8080. You have three connection options:
+
+   **Option 1: Direct IP Connection (Simplest, No DNS Required)**
+   - In EA inputs, set:
+     - `ip`: Your server's IP address (e.g., `192.168.1.100` or your public IP)
+     - `port`: `8080`
+   - Works immediately, no DNS setup needed
+   - Recommended for development and testing
+
+   **Option 2: Subdomain with DNS (Production)**
+   - Configure DNS A record: `mt5.yourdomain.com` → Your server's public IP address
+   - In EA inputs, set:
+     - `ip`: `mt5.yourdomain.com`
+     - `port`: `8080`
+   - Free DNS options: Cloudflare (free tier), DuckDNS, No-IP
+   - Recommended for production deployments
+
+   **Option 3: Local Testing with /etc/hosts**
+   - Add entry to hosts file:
+     - Linux/Mac: `/etc/hosts`: `127.0.0.1 mt5.yourdomain.com`
+     - Windows: `C:\Windows\System32\drivers\etc\hosts`: `127.0.0.1 mt5.yourdomain.com`
+   - In EA inputs, set:
+     - `ip`: `mt5.yourdomain.com`
+     - `port`: `8080`
+   - Useful for local development
+
+5. **Configure Streamer Authentication**
+
+   **For Tick Streamers (mt5_tick_streamer.mq5):**
+   - Generate a secure token: `openssl rand -hex 32` or `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+   - Set `STREAMER_AUTH_TOKEN` in your `.env` file (see Environment Variables section)
+   - In EA inputs, set:
+     - `streamer_token`: The token from your `.env` file
+   - No account registration needed for streamers
+   - Same token works for all tick streamers (28+ pairs)
+
+   **For Trading Operations (mt5_trading_operation.mq5):**
+   - Still uses account-based authentication
+   - Register account via API to get `auth_token`
+   - In EA inputs, set:
+     - `auth_token`: Account auth token from API
+
+6. **Connection Limits and Rate Limiting**
+   - Gateway supports up to 100 concurrent connections per IP
+   - Sufficient for 28+ tick streamers (major currency pairs) + additional exotic pairs + trading operation EAs
+   - Rate limiting: 5 authentication attempts per minute (burst: 5)
+   - Limits can be adjusted in `src/gateway/conf.d/stream/mt5.conf` if needed
+
+7. **Test Connection**
+   - Start the services: `docker compose up -d`
+   - Check gateway logs: `./logs/gateway/mt5_access.log` and `./logs/gateway/mt5_error.log`
+   - Verify connection in trading server logs
+   - Monitor connection status in dashboard
+
+### MT5 Gateway Logs
+
+Gateway logs are accessible in the codebase:
+- Access logs: `./logs/gateway/mt5_access.log` - All connection attempts
+- Error logs: `./logs/gateway/mt5_error.log` - Failed connections and errors
+
+View logs in real-time:
+```bash
+# Access logs
+tail -f logs/gateway/mt5_access.log
+
+# Error logs
+tail -f logs/gateway/mt5_error.log
+```
 
 ## Monitoring
 
@@ -141,9 +220,13 @@ docker compose logs -f
 # Specific service
 docker compose logs -f server
 docker compose logs -f api
+docker compose logs -f gateway
 ```
 
-Log files are also stored in `logs/` directory.
+Log files are also stored in `logs/` directory:
+- Trading server logs: `logs/` (tick_streamer.log, mt5_price_connector.log, etc.)
+- Gateway logs: `logs/gateway/` (mt5_access.log, mt5_error.log, gateway_access.log, gateway_error.log)
+- API logs: Check container logs or application logs
 
 ### Metrics
 
@@ -177,12 +260,12 @@ Log files are also stored in `logs/` directory.
 
 1. **Verify Database is Running**
    ```bash
-   docker compose ps mariadb
+   docker compose ps postgres
    ```
 
 2. **Check Credentials**
    - Verify `.env` file has correct credentials
-   - Test connection: `mysql -u user -p -h localhost`
+   - Test connection: `psql -h localhost -U forex_user -d db_forex`
 
 3. **Check Network**
    - Ensure services are on same Docker network
@@ -209,17 +292,17 @@ Log files are also stored in `logs/` directory.
 
 ```bash
 # Manual backup
-docker compose exec mariadb mysqldump -u forex_user -p db_forex > backup.sql
+docker compose exec postgres pg_dump -U forex_user db_forex --format=custom > backup.dump
 
 # Automated backup (if configured)
-python scripts/backup.py
+python src/database/backup.py
 ```
 
 ### Restore Database
 
 ```bash
 # Restore from backup
-docker compose exec -T mariadb mysql -u forex_user -p db_forex < backup.sql
+docker compose exec -T postgres pg_restore -U forex_user -d db_forex < backup.dump
 ```
 
 ## Updates

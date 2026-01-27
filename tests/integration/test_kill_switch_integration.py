@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/mt5-python_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from risk.kill_switch import KillSwitch, KillSwitchState, FileTrigger
 

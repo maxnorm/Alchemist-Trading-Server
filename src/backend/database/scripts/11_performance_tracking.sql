@@ -1,0 +1,3 @@
+-- Phase 6: Live Performance Tracking Tables (Duplicate - same as 10_performance_tracking.sql)
+-- This file appears to be a duplicate. If needed, use the same structure as 10_performance_tracking.sql
+-- PostgreSQL migration already handled in 10_performance_tracking.sql

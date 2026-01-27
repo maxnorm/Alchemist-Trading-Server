@@ -1,0 +1,24 @@
+{
+  "name": "alchemist",
+  "version": "1.0.0",
+  "author": "Alchemist Capital Management",
+  "engines": {
+    "node": ">=20.19.0 || >=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dashboard:install": "cd src/dashboard && npm install",
+    "dashboard:dev": "cd src/dashboard && npm run dev",
+    "dashboard:build": "cd src/dashboard && npm run build",
+    "dashboard:preview": "cd src/dashboard && npm run preview",
+    "services:up": "docker compose up -d --build",
+    "services:down": "docker compose down -v --rmi all"
+  },
+  "dependencies": {
+    "dukascopy-node": "^1.46.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.7.3"
+  }
+}
