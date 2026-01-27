@@ -12,7 +12,7 @@ from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from datetime import datetime
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from trading.brokers.base import IBrokerAdapter, OrderStatus
 from trading.brokers.mt5_adapter import MT5BrokerAdapter

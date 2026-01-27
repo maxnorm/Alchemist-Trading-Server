@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from environments.base_trading_env import BaseTradingEnv
 from environments.slippage_models import (

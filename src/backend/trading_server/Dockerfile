@@ -17,14 +17,14 @@ RUN pip install --upgrade pip
 WORKDIR /app
 
 # Copy requirements first for better layer caching
-COPY ./src/trading_server/requirements.txt .
+COPY ./src/backend/trading_server/requirements.txt .
 
 # Install dependencies with BuildKit cache mount (faster rebuilds, not in final image)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
 # Copy application code
-COPY ./src/trading_server .
+COPY ./src/backend/trading_server .
 
 COPY .env .env
 

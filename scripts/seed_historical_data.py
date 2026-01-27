@@ -18,7 +18,7 @@ original_dir = os.getcwd()
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Add trading_server to path and change to that directory for imports
-trading_server_src = os.path.abspath(os.path.join(script_dir, "..", "src", "trading_server", "src"))
+trading_server_src = os.path.abspath(os.path.join(script_dir, "..", "src", "backend", "trading_server", "src"))
 sys.path.insert(0, trading_server_src)
 os.chdir(trading_server_src)
 

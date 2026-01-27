@@ -12,7 +12,7 @@ from unittest.mock import Mock, MagicMock, patch
 import numpy as np
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from domain.models.feature import Feature
 from data_providers.registry import DataProviderRegistry

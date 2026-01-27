@@ -18,7 +18,7 @@ from collections import defaultdict
 import json
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/backend/trading_server/src'))
 
 try:
     from database import Database

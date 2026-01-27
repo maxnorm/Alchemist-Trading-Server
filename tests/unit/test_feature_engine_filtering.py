@@ -11,7 +11,7 @@ import numpy as np
 from unittest.mock import Mock, MagicMock, patch
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from application.environment.feature_engine import FeatureEngine
 from utils.feature_engineering import FeatureEngineer

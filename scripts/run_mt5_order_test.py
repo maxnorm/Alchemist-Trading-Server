@@ -16,7 +16,7 @@ from pathlib import Path
 
 # Add paths
 sys.path.insert(0, '/app')
-sys.path.insert(0, '/app/src/trading_server/src')
+sys.path.insert(0, '/app/src/backend/trading_server/src')
 
 print("="*70)
 print("MT5 Order Execution Test - TC-MT5-TRADE-002")
@@ -31,13 +31,13 @@ print()
 try:
     # Try to import server module
     try:
-        from src.trading_server.src import server
+        from src.backend.trading_server.src import server
     except ImportError:
         try:
             import server
         except ImportError:
             # Try absolute import
-            sys.path.insert(0, '/app/src/trading_server/src')
+            sys.path.insert(0, '/app/src/backend/trading_server/src')
             import server
     
     # Get server instance

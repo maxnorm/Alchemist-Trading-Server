@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock, patch
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from monitoring.gap_detector import GapDetector, get_global_gap_detector, set_global_gap_detector
 from monitoring.metrics import data_gap_minutes, data_gaps_detected_total

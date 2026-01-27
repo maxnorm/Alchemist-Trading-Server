@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "trading_server" / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "backend" / "trading_server" / "src"))
 
 from monitoring.mt5_clock_monitor import MT5ClockMonitor, get_global_mt5_monitor, set_global_mt5_monitor
 

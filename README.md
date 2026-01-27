@@ -283,12 +283,13 @@ pytest tests/ --cov=src/trading_server/src --cov-report=html
 ```
 qpl/
 ├── src/
-│   ├── api/              # FastAPI REST + WebSocket service
-│   ├── dashboard/        # React dashboard (runs locally)
-│   ├── trading_server/   # Core trading server
-│   ├── database/         # Database migrations and scripts
-│   ├── gateway/          # nginx configuration
-│   └── monitoring/       # Prometheus & Grafana configs
+│   ├── backend/
+│   │   ├── api/              # FastAPI REST + WebSocket service
+│   │   ├── trading_server/   # Core trading server
+│   │   ├── database/         # Database migrations and scripts
+│   │   ├── gateway/          # nginx configuration
+│   │   └── monitoring/       # Prometheus & Grafana configs
+│   └── dashboard/        # React dashboard (runs locally)
 ├── scripts/              # Utility scripts
 ├── tests/                # Test suite
 ├── docs/                 # Documentation

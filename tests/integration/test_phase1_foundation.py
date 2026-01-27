@@ -74,8 +74,8 @@ def test_airflow_dag_structure():
     """Test that Airflow DAG structure is correct"""
     # Check that key DAGs exist (data_collection_pipeline was removed - tick collection now via ZeroMQ)
     dag_paths = [
-        "src/trading_server/src/infrastructure/data_pipeline/airflow/dags/alternative_data_collection_dag.py",
-        "src/trading_server/src/infrastructure/data_pipeline/airflow/dags/historical_backfill_dag.py",
+        "src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags/alternative_data_collection_dag.py",
+        "src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags/historical_backfill_dag.py",
     ]
     
     for dag_path in dag_paths:
@@ -84,7 +84,7 @@ def test_airflow_dag_structure():
     # Try to import a DAG (this will validate syntax)
     try:
         import sys
-        sys.path.insert(0, "src/trading_server/src/infrastructure/data_pipeline/airflow/dags")
+        sys.path.insert(0, "src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags")
         # Note: Full import would require Airflow to be installed
         # For now, just check files exist
         print("✓ Airflow DAG structure test passed")
@@ -117,7 +117,7 @@ def test_schema_registry_api_integration():
     """Test Schema Registry API endpoints (if API service is available)"""
     # This would require the API service to be running
     # For now, just check that the router exists
-    router_path = "src/api/src/routers/schema.py"
+    router_path = "src/backend/api/src/routers/schema.py"
     assert os.path.exists(router_path), f"Schema router not found: {router_path}"
     
     print("✓ Schema Registry API integration test passed")

@@ -5,7 +5,7 @@
 echo "Executing test order through server..."
 docker compose exec server python -c "
 import sys
-sys.path.insert(0, '/app/src/trading_server/src')
+sys.path.insert(0, '/app/src/backend/trading_server/src')
 import server
 s = server._global_server_instance
 if s:

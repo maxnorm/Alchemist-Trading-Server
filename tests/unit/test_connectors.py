@@ -14,7 +14,7 @@ from datetime import datetime
 import threading
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from domain.models.feature import Feature
 from connectors.registry import ConnectorRegistry

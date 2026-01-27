@@ -18,8 +18,8 @@ import sys
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 
-# Add src/trading_server to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src" / "trading_server" / "src"))
+# Add src/backend/trading_server to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src" / "backend" / "trading_server" / "src"))
 
 from codes.order_type import OrderType
 from models.currency_pair import CurrencyPair

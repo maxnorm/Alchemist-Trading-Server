@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src/backend/trading_server/src'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 import numpy as np

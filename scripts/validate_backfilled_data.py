@@ -11,8 +11,8 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 from pathlib import Path
 
-# Add src/trading_server/src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "trading_server", "src"))
+# Add src/backend/trading_server/src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "backend", "trading_server", "src"))
 
 from database import Database
 from utils.logging_config import get_logger

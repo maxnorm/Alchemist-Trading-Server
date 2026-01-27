@@ -10,8 +10,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-# Add src/trading_server/src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "trading_server", "src"))
+# Add src/backend/trading_server/src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "backend", "trading_server", "src"))
 
 from database import Database
 from connectors.mt5_tick_connector import MT5TickConnector

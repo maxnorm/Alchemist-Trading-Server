@@ -15,7 +15,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 
 class TestFeatureRegistry:

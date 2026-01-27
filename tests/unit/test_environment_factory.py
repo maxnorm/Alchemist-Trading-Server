@@ -13,7 +13,7 @@ from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from infrastructure.factories.environment_factory import EnvironmentFactory
 from domain.environment_type import EnvironmentType

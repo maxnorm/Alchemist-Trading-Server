@@ -296,7 +296,7 @@ class FeatureEngine:
 
         :return: List of file paths
         """
-        # Get the base directory (assuming we're in src/trading_server/src)
+        # Get the base directory (assuming we're in src/backend/trading_server/src)
         base_dir = Path(__file__).parent.parent.parent
 
         feature_files = [

@@ -14,9 +14,9 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import from src/api
+# Add parent directory to path to import from src/backend/api
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "src" / "api" / "src"))
+sys.path.insert(0, str(project_root / "src" / "backend" / "api" / "src"))
 
 from clerk_backend_api import Clerk
 from config import settings

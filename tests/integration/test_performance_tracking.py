@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, MagicMock, patch
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from performance.trade_logger import TradeLogger
 from performance.equity_tracker import EquityTracker

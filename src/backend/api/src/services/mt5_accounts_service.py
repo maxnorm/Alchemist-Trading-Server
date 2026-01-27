@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Add trading_server to path for CredentialManager import
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../trading_server/src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../backend/trading_server/src"))
 
 from models.mt5_accounts import MT5Account, AccountModelAssignment, MT5Connection
 try:

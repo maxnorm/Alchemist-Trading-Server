@@ -11,8 +11,8 @@ services:
             - "5557:5557"  # ZeroMQ broker PULL (EAs connect here)
             - "5556:5556"  # ZeroMQ order port (trading operations)
         volumes:
-            - "./src/gateway/nginx.conf:/etc/nginx/nginx.conf:ro"
-            - "./src/gateway/conf.d:/etc/nginx/conf.d:ro"
+            - "./src/backend/gateway/nginx.conf:/etc/nginx/nginx.conf:ro"
+            - "./src/backend/gateway/conf.d:/etc/nginx/conf.d:ro"
             - "./logs/gateway:/var/log/nginx"  # Bind mount to sync logs to codebase
         depends_on:
             api:
@@ -39,8 +39,8 @@ services:
             POSTGRES_DB: ${DB_NAME}
             SEED_HISTORICAL_DATA: ${SEED_HISTORICAL_DATA:-false}
         volumes:
-            - "./src/database/scripts:/docker-entrypoint-initdb.d"
-            - "./src/database/postgresql.conf:/etc/postgresql/postgresql.conf:ro"
+            - "./src/backend/database/scripts:/docker-entrypoint-initdb.d"
+            - "./src/backend/database/postgresql.conf:/etc/postgresql/postgresql.conf:ro"
             - "postgres_data:/var/lib/postgresql/data"
             # Mount Parquet data directory for seeding (read-only)
             # - "./data/dukascopy:/data/dukascopy:ro"  # Uncomment when ready to seed
@@ -59,7 +59,7 @@ services:
         container_name: "server"
         build:
             context: .
-            dockerfile: ./src/trading_server/Dockerfile
+            dockerfile: ./src/backend/trading_server/Dockerfile
         depends_on:
             postgres:
                 condition: service_healthy
@@ -109,7 +109,7 @@ services:
             DB_BACKUP_DIR: /backups
             DB_BACKUP_RETENTION_DAYS: 7
         volumes:
-            - "./src/database/backup.py:/app/backup.py:ro"
+            - "./src/backend/database/backup.py:/app/backup.py:ro"
             - "backup_data:/backups"
         command: >
             sh -c "
@@ -152,7 +152,7 @@ services:
     api:
         container_name: "api"
         build:
-            context: ./src/api
+            context: ./src/backend/api
             dockerfile: Dockerfile
         depends_on:
             postgres:
@@ -206,9 +206,9 @@ services:
             SERVER_PORT: ${SERVER_PORT}
             PROMETHEUS_PORT: ${PROMETHEUS_PORT}
         volumes:
-            - "./src/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml.template:ro"
-            - "./src/monitoring/prometheus/entrypoint.sh:/entrypoint.sh:ro"
-            - "./src/monitoring/prometheus/alerts:/etc/prometheus/alerts:ro"
+            - "./src/backend/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml.template:ro"
+            - "./src/backend/monitoring/prometheus/entrypoint.sh:/entrypoint.sh:ro"
+            - "./src/backend/monitoring/prometheus/alerts:/etc/prometheus/alerts:ro"
             - "prometheus_data:/prometheus"
         entrypoint: ["/bin/sh", "/entrypoint.sh"]
         command:
@@ -240,8 +240,8 @@ services:
             - GF_SERVER_SERVE_FROM_SUB_PATH=true
         volumes:
             - "grafana_data:/var/lib/grafana"
-            - "./src/monitoring/grafana/provisioning:/etc/grafana/provisioning"
-            - "./src/monitoring/grafana/dashboards:/var/lib/grafana/dashboards"
+            - "./src/backend/monitoring/grafana/provisioning:/etc/grafana/provisioning"
+            - "./src/backend/monitoring/grafana/dashboards:/var/lib/grafana/dashboards"
         depends_on:
             - prometheus
         restart: unless-stopped
@@ -284,7 +284,7 @@ services:
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
         volumes:
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
             - "./airflow_logs:/opt/airflow/logs"
             - "./airflow_plugins:/opt/airflow/plugins"
         depends_on:
@@ -317,10 +317,10 @@ services:
             - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
             - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
         volumes:
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
             - "./airflow_logs:/opt/airflow/logs"
             - "./airflow_plugins:/opt/airflow/plugins"
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-webserver-entrypoint.sh:/entrypoint.sh:ro"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-webserver-entrypoint.sh:/entrypoint.sh:ro"
         depends_on:
             postgres:
                 condition: service_healthy
@@ -352,10 +352,10 @@ services:
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
         volumes:
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
             - "./airflow_logs:/opt/airflow/logs"
             - "./airflow_plugins:/opt/airflow/plugins"
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-scheduler-entrypoint.sh:/entrypoint.sh:ro"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-scheduler-entrypoint.sh:/entrypoint.sh:ro"
         depends_on:
             postgres:
                 condition: service_healthy
@@ -383,10 +383,10 @@ services:
             - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
             - AIRFLOW__CORE__LOAD_EXAMPLES=False
         volumes:
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/dags:/opt/airflow/dags"
             - "./airflow_logs:/opt/airflow/logs"
             - "./airflow_plugins:/opt/airflow/plugins"
-            - "./src/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-worker-entrypoint.sh:/entrypoint.sh:ro"
+            - "./src/backend/trading_server/src/infrastructure/data_pipeline/airflow/scripts/airflow-worker-entrypoint.sh:/entrypoint.sh:ro"
         depends_on:
             postgres:
                 condition: service_healthy

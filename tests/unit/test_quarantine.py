@@ -9,7 +9,7 @@ from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime, timedelta
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from database import Database
 from utils.time_utils import get_utc_time

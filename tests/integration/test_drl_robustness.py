@@ -10,7 +10,7 @@ import numpy as np
 from unittest.mock import Mock, MagicMock
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from agents.dqn_agent import DQNAgent
 from agents.learning_rate_scheduler import ReduceLROnPlateauScheduler

@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 
 from data_providers.registry import DataProviderRegistry
 from domain.models.feature import Feature

@@ -12,7 +12,7 @@ import sys
 import os
 
 # Add source to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/trading_server/src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src/backend/trading_server/src'))
 from training.cscv import (
     combinatorially_symmetric_cross_validation,
     interpret_pbo,
