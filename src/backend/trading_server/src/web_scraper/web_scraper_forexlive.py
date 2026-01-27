@@ -17,7 +17,7 @@ try:
     AI_SCRAPER_AVAILABLE = True
 except ImportError:
     AI_SCRAPER_AVAILABLE = False
-    LLMScraper = None
+    LLMScraper = None  # type: ignore[assignment]
 
 
 class WebScraperForexLive:

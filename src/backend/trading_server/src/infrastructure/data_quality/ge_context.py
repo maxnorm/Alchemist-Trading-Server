@@ -4,7 +4,7 @@ Great Expectations Data Context Configuration
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 import great_expectations as ge
 from great_expectations.data_context import BaseDataContext
@@ -48,11 +48,12 @@ class GEDataContext:
             f"Great Expectations context initialized at {self.context_root_dir}"
         )
 
-    def _create_context(self) -> BaseDataContext:
+    def _create_context(self) -> Any:
         """Create Great Expectations Data Context"""
         try:
             # Try to load existing context
-            context = ge.get_context(context_root_dir=str(self.context_root_dir))
+            # Note: ge.get_context may not exist in all versions, use BaseDataContext directly
+            context = BaseDataContext(project_root_dir=str(self.context_root_dir))
             logger.info("Loaded existing Great Expectations context")
             return context
         except Exception:
@@ -118,7 +119,7 @@ class GEDataContext:
             context = BaseDataContext(project_config=data_context_config)
             return context
 
-    def get_context(self) -> BaseDataContext:
+    def get_context(self) -> Any:
         """Get Great Expectations Data Context"""
         return self.context
 

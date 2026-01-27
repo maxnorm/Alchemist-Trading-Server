@@ -6,7 +6,7 @@ Detects data gaps in tick data collection and sends alerts.
 
 import threading
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from utils.time_utils import get_utc_time
 from utils.market_utils import check_if_market_open
 from utils.logging_config import get_logger
@@ -176,7 +176,7 @@ class GapDetector:
                 },
             )
 
-            detected_gaps = []
+            detected_gaps: List[Dict[str, Any]] = []
             for gap in gaps:
                 gap_info = {
                     "data_type": "tick",
@@ -316,7 +316,7 @@ class GapDetector:
         try:
             gaps = self.db.execute_with_result(query, params)
 
-            detected_gaps = []
+            detected_gaps: List[Dict[str, Any]] = []
             for gap in gaps:
                 gap_info = {
                     "data_type": "bar",
@@ -437,7 +437,7 @@ class GapDetector:
         try:
             gaps = self.db.execute_with_result(query, params)
 
-            detected_gaps = []
+            detected_gaps: List[Dict[str, Any]] = []
             for gap in gaps:
                 gap_info = {
                     "data_type": "news",
@@ -568,7 +568,7 @@ class GapDetector:
         try:
             gaps = self.db.execute_with_result(query, params)
 
-            detected_gaps = []
+            detected_gaps: List[Dict[str, Any]] = []
             for gap in gaps:
                 gap_info = {
                     "data_type": "economic",

@@ -109,9 +109,9 @@ class BackfillOrchestrator:
                 extra_config={"digits": 5},
             )
             connector = MT5TickConnector(
-                socket=DummySocket(),
                 symbol=symbol,
                 config=config,
+                socket=DummySocket(),
             )
 
             # Backfill ticks

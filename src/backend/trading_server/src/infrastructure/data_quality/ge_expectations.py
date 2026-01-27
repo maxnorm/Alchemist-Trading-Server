@@ -20,21 +20,23 @@ try:
     from great_expectations.core.expectation_configuration import (
         ExpectationConfiguration as _EC,
     )
+    _ExpectationConfiguration = _EC
 except (ImportError, ModuleNotFoundError, AttributeError):
     # Fallback: try alternative import paths for compatibility
     try:
         from great_expectations.expectations.expectation_configuration import (
             ExpectationConfiguration as _EC,
         )
+        _ExpectationConfiguration = _EC
     except (ImportError, ModuleNotFoundError, AttributeError):
         try:
             from great_expectations.core import (
                 ExpectationConfiguration as _EC,
             )
+            _ExpectationConfiguration = _EC
         except (ImportError, ModuleNotFoundError, AttributeError):
             _EC = None
-
-_ExpectationConfiguration = _EC
+            _ExpectationConfiguration = None
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +70,12 @@ def create_expectation_suite_from_contract(
 
         # Check if suite already exists
         try:
-            suite = context.get_expectation_suite(suite_name)
+            suite = context.get_expectation_suite(suite_name)  # type: ignore[attr-defined]
             logger.info(f"Loaded existing expectation suite: {suite_name}")
             return suite
         except Exception:
             # Create new suite
-            suite = context.create_expectation_suite(
+            suite = context.create_expectation_suite(  # type: ignore[attr-defined]
                 expectation_suite_name=suite_name,
                 overwrite_existing=False,
             )
@@ -86,7 +88,7 @@ def create_expectation_suite_from_contract(
             suite.add_expectation(expectation_config)
 
         # Save suite
-        context.save_expectation_suite(suite, suite_name)
+        context.save_expectation_suite(suite, suite_name)  # type: ignore[attr-defined]
         logger.info(
             f"Saved expectation suite: {suite_name} with {len(expectations)} expectations"
         )
@@ -319,7 +321,7 @@ def validate_batch_and_generate_docs(
 
         # Ensure suite exists
         try:
-            suite = context.get_expectation_suite(suite_name)
+            suite = context.get_expectation_suite(suite_name)  # type: ignore[attr-defined]
         except Exception:
             suite = create_expectation_suite_from_contract(data_type)
             if not suite:
@@ -344,17 +346,17 @@ def validate_batch_and_generate_docs(
 
             # Get or create validator
             try:
-                validator = context.get_validator(
+                validator = context.get_validator(  # type: ignore[attr-defined]
                     batch_request=batch_request,
                     expectation_suite_name=suite_name,
                 )
             except Exception:
                 # Create datasource if it doesn't exist
-                context.add_datasource(
+                context.add_datasource(  # type: ignore[attr-defined]
                     name="pandas_datasource",
                     class_name="PandasDatasource",
                 )
-                validator = context.get_validator(
+                validator = context.get_validator(  # type: ignore[attr-defined]
                     batch_request=batch_request,
                     expectation_suite_name=suite_name,
                 )
@@ -363,7 +365,7 @@ def validate_batch_and_generate_docs(
             validation_result = validator.validate(df)
 
             # Build checkpoint result to trigger Data Docs generation
-            context.build_data_docs()
+            context.build_data_docs()  # type: ignore[attr-defined]
 
             return {
                 "success": validation_result.success,

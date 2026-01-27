@@ -14,7 +14,7 @@ try:
     SPACY_AVAILABLE = True
 except ImportError:
     SPACY_AVAILABLE = False
-    spacy = None
+    spacy = None  # type: ignore[assignment]
 
 
 class EntityExtractor:

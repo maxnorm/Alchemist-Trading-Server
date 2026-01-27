@@ -498,9 +498,9 @@ class HTTPController:
                 server_status = server_monitor.get_status()
                 server_healthy = server_monitor.is_healthy()
                 server_ntp_status = {
-                    "last_drift_seconds": server_status.get("last_drift_seconds"),
-                    "last_status": server_status.get("last_status"),
-                    "check_count": server_status.get("check_count"),
+                    "last_drift_seconds": str(server_status.get("last_drift_seconds") or ""),
+                    "last_status": str(server_status.get("last_status") or ""),
+                    "check_count": str(server_status.get("check_count") or ""),
                 }
 
             # Build response with MT5 broker status
@@ -652,13 +652,15 @@ class HTTPController:
                         "gap_minutes": gap.get("gap_seconds", 0) / 60.0,
                         "gap_start": (
                             gap.get("gap_start").isoformat()
-                            if isinstance(gap.get("gap_start"), datetime)
-                            else str(gap.get("gap_start"))
+                            if gap.get("gap_start") is not None
+                            and isinstance(gap.get("gap_start"), datetime)
+                            else str(gap.get("gap_start") or "")
                         ),
                         "gap_end": (
                             gap.get("gap_end").isoformat()
-                            if isinstance(gap.get("gap_end"), datetime)
-                            else str(gap.get("gap_end"))
+                            if gap.get("gap_end") is not None
+                            and isinstance(gap.get("gap_end"), datetime)
+                            else str(gap.get("gap_end") or "")
                         ),
                     }
                     for gap in current_gaps[:10]  # Limit to first 10 gaps

@@ -14,7 +14,7 @@ from utils.time_utils import normalize_to_utc, ensure_utc_timezone
 try:
     import wbdata
 except ImportError:
-    wbdata = None
+    wbdata = None  # type: ignore[assignment]
 
 
 class WorldBankConnector(IDataSourceConnector):
@@ -60,9 +60,9 @@ class WorldBankConnector(IDataSourceConnector):
             self.logger.error(
                 "wbdata library not installed. Install with: pip install wbdata"
             )
-            self._available = False
+            self._available: bool = False
         else:
-            self._available = True
+            self._available: bool = True
             self.logger.info("World Bank connector initialized successfully")
 
         self._is_connected = False
@@ -89,7 +89,7 @@ class WorldBankConnector(IDataSourceConnector):
             test_indicator = list(self.KEY_INDICATORS.keys())[0]
             test_country = list(self.KEY_COUNTRIES.keys())[0]
             data = wbdata.get_data(
-                test_indicator, country=test_country, data_date=(2000, 2001)
+                test_indicator, country=test_country, date=(2000, 2001)
             )
             if data is not None:
                 self._is_connected = True
@@ -144,18 +144,21 @@ class WorldBankConnector(IDataSourceConnector):
 
             # Convert datetime to year tuples for wbdata
             if start_date and end_date:
-                data_date = (start_date.year, end_date.year)
+                date_range = (start_date.year, end_date.year)
             elif start_date:
-                data_date = (start_date.year, datetime.now().year)
+                date_range = (start_date.year, datetime.now().year)
             elif end_date:
-                data_date = (1950, end_date.year)  # World Bank data starts around 1960
+                date_range = (1950, end_date.year)  # World Bank data starts around 1960
             else:
-                data_date = None
+                date_range = None
 
             # Fetch data from World Bank
-            data = wbdata.get_data(
-                indicator_id, country=country_code, data_date=data_date
-            )
+            if date_range is not None:
+                data = wbdata.get_data(
+                    indicator_id, country=country_code, date=date_range
+                )
+            else:
+                data = wbdata.get_data(indicator_id, country=country_code)
 
             if data is None or len(data) == 0:
                 self.logger.warning(
@@ -166,7 +169,7 @@ class WorldBankConnector(IDataSourceConnector):
             # Get indicator metadata for frequency
             try:
                 self._rate_limit()
-                indicators = wbdata.get_indicator(indicator_id)
+                indicators = wbdata.get_indicators(indicator_id)
                 if indicators:
                     # Most World Bank indicators are annual
                     frequency = "ANNUAL"

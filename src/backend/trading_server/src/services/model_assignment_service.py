@@ -265,7 +265,7 @@ class ModelAssignmentService:
 
     def _get_or_create_environment(
         self, account: Account, model
-    ) -> Optional[LiveTradingEnv]:
+    ) -> Optional["LiveTradingEnv"]:
         """
         Get or create environment for account using model's features
 

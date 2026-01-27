@@ -175,11 +175,11 @@ class FeatureEngine:
             feature_extraction_duration.observe(duration)
 
             # Collect distributions for drift detection (periodically)
-            if self.distribution_collector and current_time:
+            if self.distribution_collector is not None and current_time is not None:
                 self._collect_feature_distributions(
                     symbol,
                     pair_features,
-                    current_time,
+                    current_time.timestamp(),
                 )
 
             return pair_feature_matrix

@@ -33,6 +33,7 @@ class MT5TickConnector(IDataSourceConnector):
         symbol: str,
         config: ConnectorConfig,
         streamer: Optional[ZeroMQTickStreamer] = None,
+        socket: Optional[object] = None,
     ):
         """
         Initialize MT5 tick connector
@@ -50,7 +51,8 @@ class MT5TickConnector(IDataSourceConnector):
         digits = config.extra_config.get("digits", 5)
         self.currency_pair = CurrencyPair(symbol, digits)
 
-        # Create or use provided streamer
+        # Create or use provided streamer (socket is kept for backwards compatibility)
+        _ = socket
         self.streamer = streamer
         self._streamer_thread: Optional[threading.Thread] = None
         self._is_connected = False
@@ -59,7 +61,7 @@ class MT5TickConnector(IDataSourceConnector):
         try:
             from infrastructure.lineage.lineage_service import LineageService
 
-            self.lineage_service = LineageService()
+            self.lineage_service: Optional[LineageService] = LineageService()
             self.current_run_id: Optional[str] = None
         except Exception as e:
             self.logger.warning(f"Failed to initialize lineage service: {e}")

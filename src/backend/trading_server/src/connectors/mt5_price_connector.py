@@ -57,7 +57,7 @@ class MT5PriceConnector(IDataSourceConnector):
         try:
             from infrastructure.lineage.lineage_service import LineageService
 
-            self.lineage_service = LineageService()
+            self.lineage_service: Optional[LineageService] = LineageService()
             self.current_run_id: Optional[str] = None
         except Exception as e:
             self.logger.warning(f"Failed to initialize lineage service: {e}")

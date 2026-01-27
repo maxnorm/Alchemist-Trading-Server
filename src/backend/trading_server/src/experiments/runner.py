@@ -334,10 +334,22 @@ class ExperimentRunner:
                 )
 
                 # Create trainer
+                # Type assertions: LiveTrainer requires LiveTradingEnv and non-None Account
+                from typing import cast
+                from environments.live_env import LiveTradingEnv
+                from models.account import Account
+                
+                if not isinstance(environment, LiveTradingEnv):
+                    raise ValueError(
+                        f"LiveTrainer requires LiveTradingEnv, got {type(environment)}"
+                    )
+                if account is None:
+                    raise ValueError("LiveTrainer requires a non-None Account")
+                
                 trainer = LiveTrainer(
                     agent=agent,
-                    environment=environment,
-                    account=account,
+                    environment=cast(LiveTradingEnv, environment),
+                    account=cast(Account, account),
                     risk_manager=risk_manager,
                     config=training_config,
                 )

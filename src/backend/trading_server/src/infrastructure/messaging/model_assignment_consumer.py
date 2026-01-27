@@ -49,7 +49,7 @@ class ModelAssignmentConsumer:
         :param channel: Redis channel name for model assignment events (default: 'model_assignments')
         """
         self.model_assignment_service = model_assignment_service
-        self.redis_host = redis_host or os.getenv("REDIS_HOST", "redis")
+        self.redis_host: str = redis_host or os.getenv("REDIS_HOST", "redis")
         self.redis_port = int(os.getenv("REDIS_PORT", str(redis_port)))
         self.redis_db = int(os.getenv("REDIS_DB", str(redis_db)))
         self.channel = channel

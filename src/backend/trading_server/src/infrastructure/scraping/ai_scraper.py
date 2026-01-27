@@ -23,7 +23,7 @@ try:
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    anthropic = None
+    anthropic = None  # type: ignore[assignment]
 
 
 class AIScraper(ABC):

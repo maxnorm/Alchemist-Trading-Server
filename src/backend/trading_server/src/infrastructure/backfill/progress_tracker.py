@@ -63,7 +63,7 @@ class BackfillProgressTracker:
                 "end_time": end_time,
             }
 
-            result = self.db.execute_with_result(query, params)
+            result = self.db.execute_with_result(str(query), params)
             progress_id = result[0][0] if result else None
 
             if progress_id:
@@ -143,7 +143,7 @@ class BackfillProgressTracker:
                 "records_collected": records_collected,
             }
 
-            self.db.execute_with_result(query, params)
+            self.db.execute_with_result(str(query), params)
 
             # Emit Prometheus metrics
             try:
@@ -263,7 +263,7 @@ class BackfillProgressTracker:
 
             params = {"progress_id": progress_id}
 
-            self.db.execute_with_result(query, params)
+            self.db.execute_with_result(str(query), params)
 
             # Emit metrics - set progress to 100%
             if get_result and len(get_result) > 0:
@@ -309,7 +309,7 @@ class BackfillProgressTracker:
                 "error_message": error_message[:1000],  # Limit message length
             }
 
-            self.db.execute_with_result(query, params)
+            self.db.execute_with_result(str(query), params)
             self.logger.warning(
                 f"Marked backfill {progress_id} as failed: {error_message}"
             )
@@ -334,7 +334,7 @@ class BackfillProgressTracker:
 
             params = {"progress_id": progress_id}
 
-            result = self.db.execute_with_result(query, params)
+            result = self.db.execute_with_result(str(query), params)
 
             if result and len(result) > 0:
                 row = result[0]
@@ -379,7 +379,7 @@ class BackfillProgressTracker:
                 """)
                 params = {}
 
-            result = self.db.execute_with_result(query, params)
+            result = self.db.execute_with_result(str(query), params)
 
             backfills = []
             for row in result:

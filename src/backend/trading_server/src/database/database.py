@@ -883,7 +883,7 @@ class Database:
                 "timeframe": timeframe,
             }
 
-            results = self.execute_with_result(query, params)
+            results = self.execute_with_result(str(query), params)
 
             if results and len(results) > 0:
                 row = results[0]
@@ -1537,7 +1537,7 @@ class Database:
         """
         try:
             conditions = ["timestamp >= NOW() - INTERVAL :hours HOUR"]
-            params = {"hours": hours, "limit": limit}
+            params: Dict[str, Any] = {"hours": hours, "limit": limit}
 
             if symbol:
                 conditions.append("symbol = :symbol")
