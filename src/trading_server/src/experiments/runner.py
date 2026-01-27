@@ -43,7 +43,7 @@ class ExperimentRunner:
         experiment_tracker,
         agent_factory: AgentFactory,
         environment_factory: EnvironmentFactory,
-        get_account_func: Callable[[Optional[int]], Optional[Account]],
+        get_account_func: Callable[[int], Optional[Account]],
         get_risk_manager_func: Callable[[], RiskManager],
         training_loop_factory: Optional[Callable] = None,
         feature_catalog=None,
@@ -55,8 +55,7 @@ class ExperimentRunner:
         :param experiment_tracker: ExperimentTracker (MLflow) instance
         :param agent_factory: AgentFactory instance
         :param environment_factory: EnvironmentFactory instance
-        :param get_account_func: Function to get Account instance. Accepts optional
-                                 account_login parameter. If None, returns first account.
+        :param get_account_func: Function to get Account instance by account_login.
         :param get_risk_manager_func: Function to get RiskManager instance
         :param training_loop_factory: Optional factory for creating training loops
         :param feature_catalog: Optional FeatureCatalog instance for feature validation
@@ -121,8 +120,15 @@ class ExperimentRunner:
                 risk_manager = self.get_risk_manager()
 
                 # Map training_mode to EnvironmentType
+                # LIVE mode has been removed - use 'paper' for live training on demo accounts
+                if experiment.training_mode == "live":
+                    raise ValueError(
+                        "LIVE training mode has been removed. "
+                        "Use 'paper' mode for live training on demo accounts. "
+                        "For live trading with trained models, assign a model to a live account."
+                    )
+
                 env_type_map = {
-                    "live": EnvironmentType.LIVE,
                     "paper": EnvironmentType.PAPER,
                     "historical": EnvironmentType.HISTORICAL,
                 }
@@ -176,15 +182,12 @@ class ExperimentRunner:
                         features=experiment.features,
                     )
                     account = demo_account
-                else:  # LIVE
-                    account = self.get_account()
-                    environment = self.environment_factory.create_environment(
-                        environment_type=env_type,
-                        account=account,
-                        connectors=connectors,
-                        window_size=window_size,
-                        seed=seed,
-                        features=experiment.features,
+                else:
+                    # This should never be reached due to validation above,
+                    # but kept for safety
+                    raise ValueError(
+                        f"Unsupported environment type: {env_type}. "
+                        "Only 'historical' and 'paper' modes are supported."
                     )
 
                 # Create agent

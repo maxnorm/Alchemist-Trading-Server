@@ -46,7 +46,7 @@ class LiveTrainer:
         Initialize live trainer
         :param agent: DQN agent to train
         :param environment: Live trading environment
-        :param account: Trading account (should be paper trading for safety)
+        :param account: Trading account (MUST be demo account type)
         :param risk_manager: Risk manager
         :param save_dir: Directory to save models
         :param decision_interval: Seconds between decisions
@@ -63,6 +63,16 @@ class LiveTrainer:
         self.risk_manager = risk_manager
         self.save_dir = save_dir
         self.contract_size = 100000
+
+        # Validate account type - LiveTrainer can only be used with demo accounts
+        if account:
+            account_type = account.account_type
+            if account_type != "demo":
+                raise ValueError(
+                    f"LiveTrainer can only be used with demo accounts. "
+                    f"Account {account.login} is type '{account_type}'. "
+                    f"For live accounts, assign a trained model and use TradingController."
+                )
 
         # Use config or create from parameters
         if config is None:

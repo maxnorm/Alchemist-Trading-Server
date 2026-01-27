@@ -110,9 +110,20 @@ class AgentFactory:
             )
 
         # Load pre-trained model if path provided
-        if model_path and os.path.exists(model_path):
+        if model_path:
             try:
-                agent.load(model_path)
+                # Check if it's a directory (local path) or needs to be downloaded
+                if os.path.exists(model_path) and os.path.isdir(model_path):
+                    agent.load(model_path)
+                else:
+                    # If it's an MLflow URI or other format, log warning
+                    # The caller should use ModelRegistry.get_model_path() to download first
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Model path {model_path} does not exist locally. "
+                        "Use ModelRegistry.get_model_path() to download from MLflow first."
+                    )
             except Exception as e:
                 import logging
 

@@ -35,6 +35,8 @@ from infrastructure.db_integration import (
     log_connection,
     update_connection_status,
 )
+from services.model_assignment_service import ModelAssignmentService
+from infrastructure.messaging.model_assignment_consumer import ModelAssignmentConsumer
 
 
 class Server:
@@ -88,39 +90,13 @@ class Server:
                 )
             self.__experiment_tracker = DummyExperimentTracker()
 
-        def get_account(account_login: Optional[int] = None) -> Optional[Account]:
-            """
-            Get account by login or return first account if no login specified.
-            
-            :param account_login: Optional account login number. If provided, returns
-                                  the account with matching login. If None, returns
-                                  the first account in the list (backward compatibility).
-            :return: Account instance or None if not found
-            """
-            if not self.__accounts:
-                return None
-            
-            # If account_login is specified, find that specific account
-            if account_login is not None:
-                for account in self.__accounts:
-                    if account.login == account_login:
-                        return account
-                return None  # Account not found
-            
-            # Backward compatibility: return first account if no login specified
-            return self.__accounts[0]
-
-        def get_risk_manager():
-            risk_config = RiskConfig.default()
-            return RiskManagerFactory.create_risk_manager(risk_config)
-
         self.__experiment_runner = ExperimentRunner(
             database=self.__db,
             experiment_tracker=self.__experiment_tracker,
             agent_factory=self.__agent_factory,
             environment_factory=self.__environment_factory,
-            get_account_func=get_account,
-            get_risk_manager_func=get_risk_manager,
+            get_account_func=self.get_account,
+            get_risk_manager_func=self.get_risk_manager,
             feature_catalog=self.__feature_catalog,
         )
 
@@ -149,6 +125,37 @@ class Server:
         if self.__verbose:
             with self.__console_lock:
                 print_with_datetime("Initialized Experiment Management")
+
+        # Initialize model assignment service
+        try:
+            self.__model_assignment_service = ModelAssignmentService(server_instance=self)
+            
+            # Initialize model assignment consumer (Redis pub/sub)
+            try:
+                self.__model_assignment_consumer = ModelAssignmentConsumer(
+                    model_assignment_service=self.__model_assignment_service
+                )
+                self.__model_assignment_consumer.start()
+                if self.__verbose:
+                    with self.__console_lock:
+                        print_with_datetime("Started Model Assignment Event Consumer")
+            except Exception as e:
+                # Model assignment consumer initialization may fail if Redis is unavailable
+                # Log warning but don't fail server startup
+                with self.__console_lock:
+                    print_with_datetime(
+                        f"Warning: Failed to start model assignment consumer: {e}"
+                    )
+                self.__model_assignment_consumer = None
+        except Exception as e:
+            # Model assignment service initialization may fail
+            # Log warning but don't fail server startup
+            with self.__console_lock:
+                print_with_datetime(
+                    f"Warning: Failed to initialize model assignment service: {e}"
+                )
+            self.__model_assignment_service = None
+            self.__model_assignment_consumer = None
 
         # Initialize feature discovery (will be populated as providers register)
         if self.__verbose:
@@ -344,6 +351,39 @@ class Server:
         """Get the Optuna tuner (for API access)"""
         return self.__optuna_tuner
 
+    def get_account(self, account_login: int) -> Optional[Account]:
+        """
+        Get account by login.
+        
+        :param account_login: Account login number
+        :return: Account instance or None if not found
+        """
+        if not self.__accounts:
+            return None
+        
+        for account in self.__accounts:
+            if account.login == account_login:
+                return account
+        return None
+
+    def get_risk_manager(self):
+        """
+        Get a risk manager with default configuration.
+        
+        :return: RiskManager instance with default configuration
+        """
+        risk_config = RiskConfig.default()
+        return RiskManagerFactory.create_risk_manager(risk_config)
+
+    def get_environment(self, account_login: int):
+        """
+        Get environment for an account
+        
+        :param account_login: Account login number
+        :return: BaseTradingEnv instance or None if not found
+        """
+        return self.__environment_factory.get_environment(account_login)
+
     def __del__(self):
         """Cleanup on server destruction"""
         if hasattr(self, '_Server__streamer_discovery'):
@@ -354,5 +394,10 @@ class Server:
         if hasattr(self, '_Server__zmq_broker'):
             try:
                 self.__zmq_broker.stop()
+            except Exception:
+                pass
+        if hasattr(self, '_Server__model_assignment_consumer'):
+            try:
+                self.__model_assignment_consumer.stop()
             except Exception:
                 pass

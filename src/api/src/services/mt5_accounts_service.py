@@ -382,13 +382,43 @@ def assign_model_to_account(
     if not account:
         return None
 
-    # Verify model exists
-    result = db.execute(text("SELECT id, version FROM models WHERE id = :id"), {"id": model_id})
+    # Verify model exists and get stage
+    result = db.execute(
+        text("SELECT id, version, stage FROM models WHERE id = :id"),
+        {"id": model_id}
+    )
     model_row = result.fetchone()
     if not model_row:
         return None
 
     model_version = model_row[1] if len(model_row) > 1 else None
+    model_stage = model_row[2] if len(model_row) > 2 else None
+
+    # Validate assignment based on account type and trading mode
+    if trading_mode == "live":
+        # For live trading, account must be live type
+        if account.account_type != "live":
+            raise ValueError(
+                f"Cannot assign model to account {account_id}: "
+                f"Account must be type 'live' for live trading. "
+                f"Current account type is '{account.account_type}'."
+            )
+        
+        # Model must be in production stage (or paper for testing)
+        if model_stage not in ("production", "paper"):
+            raise ValueError(
+                f"Cannot assign model {model_id} to live account: "
+                f"Model must be in 'production' or 'paper' stage for live trading. "
+                f"Current model stage is '{model_stage}'. "
+                f"Promote the model to production first."
+            )
+    elif trading_mode == "paper":
+        # For paper trading, account should be demo type (but allow live for testing)
+        if account.account_type == "live":
+            logger.warning(
+                f"Assigning model to live account {account_id} for paper trading. "
+                "This is unusual - typically paper trading uses demo accounts."
+            )
 
     # Deactivate any existing active assignment
     db.execute(
@@ -415,7 +445,46 @@ def assign_model_to_account(
     db.commit()
     db.refresh(assignment)
 
-    # Broadcast assignment change
+    # Publish model assignment event to Redis for Trading Server
+    try:
+        from infrastructure.messaging.experiment_publisher import ExperimentPublisher
+        
+        publisher = ExperimentPublisher.get_instance()
+        # Use a different channel for model assignments
+        # We'll extend ExperimentPublisher or create a new publisher
+        # For now, we'll publish to a model assignment channel
+        try:
+            import redis
+            import json
+            from datetime import datetime
+            
+            redis_host = os.getenv("REDIS_HOST", "redis")
+            redis_port = int(os.getenv("REDIS_PORT", "6379"))
+            redis_db = int(os.getenv("REDIS_DB", "0"))
+            
+            redis_client = redis.Redis(
+                host=redis_host, port=redis_port, db=redis_db, decode_responses=True
+            )
+            
+            payload = {
+                "event_type": "model_assignment",
+                "account_id": account_id,
+                "account_login": account.account_login,
+                "model_id": model_id,
+                "trading_mode": trading_mode,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            
+            redis_client.publish("model_assignments", json.dumps(payload))
+            logger.info(
+                f"Published model assignment event to Redis: account_id={account_id}, model_id={model_id}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to publish model assignment to Redis: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to import Redis publisher: {e}")
+
+    # Broadcast assignment change via WebSocket
     if WS_AVAILABLE:
         try:
             import asyncio

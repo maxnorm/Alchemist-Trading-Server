@@ -5,6 +5,7 @@ from utils.time_utils import print_with_datetime
 from domain.entities.account_info import AccountInfo
 from application.trading.trade_executor import TradeExecutor
 from mt5_connection.zeromq_terminal import ZeroMQTerminal
+from infrastructure.db_integration import get_account_from_db
 
 
 class Account:
@@ -40,6 +41,9 @@ class Account:
 
         self.trade_executor = TradeExecutor(broker_adapter=self.broker_adapter)
         self.current_trade: Dict[str, Any] = {}
+
+        # Cache for account type (lazy-loaded from database)
+        self._account_type: Optional[str] = None
 
         # Initialize account info
         self.info = self._fetch_account_info()
@@ -169,6 +173,35 @@ class Account:
     @property
     def margin_free(self):
         return self.info.margin_free
+
+    @property
+    def account_type(self) -> Optional[str]:
+        """
+        Get account type from database ('demo' or 'live')
+        Caches result to avoid repeated database queries
+        
+        :return: Account type string ('demo' or 'live') or None if not found in database
+        """
+        if self._account_type is None:
+            self._account_type = self._get_account_type_from_db()
+        return self._account_type
+
+    def _get_account_type_from_db(self) -> Optional[str]:
+        """
+        Get account type from database
+        
+        :return: Account type string ('demo' or 'live') or None if not found
+        """
+        try:
+            account_data = get_account_from_db(self.login)
+            if account_data:
+                return account_data.get("account_type")
+            return None
+        except Exception as e:
+            print_with_datetime(
+                f"Error getting account type for account {self.login}: {e}"
+            )
+            return None
 
     def __str__(self):
         return (
