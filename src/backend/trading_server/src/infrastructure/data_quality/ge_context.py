@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import Optional, Any
 
-import great_expectations as ge
 from great_expectations.data_context import BaseDataContext
 from great_expectations.data_context.types.base import DataContextConfig
 
