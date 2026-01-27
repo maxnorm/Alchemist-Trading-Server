@@ -176,7 +176,11 @@ class FeatureEngine:
 
             # Collect distributions for drift detection (periodically)
             if self.distribution_collector and current_time:
-            self._collect_feature_distributions(symbol, pair_features, current_time)
+                self._collect_feature_distributions(
+                    symbol,
+                    pair_features,
+                    current_time,
+                )
 
             return pair_feature_matrix
 
