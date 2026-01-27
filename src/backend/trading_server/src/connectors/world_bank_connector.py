@@ -60,9 +60,9 @@ class WorldBankConnector(IDataSourceConnector):
             self.logger.error(
                 "wbdata library not installed. Install with: pip install wbdata"
             )
-            self._available = False
+            self._available: bool = False
         else:
-            self._available = True
+            self._available: bool = True
             self.logger.info("World Bank connector initialized successfully")
 
         self._is_connected = False

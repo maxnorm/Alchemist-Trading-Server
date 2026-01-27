@@ -203,7 +203,7 @@ class GapDetector:
                         key = (gap_dict["data_type"], gap_dict["symbol"])
                         gap_counts[key] = gap_counts.get(key, 0) + 1
                         # Track maximum gap duration per symbol/data_type
-                        gap_minutes = gap["gap_seconds"] / 60.0
+                        gap_minutes = gap_dict["gap_seconds"] / 60.0
                         if (
                             key not in max_gap_duration
                             or gap_minutes > max_gap_duration[key]
