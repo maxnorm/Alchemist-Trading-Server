@@ -58,6 +58,11 @@ export function ExperimentListTable({
       bVal = new Date(bVal as string).getTime();
     }
 
+    // Handle undefined values
+    if (aVal === undefined && bVal === undefined) return 0;
+    if (aVal === undefined) return 1;
+    if (bVal === undefined) return -1;
+
     if (sortDirection === 'asc') {
       return aVal > bVal ? 1 : -1;
     } else {

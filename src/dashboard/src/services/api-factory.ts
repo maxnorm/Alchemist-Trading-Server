@@ -32,7 +32,7 @@ export interface ExtendedApiClient {
   getOrders?: (status?: string) => Promise<Order[]>;
   getOrder?: (orderId: string) => Promise<Order>;
   createOrder?: (request: OrderRequest) => Promise<OrderConfirmation>;
-  modifyOrder?: (modification: OrderModification) => Promise<OrderConfirmation>;
+  modifyOrder?: (modification: OrderModification) => Promise<Order>;
   cancelOrder?: (orderId: string) => Promise<void>;
   
   // Training

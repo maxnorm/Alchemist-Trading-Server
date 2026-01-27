@@ -103,6 +103,8 @@ export function DrawdownChart({
     if (!active || !payload || payload.length === 0) return null;
 
     const data = payload[0].payload;
+    if (!data) return null;
+
     return (
       <div className="bg-mono-300 border border-mono-400 p-3 rounded shadow-lg">
         <p className="font-mono-data text-xs text-mono-600 mb-2">

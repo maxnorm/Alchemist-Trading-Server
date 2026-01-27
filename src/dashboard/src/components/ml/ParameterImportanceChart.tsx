@@ -82,6 +82,8 @@ export function ParameterImportanceChart({
     if (!active || !payload || payload.length === 0) return null;
 
     const data = payload[0].payload;
+    if (!data) return null;
+
     const percentage = (data.importance / maxImportance) * 100;
 
     return (
