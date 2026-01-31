@@ -1,7 +1,7 @@
 ---
-alwaysApply: true
+globs: *.md
+alwaysApply: false
 ---
-
 Always generate markdown files like report, investigation, audit, etc to the /docs/generated folder
 
 Unless explicit location prompt

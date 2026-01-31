@@ -43,7 +43,10 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio
+      
+      - name: Install test dependencies
+        run: |
+          pip install -r tests/requirements-test.txt
       
       - name: Wait for PostgreSQL to be ready
         run: |
@@ -61,7 +64,7 @@ jobs:
           DB_PASSWORD: forex_password
           DB_NAME: db_forex
         run: |
-          pytest tests/unit/ --cov=src/backend/trading_server/src --cov-report=xml --cov-report=term -v || exit 1
+          pytest tests/trading_server/unit/ --cov=src/backend/trading_server/src --cov-report=xml --cov-report=term -v || exit 1
       
       - name: Run integration tests
         env:
@@ -71,7 +74,7 @@ jobs:
           DB_PASSWORD: forex_password
           DB_NAME: db_forex
         run: |
-          pytest tests/integration/ -v || exit 1
+          pytest tests/trading_server/integration/ -v || exit 1
       
       - name: Run E2E tests
         env:
@@ -81,7 +84,7 @@ jobs:
           DB_PASSWORD: forex_password
           DB_NAME: db_forex
         run: |
-          pytest tests/e2e/ -v || exit 1
+          pytest tests/trading_server/e2e/ -v || exit 1
       
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3

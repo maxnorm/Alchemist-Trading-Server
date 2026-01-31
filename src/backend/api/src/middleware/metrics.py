@@ -3,49 +3,34 @@ Middleware for tracking API metrics
 """
 
 import time
-from typing import Optional
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
+from prometheus_client import Histogram, Counter
 
 from config import settings
 
 logger = logging.getLogger(__name__)
 
-# Import metrics from trading_server monitoring module
-# Since we're in the API service, we need to import prometheus_client directly
-api_request_duration: Optional["Histogram"]
-api_requests_total: Optional["Counter"]
+# Prometheus metrics for API request tracking
+api_request_duration = Histogram(
+    "api_request_duration_seconds",
+    "API request duration",
+    ["method", "endpoint", "status_code"],
+    buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
 
-try:
-    from prometheus_client import Histogram, Counter
-
-    api_request_duration = Histogram(
-        "api_request_duration_seconds",
-        "API request duration",
-        ["method", "endpoint", "status_code"],
-        buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
-    )
-
-    api_requests_total = Counter(
-        "api_requests_total",
-        "Total API requests",
-        ["method", "endpoint", "status_code"],
-    )
-except ImportError:
-    logger.warning("prometheus_client not available, metrics will not be collected")
-    api_request_duration = None
-    api_requests_total = None
+api_requests_total = Counter(
+    "api_requests_total",
+    "Total API requests",
+    ["method", "endpoint", "status_code"],
+)
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Middleware to track API request metrics"""
 
     async def dispatch(self, request: Request, call_next):
-        if api_request_duration is None or api_requests_total is None:
-            # If metrics not available, just pass through
-            return await call_next(request)
-
         # Start timer
         start_time = time.time()
 

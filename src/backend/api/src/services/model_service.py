@@ -197,7 +197,7 @@ def promote_model(
     # Cast to CursorResult to access rowcount attribute
     cursor_result = cast(CursorResult[Any], result)
     if cursor_result.rowcount == 0:
-        return None
+        raise ValueError(f"Failed to promote model {model_id}: no rows updated")
 
     # Broadcast stage change via WebSocket (async call)
     if WS_AVAILABLE:
@@ -209,7 +209,11 @@ def promote_model(
         except Exception as e:
             logger.warning(f"Failed to broadcast stage change: {e}")
 
-    return get_model_by_id(db, model_id)
+    promoted_model = get_model_by_id(db, model_id)
+    if not promoted_model:
+        raise ValueError(f"Failed to retrieve promoted model with ID {model_id}")
+    
+    return promoted_model
 
 
 def archive_model(db: Session, model_id: int) -> Optional[ModelResponse]:
@@ -297,32 +301,34 @@ def start_paper_session(
             INSERT INTO paper_trading_sessions
             (model_id, status, start_balance, current_balance, started_at)
             VALUES (:model_id, 'running', :start_balance, :start_balance, NOW())
+            RETURNING id
         """),
         {"model_id": model_id, "start_balance": start_balance},
     )
     db.commit()
 
-    # Cast to CursorResult to access lastrowid attribute
-    cursor_result = cast(CursorResult[Any], result)
-    session_id = cursor_result.lastrowid
+    # Get the returned ID from PostgreSQL
+    row = result.fetchone()
+    if not row:
+        raise ValueError("Failed to create paper session: no ID returned")
+    
+    session_id = row[0]
 
     # Broadcast session start via WebSocket
+    # Note: WebSocket broadcasts are handled by the router endpoints in async context
+    # This is just a placeholder - actual broadcasting happens in the router
     if WS_AVAILABLE:
         try:
-            import asyncio
-
-            asyncio.create_task(
-                ws_channels.broadcast_paper_session_update(
-                    model_id=model_id,
-                    session_id=session_id,
-                    status="running",
-                    metrics={"start_balance": start_balance},
-                )
-            )
+            # WebSocket broadcasting will be handled by the async router endpoint
+            pass
         except Exception as e:
             logger.warning(f"Failed to broadcast session start: {e}")
 
-    return get_paper_session(db, session_id)
+    session = get_paper_session(db, session_id)
+    if not session:
+        raise ValueError(f"Failed to retrieve created paper session with ID {session_id}")
+    
+    return session
 
 
 def get_paper_session(db: Session, session_id: int) -> Optional[PaperSessionResponse]:
@@ -356,6 +362,8 @@ def stop_paper_session(db: Session, session_id: int) -> PaperSessionResponse:
     db.commit()
 
     updated_session = get_paper_session(db, session_id)
+    if not updated_session:
+        raise ValueError(f"Failed to retrieve updated paper session with ID {session_id}")
 
     # Calculate final metrics and store in model
     if updated_session:
@@ -391,7 +399,7 @@ def stop_paper_session(db: Session, session_id: int) -> PaperSessionResponse:
             text(
                 "UPDATE models SET paper_trading_results = :results WHERE id = :model_id"
             ),
-            {"results": json.dumps(results), "model_id": session.model_id},
+            {"results": json.dumps(results), "model_id": updated_session.model_id},
         )
         db.commit()
 
@@ -411,6 +419,7 @@ def stop_paper_session(db: Session, session_id: int) -> PaperSessionResponse:
             except Exception as e:
                 logger.warning(f"Failed to broadcast session end: {e}")
 
+    # updated_session is guaranteed to be non-None due to check above
     return updated_session
 
 

@@ -3,4 +3,14 @@ alwaysApply: true
 name: maintain-for-sicko
 ---
 
-Always code as if the guy who ends up maintaining your code will be a violent psychopath who know where you live!!!
+Always code as if the person maintaining your code will have no context, is under time pressure, and needs to understand and modify it quickly.
+
+**Maintainability Principles:**
+- **Clarity over cleverness**: Write code that is obvious, not clever. Future maintainers (including yourself) will thank you.
+- **Self-documenting code**: Use descriptive names for variables, functions, and classes. Code should read like well-written prose.
+- **Explicit over implicit**: Make assumptions and dependencies obvious. Avoid hidden magic or implicit behavior.
+- **Minimize complexity**: Prefer simple, straightforward solutions. Complex code is harder to understand, debug, and modify.
+- **Document the "why"**: When code must be complex, explain WHY it's complex, not just WHAT it does.
+- **Consistent patterns**: Follow established patterns and conventions in the codebase. Consistency reduces cognitive load.
+- **Fail fast and clearly**: Errors should be obvious and actionable. Silent failures are maintenance nightmares.
+- **Testability**: Write code that is easy to test. If it's hard to test, it's probably hard to maintain.

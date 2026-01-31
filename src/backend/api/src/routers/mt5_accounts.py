@@ -173,8 +173,6 @@ async def register_account_with_secret(
 
     For ZeroMQ connection: Leave password/server empty. Auth token will be generated
     and returned for EA configuration.
-
-    ⚠️ SECURITY: The password is encrypted at rest and never returned in responses.
     """
     try:
         user_id = user.get("id")
@@ -182,8 +180,8 @@ async def register_account_with_secret(
             raise HTTPException(status_code=400, detail="User ID not found in token")
 
         # Validate: if password provided, server must be provided (and vice versa)
-        has_password = hasattr(request, "mt5_password") and request.mt5_password
-        has_server = hasattr(request, "mt5_server") and request.mt5_server
+        has_password = bool(getattr(request, "mt5_password", None))
+        has_server = bool(getattr(request, "mt5_server", None))
 
         if has_password and not has_server:
             raise HTTPException(
@@ -215,8 +213,8 @@ async def register_account_with_secret(
         server_host = settings.mt5_server_public_host
         server_port = settings.mt5_server_public_port
         if server_host is None or server_port is None:
-            server_host = settings.api_host
-            server_port = settings.api_port
+            server_host = getattr(settings, "api_host", "localhost")
+            server_port = getattr(settings, "api_port", 8000)
 
         # Return account with auth_token (for ZeroMQ) or without (for Python API)
         return MT5AccountSecretResponse(
@@ -228,6 +226,7 @@ async def register_account_with_secret(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to register account: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to register account: {str(e)}"
         )
@@ -424,6 +423,9 @@ async def assign_model(
         return assignment
     except HTTPException:
         raise
+    except ValueError as e:
+        # ValueError from service indicates validation failure (e.g., wrong stage)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to assign model: {str(e)}")
 

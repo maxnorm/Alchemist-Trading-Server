@@ -10,17 +10,9 @@ import threading
 from datetime import datetime
 from typing import Optional
 import logging
+import redis
 
 logger = logging.getLogger(__name__)
-
-try:
-    import redis
-
-    REDIS_AVAILABLE = True
-except ImportError:
-    REDIS_AVAILABLE = False
-    logger.warning("Redis not available - experiment events will not be published")
-
 
 class ExperimentPublisher:
     """
@@ -75,9 +67,6 @@ class ExperimentPublisher:
 
         :return: Redis client or None if unavailable
         """
-        if not REDIS_AVAILABLE:
-            return None
-
         with self._connection_lock:
             if self._redis_client is None or not self._connected:
                 try:
@@ -113,10 +102,6 @@ class ExperimentPublisher:
         :param experiment_id: Experiment ID to start
         :return: True if published successfully, False otherwise
         """
-        if not REDIS_AVAILABLE:
-            logger.warning("Redis not available - experiment start event not published")
-            return False
-
         try:
             client = self._get_redis_client()
             if client is None:

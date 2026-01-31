@@ -118,7 +118,7 @@ def require_account_ownership(account_id_param: str = "account_id"):
     async def ownership_checker(
         request: Request,
         user: Dict = Depends(get_current_user),
-        db=None,  # Will be injected by FastAPI
+        db=None,  # Injected by FastAPI
     ):
         from dependencies import get_db
         from services.mt5_accounts_service import verify_account_ownership

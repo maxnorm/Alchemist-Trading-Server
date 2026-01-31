@@ -1,0 +1,18 @@
+# Test Dependencies
+# Install with: pip install -r tests/requirements-test.txt
+
+# Core Testing Framework
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-asyncio>=0.21.0
+
+# Testing Utilities
+pytest-mock>=3.12.0
+pytest-timeout>=2.2.0
+freezegun>=1.4.0
+faker>=22.0.0
+responses>=0.24.0
+pytest-env>=1.1.0
+
+# Integration Testing (Testcontainers)
+testcontainers[postgres]>=4.0.0

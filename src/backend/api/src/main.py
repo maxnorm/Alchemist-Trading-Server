@@ -3,7 +3,7 @@ FastAPI application entry point
 """
 
 from fastapi import FastAPI, Request, WebSocket, HTTPException
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from contextlib import asynccontextmanager
@@ -110,8 +110,10 @@ app = FastAPI(
 )
 
 
-# Override openapi method to ensure it uses /api/openapi.json
-def custom_openapi():
+def custom_openapi() -> dict:
+    """
+    Custom OpenAPI schema to ensure it uses /api/openapi.json endpoint
+    """
     if app.openapi_schema:
         return app.openapi_schema
     from fastapi.openapi.utils import get_openapi
@@ -151,7 +153,17 @@ app.add_middleware(
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle validation errors"""
     return JSONResponse(
-        status_code=422, content={"error": "Validation error", "detail": exc.errors()}
+        status_code=422, content={"detail": exc.errors()}
+    )
+
+
+@app.exception_handler(ResponseValidationError)
+async def response_validation_exception_handler(request: Request, exc: ResponseValidationError):
+    """Handle response validation errors"""
+    logger.error(f"Response validation error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Response validation error: {str(exc)}"},
     )
 
 
@@ -160,7 +172,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions"""
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": exc.detail, "status_code": exc.status_code},
+        content={"detail": exc.detail},
     )
 
 

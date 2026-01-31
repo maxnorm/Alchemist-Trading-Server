@@ -25,6 +25,7 @@ def create_optuna_study(
         INSERT INTO optuna_studies
         (experiment_id, study_name, n_trials, optimize_metric, direction, status)
         VALUES (:experiment_id, :study_name, :n_trials, :optimize_metric, :direction, 'running')
+        RETURNING id
     """
 
     params = {
@@ -38,7 +39,12 @@ def create_optuna_study(
     result = db.execute(text(query), params)
     db.commit()
 
-    study_id = result.lastrowid  # type: ignore[attr-defined]
+    # Get the returned ID from PostgreSQL
+    row = result.fetchone()
+    if not row:
+        raise ValueError("Failed to create Optuna study: no ID returned")
+    
+    study_id = row[0]
     return get_study_by_id(db, study_id)
 
 

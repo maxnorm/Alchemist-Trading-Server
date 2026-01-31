@@ -75,6 +75,9 @@ async def promote_to_staging(
     try:
         promoted = model_service.promote_model(db, model_id, "staging")
         return promoted
+    except ValueError as e:
+        # ValueError from service indicates validation failure
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to promote model: {str(e)}"
@@ -111,6 +114,9 @@ async def promote_to_paper(
         )
 
         return promoted
+    except ValueError as e:
+        # ValueError from service indicates validation failure
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to promote model: {str(e)}"
@@ -174,6 +180,9 @@ async def promote_to_production(
         )
 
         return promoted
+    except ValueError as e:
+        # ValueError from service indicates validation failure
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to promote model: {str(e)}"
@@ -250,6 +259,9 @@ async def start_paper_session(
         )
 
         return session
+    except ValueError as e:
+        # ValueError from service indicates validation failure
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to start paper session: {str(e)}"
@@ -303,6 +315,9 @@ async def stop_paper_session(
         await ws_channels.broadcast_validation_update(model_id, validation)
 
         return stopped
+    except ValueError as e:
+        # ValueError from service indicates validation failure
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to stop paper session: {str(e)}"

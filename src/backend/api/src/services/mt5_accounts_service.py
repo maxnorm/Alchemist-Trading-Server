@@ -134,16 +134,15 @@ def create_account_for_user(
     """Create a new MT5 account with user association"""
     # Encrypt password if provided
     encrypted_password = None
-    if hasattr(request, "mt5_password") and request.mt5_password:
+    mt5_password = getattr(request, "mt5_password", None)
+    if mt5_password:
         if not CREDENTIAL_MANAGER_AVAILABLE:
             raise ValueError(
                 "CredentialManager not available - cannot encrypt password"
             )
         try:
             credential_manager = CredentialManager()
-            encrypted_password = credential_manager.encrypt_password(
-                request.mt5_password
-            )
+            encrypted_password = credential_manager.encrypt_password(mt5_password)
         except Exception as e:
             logger.error(f"Failed to encrypt password: {e}", exc_info=True)
             raise ValueError(f"Failed to encrypt password: {e}")
@@ -166,8 +165,9 @@ def create_account_for_user(
         # Update Python API credentials if provided
         if encrypted_password:
             existing.mt5_password_encrypted = encrypted_password
-        if hasattr(request, "mt5_server") and request.mt5_server:
-            existing.mt5_server = request.mt5_server
+        mt5_server = getattr(request, "mt5_server", None)
+        if mt5_server:
+            existing.mt5_server = mt5_server
 
         # Link to user if not already linked (allows claiming)
         if not existing.user_id:
@@ -200,7 +200,7 @@ def create_account_for_user(
         created_by=created_by or user_id,
         is_active=True,
         mt5_password_encrypted=encrypted_password,
-        mt5_server=request.mt5_server if hasattr(request, "mt5_server") else None,
+        mt5_server=getattr(request, "mt5_server", None),
         auth_token=_generate_auth_token(),  # Legacy field, kept for backward compatibility
     )
 
@@ -226,16 +226,15 @@ def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountR
     """Create a new MT5 account"""
     # Encrypt password if provided
     encrypted_password = None
-    if hasattr(request, "mt5_password") and request.mt5_password:
+    mt5_password = getattr(request, "mt5_password", None)
+    if mt5_password:
         if not CREDENTIAL_MANAGER_AVAILABLE:
             raise ValueError(
                 "CredentialManager not available - cannot encrypt password"
             )
         try:
             credential_manager = CredentialManager()
-            encrypted_password = credential_manager.encrypt_password(
-                request.mt5_password
-            )
+            encrypted_password = credential_manager.encrypt_password(mt5_password)
         except Exception as e:
             logger.error(f"Failed to encrypt password: {e}", exc_info=True)
             raise ValueError(f"Failed to encrypt password: {e}")
@@ -258,8 +257,9 @@ def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountR
         # Update Python API credentials if provided
         if encrypted_password:
             existing.mt5_password_encrypted = encrypted_password
-        if hasattr(request, "mt5_server") and request.mt5_server:
-            existing.mt5_server = request.mt5_server
+        mt5_server = getattr(request, "mt5_server", None)
+        if mt5_server:
+            existing.mt5_server = mt5_server
 
         # Legacy: Ensure existing accounts have an auth token (for backward compatibility)
         if not existing.auth_token:
@@ -284,7 +284,7 @@ def create_account(db: Session, request: MT5AccountCreateRequest) -> MT5AccountR
         account_name=request.account_name,
         is_active=True,
         mt5_password_encrypted=encrypted_password,
-        mt5_server=request.mt5_server if hasattr(request, "mt5_server") else None,
+        mt5_server=getattr(request, "mt5_server", None),
         auth_token=_generate_auth_token(),  # Legacy field, kept for backward compatibility
     )
 

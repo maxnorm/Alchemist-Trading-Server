@@ -9,17 +9,9 @@ import json
 import logging
 import os
 from typing import Optional
+import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
-
-try:
-    import redis.asyncio as aioredis
-
-    REDIS_AVAILABLE = True
-except ImportError:
-    REDIS_AVAILABLE = False
-    logger.warning("Redis async client not available - alerts will not be consumed")
-
 
 class AlertConsumer:
     """
@@ -55,9 +47,6 @@ class AlertConsumer:
 
     async def start(self):
         """Start consuming alerts from Redis."""
-        if not REDIS_AVAILABLE:
-            logger.warning("Redis not available - alert consumer will not start")
-            return
 
         if self._running:
             logger.warning("Alert consumer is already running")

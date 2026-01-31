@@ -19,10 +19,11 @@ def create_experiment(
     """Create a new experiment"""
     # Validate features exist
     # Validate currency pairs exist
-    # Insert into database
+    # Insert into database with RETURNING clause for PostgreSQL
     query = """
         INSERT INTO experiments (name, description, features, currency_pairs, training_mode, hyperparameters, status)
         VALUES (:name, :description, :features, :currency_pairs, :training_mode, :hyperparameters, 'created')
+        RETURNING id
     """
 
     params = {
@@ -37,10 +38,18 @@ def create_experiment(
     result = db.execute(text(query), params)
     db.commit()
 
-    # Cast to CursorResult to access lastrowid attribute
-    cursor_result = cast(CursorResult[Any], result)
-    experiment_id = cursor_result.lastrowid
-    return get_experiment_by_id(db, experiment_id)
+    # Get the returned ID from PostgreSQL
+    row = result.fetchone()
+    if not row:
+        raise ValueError("Failed to create experiment: no ID returned")
+    
+    experiment_id = row[0]
+    
+    experiment = get_experiment_by_id(db, experiment_id)
+    if not experiment:
+        raise ValueError(f"Failed to retrieve created experiment with ID {experiment_id}")
+    
+    return experiment
 
 
 def get_all_experiments(
@@ -109,10 +118,11 @@ def update_experiment_status(
     update_fields = ["status = :status"]
     params = {"id": experiment_id, "status": status}
 
-    if status == "training" and mlflow_run_id:
-        update_fields.append("mlflow_run_id = :mlflow_run_id")
-        params["mlflow_run_id"] = mlflow_run_id
+    if status == "training":
         update_fields.append("started_at = NOW()")
+        if mlflow_run_id:
+            update_fields.append("mlflow_run_id = :mlflow_run_id")
+            params["mlflow_run_id"] = mlflow_run_id
     elif status in ["completed", "failed"]:
         update_fields.append("completed_at = NOW()")
 

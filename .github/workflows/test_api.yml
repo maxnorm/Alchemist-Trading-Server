@@ -44,9 +44,12 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio httpx
       
-      - name: Run API tests
+      - name: Install test dependencies
+        run: |
+          pip install -r tests/requirements-test.txt
+      
+      - name: Run API unit tests
         env:
           DATABASE_URL: postgresql+psycopg2://forex_user:forex_password@localhost:5432/db_forex
           DB_HOST: localhost
@@ -56,7 +59,19 @@ jobs:
           DB_NAME: db_forex
           PYTHONPATH: ${{ github.workspace }}/src/backend/api/src:${{ github.workspace }}
         run: |
-          pytest tests/api/ --cov=src/backend/api/src --cov-report=xml --cov-report=term -v || exit 1
+          pytest tests/api/unit/ --cov=src/backend/api/src --cov-report=xml --cov-report=term -v || exit 1
+      
+      - name: Run API integration tests
+        env:
+          DATABASE_URL: postgresql+psycopg2://forex_user:forex_password@localhost:5432/db_forex
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: forex_user
+          DB_PASSWORD: forex_password
+          DB_NAME: db_forex
+          PYTHONPATH: ${{ github.workspace }}/src/backend/api/src:${{ github.workspace }}
+        run: |
+          pytest tests/api/integration/ -v || exit 1
       
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3

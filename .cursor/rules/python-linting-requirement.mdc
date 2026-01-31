@@ -1,0 +1,75 @@
+---
+globs: *.py
+alwaysApply: false
+---
+# Agent Linting Requirement
+
+**CRITICAL**: All agents MUST ensure Python code passes linting checks before completing any code changes.
+
+## Mandatory Workflow
+
+When making changes to Python code, agents MUST follow this workflow:
+
+### 1. After Making Code Changes
+
+Immediately after editing any Python file, run the appropriate linting script:
+
+**For `src/backend/api/` (FastAPI backend):**
+```bash
+cd src/backend/api && ./lint.sh
+```
+
+**For `src/backend/trading_server/` (Trading server):**
+```bash
+cd src/backend/trading_server && ./lint.sh
+```
+
+### 2. Auto-Fix Formatting Issues
+
+If Black formatting fails, auto-fix it:
+```bash
+# For API
+cd src/backend/api && python -m black src/
+
+# For Trading Server
+cd src/backend/trading_server && python -m black src/
+```
+
+Then re-run the lint script to verify.
+
+### 3. Fix Remaining Issues
+
+If Flake8 or MyPy errors remain after auto-formatting:
+- **Read the error messages carefully**
+- **Fix the issues manually** (unused imports, type errors, etc.)
+- **Re-run the lint script** until all checks pass
+
+### 4. Verification
+
+**DO NOT consider the task complete until:**
+- ✅ All linting checks pass (Black, Flake8, MyPy)
+- ✅ The lint script exits with success (exit code 0)
+- ✅ No warnings or errors are reported
+
+## Important Notes
+
+- **Never skip linting checks** - even for small changes
+- **Use the lint.sh scripts** - they match CI exactly
+- **Fix issues immediately** - don't leave linting errors for later
+- **Verify before completing** - always run the full lint script one final time
+
+## Exception Handling
+
+If linting tools are not available in the environment:
+1. Install them: `pip install black flake8 mypy`
+2. Or activate the virtual environment first
+3. Then proceed with the linting workflow
+
+## Integration with Other Rules
+
+This rule works in conjunction with:
+- `lint.mdc` - Provides linting standards and reference
+- `lint-python-api.mdc` - API-specific linting details
+- `lint-python-trading-server.mdc` - Trading server-specific linting details
+
+All agents must follow this workflow to ensure code quality and CI compliance.
