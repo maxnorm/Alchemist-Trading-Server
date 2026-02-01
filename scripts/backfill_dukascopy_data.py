@@ -549,7 +549,8 @@ def download_dukascopy_data(
     batch_size: int = 3,
     pause_ms: int = 5000,
     max_retries: int = 3,
-    verbose: bool = False
+    verbose: bool = False,
+    cache_dir: Optional[Path] = None,
 ) -> Optional[Path]:
     """Download data from Dukascopy using dukascopy-node CLI"""
     logger.info(f"[{symbol}] Downloading from {start_date.date()} to {end_date.date()}")
@@ -567,7 +568,7 @@ def download_dukascopy_data(
         logger.error(f"[{symbol}] Could not find dukascopy-node command")
         return None
     
-    # Build full command
+    # Build full command (-dir = JSON output; -chpath = .bi5 cache location)
     cmd = cmd_base + [
         "-i", duka_symbol,
         "-from", start_str,
@@ -579,6 +580,8 @@ def download_dukascopy_data(
         "-bp", str(pause_ms),
         "--cache"  # Enable cache for resumable downloads
     ]
+    if cache_dir is not None:
+        cmd.extend(["-chpath", str(cache_dir)])
     
     # Add debug flag if verbose
     if verbose:
@@ -998,7 +1001,9 @@ def process_symbol(
     compression: str,
     keep_json: bool,
     progress_tracker: ProgressTracker,
-    verbose: bool = False
+    verbose: bool = False,
+    temp_base: Optional[Path] = None,
+    cache_dir: Optional[Path] = None,
 ) -> Dict:
     """Process a single symbol: download + convert to Parquet"""
     logger.info(f"[{symbol}] Processing symbol")
@@ -1015,8 +1020,12 @@ def process_symbol(
     # Mark as started
     progress_tracker.mark_started(symbol, start_date, end_date)
     
-    # Create temp directory
-    temp_dir = Path(tempfile.mkdtemp(prefix=f"dukascopy_{symbol}_"))
+    # Create temp directory (on temp_base to avoid filling root disk)
+    if temp_base is not None:
+        temp_base.mkdir(parents=True, exist_ok=True)
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"dukascopy_{symbol}_", dir=str(temp_base)))
+    else:
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"dukascopy_{symbol}_"))
     
     try:
         # Download from Dukascopy
@@ -1027,7 +1036,8 @@ def process_symbol(
             temp_dir,
             batch_size,
             pause_ms,
-            verbose=verbose
+            verbose=verbose,
+            cache_dir=cache_dir,
         )
         
         if json_file is None:
@@ -1077,7 +1087,10 @@ def backfill_multiple_symbols(
     compression: str,
     keep_json: bool,
     resume: bool,
-    verbose: bool = False
+    verbose: bool = False,
+    temp_base: Optional[Path] = None,
+    cache_dir: Optional[Path] = None,
+    progress_file: Optional[str] = None,
 ) -> Dict[str, Dict]:
     """Backfill multiple symbols"""
     logger.info("=" * 80)
@@ -1086,10 +1099,18 @@ def backfill_multiple_symbols(
     logger.info(f"Date Range: {start_date.date()} to {end_date.date()}")
     logger.info(f"Output: {output_dir}")
     logger.info(f"Rate Limiting: batch_size={batch_size}, pause={pause_ms}ms")
+    if temp_base is not None:
+        logger.info(f"Temp base: {temp_base} (avoids filling root disk)")
+    if cache_dir is not None:
+        logger.info(f"Cache dir: {cache_dir} (.bi5 cache on same disk as data)")
+    if progress_file is not None:
+        logger.info(f"Progress file: {progress_file}")
     logger.info("=" * 80)
     
     # Initialize progress tracker
-    progress_tracker = ProgressTracker()
+    progress_tracker = ProgressTracker(
+        progress_file=progress_file or "data/.dukascopy_progress.json"
+    )
     
     results = {}
     start_time = datetime.now(timezone.utc)
@@ -1115,7 +1136,9 @@ def backfill_multiple_symbols(
             compression,
             keep_json,
             progress_tracker,
-            verbose
+            verbose=verbose,
+            temp_base=temp_base,
+            cache_dir=cache_dir,
         )
         
         results[symbol] = result
@@ -1223,6 +1246,24 @@ Examples:
         action="store_true",
         help="Debug mode - enable debug logging and verbose output",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="Directory for dukascopy-node .bi5 cache (default: cwd/.dukascopy-cache). Use e.g. /data/.dukascopy-cache to avoid filling root disk.",
+    )
+    parser.add_argument(
+        "--temp-dir",
+        type=str,
+        default=None,
+        help="Base directory for download temp files (default: system temp). Use e.g. /data/tmp to avoid filling root disk.",
+    )
+    parser.add_argument(
+        "--progress-file",
+        type=str,
+        default=None,
+        help="Path for progress JSON (default: data/.dukascopy_progress.json). Use e.g. /data/.dukascopy_progress.json on VM so it backs up with upload-to-gcs.",
+    )
     
     return parser.parse_args()
 
@@ -1290,6 +1331,11 @@ def main():
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
+        temp_base = Path(args.temp_dir) if args.temp_dir else None
+        cache_dir = Path(args.cache_dir) if args.cache_dir else None
+        if cache_dir is not None:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        
         if args.dry_run:
             logger.info("DRY RUN - Would process:")
             for symbol in pairs:
@@ -1311,7 +1357,10 @@ def main():
                 args.compression,
                 args.keep_json,
                 args.resume,
-                verbose
+                verbose=verbose,
+                temp_base=temp_base,
+                cache_dir=cache_dir,
+                progress_file=args.progress_file,
             )
             
             # Check if any failed

@@ -2,6 +2,8 @@
 
 Helper scripts to automate Google Cloud Platform deployment for Dukascopy data collection.
 
+**Reliability & cost:** See [RELIABILITY_AND_COST.md](./RELIABILITY_AND_COST.md) for cost control (e.g. staying within free credit) and a checklist so collection runs reliably without filling the root disk.
+
 ## Prerequisites
 
 1. **Google Cloud SDK installed**
@@ -65,7 +67,7 @@ Starts the data collection process on the VM.
 
 **Usage:**
 ```bash
-# Default: Last 5 years
+# Default: Last 5 years, all pairs
 ./scripts/gcp/start-collection.sh
 
 # Test with one day (recommended first!)
@@ -73,6 +75,9 @@ Starts the data collection process on the VM.
 
 # Test with custom date range
 ./scripts/gcp/start-collection.sh --start-date 2024-01-01 --end-date 2024-01-07
+
+# Specific pairs only (comma-separated, no spaces)
+./scripts/gcp/start-collection.sh --pairs EURUSD,GBPUSD,USDJPY --start-date 2024-01-01 --end-date 2024-12-31
 
 # Custom date range for full collection
 ./scripts/gcp/start-collection.sh --start-date 2020-01-01 --end-date 2024-12-31
@@ -271,6 +276,28 @@ export LOCAL_DIR="./my-data"  # Custom download location
 export ZONE="europe-west1-a"
 ./scripts/gcp/setup-vm.sh
 ```
+
+---
+
+## Cloud VM: Avoiding root disk fill
+
+On a cloud VM, the **root disk** (e.g. 50GB) can fill up if the Dukascopy backfill writes cache and temp files there. Use these mitigations so all bulk I/O goes to the **data disk** (`/data`).
+
+| Mitigation | What it does |
+|------------|--------------|
+| **Separate data disk** | Attach a large disk as `/data` (e.g. 500GB). Keep root small; never put bulk data on root. |
+| **`--cache-dir /data/.dukascopy-cache`** | Puts dukascopy-node’s .bi5 cache on `/data`. Scripts pass this by default. |
+| **`--temp-dir /data/tmp`** | Puts download temp (JSON) on `/data`. Scripts pass this by default. |
+| **`TMPDIR=/data/tmp`** | Ensures Node/npm and other subprocesses use `/data` for temp. Set in start/restart scripts. |
+| **Create dirs before run** | `mkdir -p /data/dukascopy /data/logs /data/tmp /data/.dukascopy-cache` so everything exists on `/data`. |
+
+**Checklist when starting collection on a VM:**
+
+1. Ensure `/data` is mounted (separate disk) and has space: `df -h /data`
+2. Use the provided scripts (`start-collection.sh`, `quick-restart.sh`, `restart-collection.sh`) — they set `TMPDIR`, `--cache-dir`, and `--temp-dir` for you
+3. (Optional) Monitor root usage: `df -h /` — if it grows during collection, something is still writing to root; fix with the options above
+
+**If root already filled:** free space (remove/move `.dukascopy-cache` and `/tmp/dukascopy_*`), then redeploy the script and restart with the scripts above so future runs use `/data`.
 
 ---
 

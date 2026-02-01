@@ -1,6 +1,6 @@
 #!/bin/bash
 # Start data collection on GCP VM
-# Usage: ./start-collection.sh [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]
+# Usage: ./start-collection.sh [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--pairs PAIR1,PAIR2,...]
 
 set -e
 
@@ -16,6 +16,7 @@ YEARS_BACK="${YEARS_BACK:-5}"
 # Parse command-line arguments
 START_DATE=""
 END_DATE=""
+PAIRS=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -27,18 +28,25 @@ while [[ $# -gt 0 ]]; do
             END_DATE="$2"
             shift 2
             ;;
+        --pairs)
+            PAIRS="$2"
+            shift 2
+            ;;
         --help|-h)
-            echo "Usage: $0 [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]"
+            echo "Usage: $0 [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--pairs PAIR1,PAIR2,...]"
             echo ""
             echo "Examples:"
             echo "  # Test with one day"
             echo "  $0 --start-date 2024-01-15 --end-date 2024-01-15"
             echo ""
-            echo "  # Collect last 5 years (default)"
+            echo "  # Collect last 5 years (default, all pairs)"
             echo "  $0"
             echo ""
             echo "  # Custom date range"
             echo "  $0 --start-date 2020-01-01 --end-date 2024-12-31"
+            echo ""
+            echo "  # Specific pairs only (comma-separated, no spaces)"
+            echo "  $0 --pairs EURUSD,GBPUSD,USDJPY --start-date 2024-01-01 --end-date 2024-12-31"
             exit 0
             ;;
         *)
@@ -75,6 +83,7 @@ fi
 echo "Collection parameters:"
 echo "  Start date: $START_DATE"
 echo "  End date: $END_DATE"
+echo "  Pairs: ${PAIRS:-all (default)}"
 echo "  Output: /data/dukascopy"
 echo ""
 read -p "Continue? (y/n) " -n 1 -r
@@ -114,8 +123,12 @@ if [ ! -d /data ]; then
     fi
 fi
 
-# Create necessary directories
-mkdir -p /data/dukascopy /data/logs
+# Ensure /data is writable by SSH user (startup script may have left it root-owned)
+sudo chown -R \$USER:\$USER /data 2>/dev/null || true
+sudo chmod -R 755 /data 2>/dev/null || true
+
+# Create necessary directories (cache and temp on /data to avoid filling root disk)
+mkdir -p /data/dukascopy /data/logs /data/tmp /data/.dukascopy-cache
 
 # Verify script exists
 if [ ! -f /opt/trading-system/scripts/backfill_dukascopy_data.py ]; then
@@ -151,12 +164,17 @@ mkdir -p /data/logs
 # Use exec to ensure screen session persists
 echo "Creating screen session..."
 screen -dmS dukascopy-collection bash -c "
+export TMPDIR=/data/tmp && \
 cd /opt/trading-system && \
 LOG_FILE=\"/data/logs/collection_\$(date +%Y%m%d_%H%M%S).log\" && \
 exec python3 scripts/backfill_dukascopy_data.py \
     --start-date $START_DATE \
     --end-date $END_DATE \
+    ${PAIRS:+--pairs $PAIRS} \
     --output-dir /data/dukascopy \
+    --cache-dir /data/.dukascopy-cache \
+    --temp-dir /data/tmp \
+    --progress-file /data/.dukascopy_progress.json \
     --batch-size 3 \
     --pause-ms 5000 \
     --compression snappy \
@@ -187,10 +205,14 @@ else
     echo "Attempting fallback: running directly in background..."
     # Fallback: run directly and background it
     LOG_FILE="/data/logs/collection_\$(date +%Y%m%d_%H%M%S).log"
-    nohup python3 scripts/backfill_dukascopy_data.py \
+    TMPDIR=/data/tmp nohup python3 scripts/backfill_dukascopy_data.py \
         --start-date $START_DATE \
         --end-date $END_DATE \
+        ${PAIRS:+--pairs $PAIRS} \
         --output-dir /data/dukascopy \
+        --cache-dir /data/.dukascopy-cache \
+        --temp-dir /data/tmp \
+        --progress-file /data/.dukascopy_progress.json \
         --batch-size 3 \
         --pause-ms 5000 \
         --compression snappy \

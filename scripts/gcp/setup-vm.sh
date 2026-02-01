@@ -126,10 +126,10 @@ if [ ! -d /data/.mounted ]; then
     fi
 fi
 
-# Create data directories with correct ownership
-mkdir -p /data/dukascopy /data/logs
-chown -R \$(whoami):\$(whoami) /data/dukascopy /data/logs
-chmod -R 755 /data/dukascopy /data/logs
+# Create data directories (cache/temp on /data to avoid filling root disk)
+mkdir -p /data/dukascopy /data/logs /data/tmp /data/.dukascopy-cache
+chown -R \$(whoami):\$(whoami) /data
+chmod -R 755 /data
 
 echo "=== Setup Completed ==="
 echo "Time: \$(date)"

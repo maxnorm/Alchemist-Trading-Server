@@ -64,8 +64,12 @@ if [ ! -d /data ]; then
     fi
 fi
 
-# Create directories
-mkdir -p /data/dukascopy /data/logs
+# Ensure /data is writable by current user
+sudo chown -R $USER:$USER /data 2>/dev/null || true
+sudo chmod -R 755 /data 2>/dev/null || true
+
+# Create directories (cache and temp on /data to avoid filling root disk)
+mkdir -p /data/dukascopy /data/logs /data/tmp /data/.dukascopy-cache
 
 # Check if screen session already exists
 if screen -list | grep -q "dukascopy-collection"; then
@@ -120,11 +124,15 @@ echo "  Log file: $LOG_FILE"
 echo ""
 
 screen -dmS dukascopy-collection bash -c "
+export TMPDIR=/data/tmp && \
 cd '$WORK_DIR' && \
 exec python3 '$SCRIPT_PATH' \
     --start-date $START_DATE \
     --end-date $END_DATE \
     --output-dir /data/dukascopy \
+    --cache-dir /data/.dukascopy-cache \
+    --temp-dir /data/tmp \
+    --progress-file /data/.dukascopy_progress.json \
     --batch-size 3 \
     --pause-ms 5000 \
     --compression snappy \
